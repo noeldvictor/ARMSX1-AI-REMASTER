@@ -16,6 +16,7 @@ typedef struct {
     int console_source;
     int scale;
     int texture_scale_mode;
+    int debug_panel;
     const char* snap_path;
     const char* settings_path;
     const char* bios;

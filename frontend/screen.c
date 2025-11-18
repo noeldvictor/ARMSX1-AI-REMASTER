@@ -3,6 +3,7 @@
 #include "input/sda.h"
 #include "input/guncon.h"
 #include "../psx/log.h"
+#include "imgui_layer.h"
 
 uint32_t screen_get_button(SDL_Keycode k) {
     if (k == SDLK_x     ) return PSXI_SW_SDA_CROSS;
@@ -104,6 +105,7 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->pad = psx_get_pad(psx);
     screen->texture_scale_mode = cfg ? cfg->texture_scale_mode : 0;
     screen->bilinear = screen->texture_scale_mode ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
+    screen->debug_panel = cfg ? cfg->debug_panel : 0;
 
     screen->texture_width = PSX_GPU_FB_WIDTH;
     screen->texture_height = PSX_GPU_FB_HEIGHT;
@@ -179,6 +181,9 @@ void psxe_screen_reload(psxe_screen_t* screen) {
 
     psxe_screen_apply_texture_scale_mode(screen);
 
+    if (screen->debug_panel)
+        imgui_layer_init(screen->window, screen->renderer);
+
     // Check for retina displays
     int width = 0, height = 0;
 
@@ -245,15 +250,31 @@ void psxe_screen_update(psxe_screen_t* screen) {
         dstrect.w = screen->image_width;
         dstrect.h = screen->image_height;
 
-        SDL_RenderCopyEx(
-            screen->renderer,
-            screen->texture,
-            NULL, &dstrect,
-            screen->vertical_mode ? 270 : 0,
-            NULL, SDL_FLIP_NONE
-        );
+    SDL_RenderCopyEx(
+        screen->renderer,
+        screen->texture,
+        NULL, &dstrect,
+        screen->vertical_mode ? 270 : 0,
+        NULL, SDL_FLIP_NONE
+    );
     } else {
         SDL_RenderCopy(screen->renderer, screen->texture, NULL, NULL);
+    }
+
+    if (screen->debug_panel) {
+        static uint64_t last_tick = 0;
+        static float fps = 0.0f;
+        uint64_t now = SDL_GetTicks();
+
+        if (last_tick) {
+            uint64_t delta = now - last_tick;
+            if (delta)
+                fps = 1000.0f / (float)delta;
+        }
+        last_tick = now;
+
+        imgui_layer_new_frame();
+        imgui_layer_render_overlay(STR(OS_INFO), fps);
     }
 
     SDL_RenderPresent(screen->renderer);
@@ -261,6 +282,8 @@ void psxe_screen_update(psxe_screen_t* screen) {
     SDL_Event event;
 
     while (SDL_PollEvent(&event)) {
+        imgui_layer_handle_event(&event);
+
         switch (event.type) {
             case SDL_QUIT: {
                 screen->open = 0;
@@ -466,6 +489,8 @@ void psxe_screen_set_scale(psxe_screen_t* screen, unsigned int scale) {
 }
 
 void psxe_screen_destroy(psxe_screen_t* screen) {
+    imgui_layer_shutdown();
+
     SDL_DestroyTexture(screen->texture);
     SDL_DestroyRenderer(screen->renderer);
     SDL_DestroyWindow(screen->window);

@@ -32,6 +32,7 @@ typedef struct {
     int fullscreen;
     int vertical_mode;
     int debug_mode;
+    int debug_panel;
     int open;
 
     SDL_GameController* controller;

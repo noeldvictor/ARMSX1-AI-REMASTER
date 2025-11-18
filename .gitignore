@@ -1,7 +1,6 @@
 .vscode/
 bin/
 build-win32/
-imgui/
 res/
 sdl2/
 SDL2-2.30.3/

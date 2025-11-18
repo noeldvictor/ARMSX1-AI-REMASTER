@@ -37,7 +37,8 @@ static const char g_default_settings[] =
     "\n"
     "# Video settings\n"
     "[video]\n"
-    "    texture_scale_mode = false\n";
+    "    texture_scale_mode = false\n"
+    "    debug_panel = false\n";
 
 static const char* g_models_text =
     "Available console models:\n"
@@ -100,6 +101,7 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
     cfg->cd_path = NULL;
     cfg->exp_path = NULL;
     cfg->texture_scale_mode = 0;
+    cfg->debug_panel = 0;
 }
 
 void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
@@ -125,6 +127,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int console_source = 0;
     int scale = 0;
     int texture_scale_mode = 0;
+    int debug_panel = 0;
     const char* settings_path = NULL;
     const char* bios = NULL;
     int bios_from_cli = 0;
@@ -270,6 +273,11 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
             if (s_texture_scale_mode.ok)
                 texture_scale_mode = s_texture_scale_mode.u.b;
+
+            toml_datum_t s_debug_panel = toml_bool_in(s_video_table, "debug_panel");
+
+            if (s_debug_panel.ok)
+                debug_panel = s_debug_panel.u.b;
         }
 
         psxe_version = s_version.u.s;
@@ -320,6 +328,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
         cfg->scale = scale;
 
     cfg->texture_scale_mode = texture_scale_mode;
+    cfg->debug_panel = debug_panel;
 
     log_info("Using BIOS path: %s", cfg->bios ? cfg->bios : "(none)");
 
