@@ -42,6 +42,7 @@ static int psxe_run(int argc, const char* argv[], void* external_window) {
 
     if (init_result) {
         log_fatal("Failed to initialize PSX (code %d). Check BIOS/expansion paths and settings.", init_result);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Initialization Error", "Failed to initialize PSX. Check BIOS/expansion paths and settings.", NULL);
         return 1;
     }
 

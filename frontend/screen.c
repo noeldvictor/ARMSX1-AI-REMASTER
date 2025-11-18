@@ -170,7 +170,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         return;
     }
 
-    screen->window = SDL_CreateWindowFrom(screen->external_window);
+    screen->window = screen->external_window;
 
     if (!screen->window) {
         log_error("Failed to create SDL window from external handle: %s", SDL_GetError());
