@@ -48,9 +48,10 @@ uint32_t screen_get_button_joystick(uint8_t b) {
 } 
 
 SDL_GameController* screen_find_controller(void) {
-    for (int i = 0; i < SDL_NumJoysticks(); i++)
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
         if (SDL_IsGameController(i))
             return SDL_GameControllerOpen(i);
+    }
 
     return NULL;
 }
@@ -108,12 +109,16 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->texture_height = PSX_GPU_FB_HEIGHT;
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
+    SDL_GameControllerEventState(SDL_ENABLE);
     SDL_SetRenderDrawColor(screen->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 
     screen->controller = screen_find_controller();
+
+    if (!screen->controller)
+        log_warn("No game controller detected; Xbox pad input will be unavailable until connected");
 }
 
-void psxe_screen_set_window_handle(psxe_screen_t* screen, void* native_handle) {
+PSXE_API void psxe_screen_set_window_handle(psxe_screen_t* screen, void* native_handle) {
     screen->external_window = native_handle;
 }
 

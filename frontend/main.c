@@ -28,7 +28,7 @@ void audio_update(void* ud, uint8_t* buf, int size) {
     }
 }
 
-int main(int argc, const char* argv[]) {
+static int psxe_run(int argc, const char* argv[], void* external_window) {
     psxe_config_t* cfg = psxe_cfg_create();
 
     psxe_cfg_init(cfg);
@@ -55,6 +55,17 @@ int main(int argc, const char* argv[]) {
 
     psxe_screen_t* screen = psxe_screen_create();
     psxe_screen_init(screen, psx, cfg);
+
+#ifdef __DLL_BUILD
+    if (!external_window) {
+        log_fatal("DLL build requires host-provided SDL window handle");
+        return 1;
+    }
+#endif
+
+    if (external_window)
+        psxe_screen_set_window_handle(screen, external_window);
+
     psxe_screen_set_scale(screen, cfg->scale);
     psxe_screen_reload(screen);
 
@@ -131,4 +142,12 @@ int main(int argc, const char* argv[]) {
     psxe_screen_destroy(screen);
 
     return 0;
+}
+
+PSXE_API int external_main(int argc, const char* argv[], void* external_window) {
+    return psxe_run(argc, argv, external_window);
+}
+
+int main(int argc, const char* argv[]) {
+    return psxe_run(argc, argv, NULL);
 }

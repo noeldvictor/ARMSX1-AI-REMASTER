@@ -44,7 +44,7 @@ int psxe_screen_is_open(psxe_screen_t*);
 void psxe_screen_update(psxe_screen_t*);
 void psxe_screen_destroy(psxe_screen_t*);
 void psxe_screen_set_scale(psxe_screen_t*, unsigned int);
-void psxe_screen_set_window_handle(psxe_screen_t*, void* native_handle);
+PSXE_API void psxe_screen_set_window_handle(psxe_screen_t*, void* native_handle);
 void psxe_screen_toggle_debug_mode(psxe_screen_t*);
 
 // GPU event handlers
