@@ -17,6 +17,9 @@ typedef struct {
     int scale;
     int texture_scale_mode;
     int debug_panel;
+    int stretch_mode;
+    int display_aspect;    // 0=classic,1=square,2=wide16x9
+    int upscale_height;    // for wide output (e.g. 480/720/1080/1440/2160)
     const char* snap_path;
     const char* settings_path;
     const char* bios;

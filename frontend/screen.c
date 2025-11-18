@@ -106,6 +106,9 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->texture_scale_mode = cfg ? cfg->texture_scale_mode : 0;
     screen->bilinear = screen->texture_scale_mode ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
     screen->debug_panel = cfg ? cfg->debug_panel : 0;
+    screen->stretch_mode = cfg ? cfg->stretch_mode : 0;
+    screen->display_aspect = cfg ? cfg->display_aspect : 0;
+    screen->upscale_height = cfg ? cfg->upscale_height : 480;
 
     screen->texture_width = PSX_GPU_FB_WIDTH;
     screen->texture_height = PSX_GPU_FB_HEIGHT;
@@ -137,8 +140,18 @@ void psxe_screen_reload(psxe_screen_t* screen) {
             screen->width = 240;
             screen->height = screen_get_base_width(screen);
         } else {
-            screen->width = screen_get_base_width(screen);
-            screen->height = 240;
+            if (screen->display_aspect == 2) {
+                // Wide 16:9 with preset upscale height
+                screen->height = screen->upscale_height;
+                screen->width = (int)((16.0f / 9.0f) * (float)screen->height);
+            } else if (screen->display_aspect == 1) {
+                // Square
+                screen->width = 320;
+                screen->height = 320;
+            } else {
+                screen->width = screen_get_base_width(screen);
+                screen->height = 240;
+            }
         }
     }
 
@@ -148,7 +161,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         screen->width * screen->scale,
         screen->height * screen->scale,
-        0
+        screen->stretch_mode ? SDL_WINDOW_RESIZABLE : 0
     );
 #else
     if (!screen->external_window) {
@@ -245,18 +258,24 @@ void psxe_screen_update(psxe_screen_t* screen) {
     if (!screen->debug_mode) {
         SDL_Rect dstrect;
 
-        dstrect.x = screen->image_xoff;
-        dstrect.y = screen->image_yoff;
-        dstrect.w = screen->image_width;
-        dstrect.h = screen->image_height;
+        if (screen->stretch_mode) {
+            SDL_GetRendererOutputSize(screen->renderer, &dstrect.w, &dstrect.h);
+            dstrect.x = 0;
+            dstrect.y = 0;
+        } else {
+            dstrect.x = screen->image_xoff;
+            dstrect.y = screen->image_yoff;
+            dstrect.w = screen->image_width;
+            dstrect.h = screen->image_height;
+        }
 
-    SDL_RenderCopyEx(
-        screen->renderer,
-        screen->texture,
-        NULL, &dstrect,
-        screen->vertical_mode ? 270 : 0,
-        NULL, SDL_FLIP_NONE
-    );
+        SDL_RenderCopyEx(
+            screen->renderer,
+            screen->texture,
+            NULL, &dstrect,
+            screen->vertical_mode ? 270 : 0,
+            NULL, SDL_FLIP_NONE
+        );
     } else {
         SDL_RenderCopy(screen->renderer, screen->texture, NULL, NULL);
     }
@@ -543,6 +562,16 @@ void psxe_gpu_dmode_event_cb(psx_gpu_t* gpu) {
 
                 screen->image_xoff = (screen->width / 2) - (screen->image_width / 2);
                 screen->image_yoff = off;
+            } else if (screen->display_aspect == 2) {
+                screen->image_width = (double)screen->height * (16.0 / 9.0);
+                screen->image_height = screen->height;
+                screen->image_xoff = (screen->width / 2) - (screen->image_width / 2);
+                screen->image_yoff = 0;
+            } else if (screen->display_aspect == 1) {
+                screen->image_width = screen->height;
+                screen->image_height = screen->height;
+                screen->image_xoff = (screen->width / 2) - (screen->image_width / 2);
+                screen->image_yoff = 0;
             } else {
                 screen->image_width = (double)screen->height * psx_get_display_aspect(screen->psx);
                 screen->image_height = screen->height;
@@ -560,6 +589,20 @@ void psxe_gpu_dmode_event_cb(psx_gpu_t* gpu) {
 
                 screen->image_xoff = -off;
                 screen->image_yoff = off;
+            } else if (screen->display_aspect == 2) {
+                screen->height = screen->upscale_height;
+                screen->width = (int)((16.0f / 9.0f) * (float)screen->height);
+                screen->image_width = screen->width;
+                screen->image_height = screen->height;
+                screen->image_xoff = 0;
+                screen->image_yoff = 0;
+            } else if (screen->display_aspect == 1) {
+                screen->width = screen->scale * 320;
+                screen->height = screen->scale * 320;
+                screen->image_width = screen->width;
+                screen->image_height = screen->height;
+                screen->image_xoff = 0;
+                screen->image_yoff = 0;
             } else {
                 screen->width = screen_get_base_width(screen) * screen->scale;
                 screen->height = 240 * screen->scale;

@@ -38,7 +38,10 @@ static const char g_default_settings[] =
     "# Video settings\n"
     "[video]\n"
     "    texture_scale_mode = false\n"
-    "    debug_panel = false\n";
+    "    debug_panel = false\n"
+    "    stretch_mode = false\n"
+    "    display_aspect = \"classic\" # classic | square | wide16x9\n"
+    "    wide_upscale = \"480p\"      # 480p | 720p | 1080p | 1440p | 2160p\n";
 
 static const char* g_models_text =
     "Available console models:\n"
@@ -102,6 +105,9 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
     cfg->exp_path = NULL;
     cfg->texture_scale_mode = 0;
     cfg->debug_panel = 0;
+    cfg->stretch_mode = 0;
+    cfg->display_aspect = 0;
+    cfg->upscale_height = 480;
 }
 
 void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
@@ -128,6 +134,9 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int scale = 0;
     int texture_scale_mode = 0;
     int debug_panel = 0;
+    int stretch_mode = 0;
+    int display_aspect = 0;
+    int upscale_height = 480;
     const char* settings_path = NULL;
     const char* bios = NULL;
     int bios_from_cli = 0;
@@ -278,6 +287,33 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
             if (s_debug_panel.ok)
                 debug_panel = s_debug_panel.u.b;
+
+            toml_datum_t s_stretch_mode = toml_bool_in(s_video_table, "stretch_mode");
+
+            if (s_stretch_mode.ok)
+                stretch_mode = s_stretch_mode.u.b;
+
+            toml_datum_t s_display_aspect = toml_string_in(s_video_table, "display_aspect");
+
+            if (s_display_aspect.ok) {
+                if (!strcasecmp(s_display_aspect.u.s, "square")) {
+                    display_aspect = 1;
+                } else if (!strcasecmp(s_display_aspect.u.s, "wide16x9")) {
+                    display_aspect = 2;
+                } else {
+                    display_aspect = 0;
+                }
+            }
+
+            toml_datum_t s_wide_upscale = toml_string_in(s_video_table, "wide_upscale");
+
+            if (s_wide_upscale.ok) {
+                if (!strcasecmp(s_wide_upscale.u.s, "720p")) upscale_height = 720;
+                else if (!strcasecmp(s_wide_upscale.u.s, "1080p")) upscale_height = 1080;
+                else if (!strcasecmp(s_wide_upscale.u.s, "1440p")) upscale_height = 1440;
+                else if (!strcasecmp(s_wide_upscale.u.s, "2160p")) upscale_height = 2160;
+                else upscale_height = 480;
+            }
         }
 
         psxe_version = s_version.u.s;
@@ -329,6 +365,9 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
     cfg->texture_scale_mode = texture_scale_mode;
     cfg->debug_panel = debug_panel;
+    cfg->stretch_mode = stretch_mode;
+    cfg->display_aspect = display_aspect;
+    cfg->upscale_height = upscale_height;
 
     log_info("Using BIOS path: %s", cfg->bios ? cfg->bios : "(none)");
 

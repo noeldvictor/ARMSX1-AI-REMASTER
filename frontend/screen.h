@@ -33,6 +33,9 @@ typedef struct {
     int vertical_mode;
     int debug_mode;
     int debug_panel;
+    int stretch_mode;
+    int display_aspect;    // 0=classic,1=square,2=wide16x9
+    int upscale_height;    // only used for wide16x9 output
     int open;
 
     SDL_GameController* controller;
