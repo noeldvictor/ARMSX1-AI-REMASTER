@@ -38,7 +38,12 @@ int main(int argc, const char* argv[]) {
     log_set_level(cfg->log_level);
 
     psx_t* psx = psx_create();
-    psx_init(psx, cfg->bios, cfg->exp_path);
+    int init_result = psx_init(psx, cfg->bios, cfg->exp_path);
+
+    if (init_result) {
+        log_fatal("Failed to initialize PSX (code %d). Check BIOS/expansion paths and settings.", init_result);
+        return 1;
+    }
 
     psx_cdrom_t* cdrom = psx_get_cdrom(psx);
 
@@ -49,7 +54,7 @@ int main(int argc, const char* argv[]) {
         psx_cdrom_open(cdrom, cfg->cd_path);
 
     psxe_screen_t* screen = psxe_screen_create();
-    psxe_screen_init(screen, psx);
+    psxe_screen_init(screen, psx, cfg);
     psxe_screen_set_scale(screen, cfg->scale);
     psxe_screen_reload(screen);
 

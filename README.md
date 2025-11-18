@@ -79,6 +79,41 @@ cd psxe
 ./build.sh
 ```
 
+## Configuration
+
+A `settings.toml` is generated on first run next to the executable. CLI flags always override file settings for a session.
+
+### Settings file keys
+- `psxe_version` (string, managed by PSXE)
+
+`[bios]`
+- `search_path` (string): directory to search for BIOS files
+- `preferred_model` (string): default model (e.g. `SCPH-1001`)
+- `override_file` (string): explicit BIOS path; leave empty to use search/model
+
+`[console]`
+- `region` (string): `ntsc`, `pal`, or `auto`
+
+`[video]`
+- `texture_scale_mode` (bool): enable SDL texture scale mode; toggle bilinear via F4 when supported
+
+### CLI flags (override settings)
+`psxe [options] path-to-cdrom`
+- `-a, --use-args` : ignore settings file
+- `-b, --bios=<str>` : BIOS file
+- `-B, --bios-folder` : BIOS search folder
+- `-c, --console-source=<str>` : auto | null | kernel | atcons
+- `-e, --exp-rom=<str>` : expansion ROM file
+- `-L, --log-level=<int>` : 0=trace .. 5=fatal
+- `-M, --model=<str>` : console model (SCPH-XXXX)
+- `-r, --region=<str>` : console region
+- `-s, --scale=<int>` : display scaling factor
+- `-S, --settings-file=<str>` : settings file path
+- `-q, --quiet` : silence logs
+- `-x, --exe=<str>` : PS-X EXE to boot
+- `--cdrom=<str>` : CDROM image
+- `-h/--help` | `--help-model` | `--help-region` | `-v/--version` : info helpers
+
 ## Acknowledgements
 This project uses external open source code that can be found on the following GitHub repos:
 - argparse.c: https://github.com/cofyc/argparse

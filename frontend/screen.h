@@ -3,6 +3,7 @@
 
 #include "../psx/psx.h"
 #include "common.h"
+#include "config.h"
 
 #include <string.h>
 
@@ -25,6 +26,8 @@ typedef struct {
     unsigned int format;
     unsigned int texture_width, texture_height;
 
+    void* external_window;
+    int texture_scale_mode;
     int bilinear;
     int fullscreen;
     int vertical_mode;
@@ -35,12 +38,13 @@ typedef struct {
 } psxe_screen_t;
 
 psxe_screen_t* psxe_screen_create(void);
-void psxe_screen_init(psxe_screen_t*, psx_t*);
+void psxe_screen_init(psxe_screen_t*, psx_t*, const psxe_config_t*);
 void psxe_screen_reload(psxe_screen_t*);
 int psxe_screen_is_open(psxe_screen_t*);
 void psxe_screen_update(psxe_screen_t*);
 void psxe_screen_destroy(psxe_screen_t*);
 void psxe_screen_set_scale(psxe_screen_t*, unsigned int);
+void psxe_screen_set_window_handle(psxe_screen_t*, void* native_handle);
 void psxe_screen_toggle_debug_mode(psxe_screen_t*);
 
 // GPU event handlers

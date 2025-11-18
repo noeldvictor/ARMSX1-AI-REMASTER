@@ -33,7 +33,11 @@ static const char g_default_settings[] =
     "\n"
     "# Console settings\n"
     "[console]\n"
-    "    region          = \"auto\"\n";
+    "    region          = \"auto\"\n"
+    "\n"
+    "# Video settings\n"
+    "[video]\n"
+    "    texture_scale_mode = false\n";
 
 static const char* g_models_text =
     "Available console models:\n"
@@ -95,10 +99,22 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
     cfg->quiet = 0;
     cfg->cd_path = NULL;
     cfg->exp_path = NULL;
+    cfg->texture_scale_mode = 0;
 }
 
 void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     log_set_level(LOG_INFO);
+
+    // macOS .app bundles can inject a "-psn_*" argument; drop it before parsing
+    const char** argv_filtered = (const char**)malloc(sizeof(char*) * argc);
+    int argc_filtered = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "-psn_", 5) == 0)
+            continue;
+
+        argv_filtered[argc_filtered++] = argv[i];
+    }
 
     int use_args = 0;
     int version = 0;
@@ -108,8 +124,10 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int quiet = 0;
     int console_source = 0;
     int scale = 0;
+    int texture_scale_mode = 0;
     const char* settings_path = NULL;
     const char* bios = NULL;
+    int bios_from_cli = 0;
     const char* bios_search = NULL;
     const char* model = NULL;
     const char* exe = NULL;
@@ -150,7 +168,10 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     argparse_init(&argparse, options, usages, 0);
     argparse_describe(&argparse, NULL, g_desc_text);
 
-    argc = argparse_parse(&argparse, argc, argv);
+    argc = argparse_parse(&argparse, argc_filtered, argv_filtered);
+
+    if (bios)
+        bios_from_cli = 1;
 
     if (help_model) {
         printf("%s\n", g_models_text);
@@ -229,7 +250,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
             toml_datum_t s_bios_override_file = toml_string_in(s_bios_table, "override_file");
 
-            if (s_bios_override_file.ok)
+            if (!bios_from_cli && s_bios_override_file.ok && s_bios_override_file.u.s[0])
                 bios = s_bios_override_file.u.s;
         }
 
@@ -240,6 +261,15 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
             if (s_console_region.ok)
                 region = s_console_region.u.s;
+        }
+
+        toml_table_t* s_video_table = toml_table_in(conf, "video");
+
+        if (s_video_table) {
+            toml_datum_t s_texture_scale_mode = toml_bool_in(s_video_table, "texture_scale_mode");
+
+            if (s_texture_scale_mode.ok)
+                texture_scale_mode = s_texture_scale_mode.u.b;
         }
 
         psxe_version = s_version.u.s;
@@ -288,6 +318,12 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
     if (scale)
         cfg->scale = scale;
+
+    cfg->texture_scale_mode = texture_scale_mode;
+
+    log_info("Using BIOS path: %s", cfg->bios ? cfg->bios : "(none)");
+
+    free(argv_filtered);
 }
 
 // To-do: Implement BIOS searching

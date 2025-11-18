@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "cdrom.h"
+#include "../../log.h"
 
 typedef void (*cdrom_cmd_func)(psx_cdrom_t* cdrom);
 
@@ -194,10 +195,20 @@ int psx_cdrom_open(psx_cdrom_t* cdrom, const char* path) {
     cdrom->disc_type = psx_disc_open(cdrom->disc, path);
 
     if (cdrom->disc_type == CDT_ERROR) {
+        log_error("Failed to open CD image: %s", path);
         psx_cdrom_close(cdrom);
 
         return 0;
     }
+
+    if (cdrom->disc_type != CDT_LICENSED) {
+        log_error("CD image not recognized as a licensed PSX disc (type=%d). Use a proper BIN/CUE rip.", cdrom->disc_type);
+        psx_cdrom_close(cdrom);
+
+        return 0;
+    }
+
+    log_info("CD image type: Licensed");
 
     return 1;
 }

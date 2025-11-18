@@ -2,6 +2,7 @@
 
 #include "input/sda.h"
 #include "input/guncon.h"
+#include "../psx/log.h"
 
 uint32_t screen_get_button(SDL_Keycode k) {
     if (k == SDLK_x     ) return PSXI_SW_SDA_CROSS;
@@ -70,7 +71,21 @@ psxe_screen_t* psxe_screen_create(void) {
     return (psxe_screen_t*)malloc(sizeof(psxe_screen_t));
 }
 
-void psxe_screen_init(psxe_screen_t* screen, psx_t* psx) {
+static void psxe_screen_apply_texture_scale_mode(psxe_screen_t* screen) {
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+    if (!screen->texture_scale_mode)
+        return;
+
+    SDL_ScaleMode scale_mode = screen->bilinear ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
+
+    if (SDL_SetTextureScaleMode(screen->texture, scale_mode) < 0) {
+        log_warn("SDL_SetTextureScaleMode failed, disabling texture_scale_mode: %s", SDL_GetError());
+        screen->texture_scale_mode = 0;
+    }
+#endif
+}
+
+void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cfg) {
     memset(screen, 0, sizeof(psxe_screen_t));
 
     if (screen->debug_mode) {
@@ -86,6 +101,8 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx) {
     screen->format = SDL_PIXELFORMAT_BGR555;
     screen->psx = psx;
     screen->pad = psx_get_pad(psx);
+    screen->texture_scale_mode = cfg ? cfg->texture_scale_mode : 0;
+    screen->bilinear = screen->texture_scale_mode ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
 
     screen->texture_width = PSX_GPU_FB_WIDTH;
     screen->texture_height = PSX_GPU_FB_HEIGHT;
@@ -94,6 +111,10 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx) {
     SDL_SetRenderDrawColor(screen->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 
     screen->controller = screen_find_controller();
+}
+
+void psxe_screen_set_window_handle(psxe_screen_t* screen, void* native_handle) {
+    screen->external_window = native_handle;
 }
 
 void psxe_screen_reload(psxe_screen_t* screen) {
@@ -114,6 +135,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         }
     }
 
+#ifndef __DLL_BUILD
     screen->window = SDL_CreateWindow(
         "psxe " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH),
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -121,6 +143,21 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         screen->height * screen->scale,
         0
     );
+#else
+    if (!screen->external_window) {
+        log_error("DLL build requires external window handle before reload");
+        screen->open = 0;
+        return;
+    }
+
+    screen->window = SDL_CreateWindowFrom(screen->external_window);
+
+    if (!screen->window) {
+        log_error("Failed to create SDL window from external handle: %s", SDL_GetError());
+        screen->open = 0;
+        return;
+    }
+#endif
 
     screen->renderer = SDL_CreateRenderer(
         screen->window,
@@ -135,9 +172,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         screen->texture_width, screen->texture_height
     );
 
-#if SDL_VERSION_ATLEAST(2, 0, 12)
-    SDL_SetTextureScaleMode(screen->texture, screen->bilinear);
-#endif
+    psxe_screen_apply_texture_scale_mode(screen);
 
     // Check for retina displays
     int width = 0, height = 0;
@@ -518,9 +553,7 @@ void psxe_gpu_dmode_event_cb(psx_gpu_t* gpu) {
         screen->texture_width, screen->texture_height
     );
 
-#if SDL_VERSION_ATLEAST(2, 0, 12)
-    SDL_SetTextureScaleMode(screen->texture, screen->bilinear);
-#endif
+    psxe_screen_apply_texture_scale_mode(screen);
 
     SDL_SetWindowSize(screen->window, screen->width, screen->height);
 }

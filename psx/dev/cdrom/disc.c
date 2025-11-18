@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "disc.h"
 #include "cue.h"
+#include "../../log.h"
 
 #define MSF_TO_LBA(m, s, f) ((m * 4500) + (s * 75) + f)
 
@@ -13,8 +15,67 @@ const char* disc_cd_extensions[] = {
     0
 };
 
+typedef struct {
+    FILE* file;
+    uint32_t sector_size;
+    uint32_t sector_count;
+} raw_disc_t;
+
+static int raw_read(void* udata, uint32_t lba, void* buf) {
+    raw_disc_t* raw = (raw_disc_t*)udata;
+
+    if (!raw || !raw->file)
+        return 0;
+
+    if (lba >= raw->sector_count)
+        return 0;
+
+    if (fseek(raw->file, (long long)lba * raw->sector_size, SEEK_SET))
+        return 0;
+
+    size_t to_read = raw->sector_size;
+    memset(buf, 0, CD_SECTOR_SIZE);
+
+    return fread(buf, 1, to_read, raw->file) == to_read ? TS_DATA : 0;
+}
+
+static int raw_query(void* udata, uint32_t lba) {
+    raw_disc_t* raw = (raw_disc_t*)udata;
+
+    return (raw && (lba < raw->sector_count)) ? TS_DATA : TS_FAR;
+}
+
+static int raw_get_track_number(void* udata, uint32_t lba) {
+    (void)udata; (void)lba;
+    return 1;
+}
+
+static int raw_get_track_count(void* udata) {
+    (void)udata;
+    return 1;
+}
+
+static uint32_t raw_get_track_lba(void* udata, int track) {
+    (void)udata; (void)track;
+    return 0;
+}
+
+static void raw_destroy(void* udata) {
+    raw_disc_t* raw = (raw_disc_t*)udata;
+
+    if (raw && raw->file)
+        fclose(raw->file);
+
+    free(raw);
+}
+
 psx_disc_t* psx_disc_create(void) {
-    return malloc(sizeof(psx_disc_t));
+    psx_disc_t* disc = malloc(sizeof(psx_disc_t));
+
+    if (disc)
+        memset(disc, 0, sizeof(psx_disc_t));
+
+    return disc;
 }
 
 int disc_get_extension(const char* path) {
@@ -81,12 +142,49 @@ int psx_disc_open_as(psx_disc_t* disc, const char* path, int type) {
             if (cue_load(cue, LD_FILE))
                 return CDT_ERROR;
         } break;
+
+        case CD_EXT_BIN:
+        case CD_EXT_ISO: {
+            FILE* f = fopen(path, "rb");
+
+            if (!f)
+                return CDT_ERROR;
+
+            fseek(f, 0, SEEK_END);
+            long long size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+
+            raw_disc_t* raw = (raw_disc_t*)malloc(sizeof(raw_disc_t));
+
+            raw->file = f;
+            raw->sector_size = (type == CD_EXT_BIN) ? CD_SECTOR_SIZE : 2048;
+            raw->sector_count = (uint32_t)(size / raw->sector_size);
+
+            disc->udata = raw;
+            disc->read_sector = raw_read;
+            disc->query_sector = raw_query;
+            disc->get_track_number = raw_get_track_number;
+            disc->get_track_count = raw_get_track_count;
+            disc->get_track_lba = raw_get_track_lba;
+            disc->destroy = raw_destroy;
+        } break;
+
+        default:
+            return CDT_ERROR;
+    }
+
+    if (!disc->read_sector) {
+        log_error("Unsupported or failed to open disc image: %s", path);
+        return CDT_ERROR;
     }
 
     return disc_get_cd_type(disc);
 }
 
 int psx_disc_read(psx_disc_t* disc, uint32_t lba, void* buf) {
+    if (!disc->read_sector)
+        return 0;
+
     return disc->read_sector(disc->udata, lba, buf);
 }
 
