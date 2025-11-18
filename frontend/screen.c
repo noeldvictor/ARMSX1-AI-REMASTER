@@ -103,6 +103,7 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->format = SDL_PIXELFORMAT_BGR555;
     screen->psx = psx;
     screen->pad = psx_get_pad(psx);
+    screen->owns_window = 1;
     screen->texture_scale_mode = cfg ? cfg->texture_scale_mode : 0;
     screen->bilinear = screen->texture_scale_mode ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
     screen->debug_panel = cfg ? cfg->debug_panel : 0;
@@ -125,12 +126,13 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
 
 PSXE_API void psxe_screen_set_window_handle(psxe_screen_t* screen, void* native_handle) {
     screen->external_window = native_handle;
+    screen->owns_window = 0;
 }
 
 void psxe_screen_reload(psxe_screen_t* screen) {
     if (screen->texture) SDL_DestroyTexture(screen->texture);
     if (screen->renderer) SDL_DestroyRenderer(screen->renderer);
-    if (screen->window) SDL_DestroyWindow(screen->window);
+    if (screen->window && screen->owns_window) SDL_DestroyWindow(screen->window);
 
     if (screen->debug_mode) {
         screen->width = PSX_GPU_FB_WIDTH;
@@ -163,6 +165,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         screen->height * screen->scale,
         screen->stretch_mode ? SDL_WINDOW_RESIZABLE : 0
     );
+    screen->owns_window = 1;
 #else
     if (!screen->external_window) {
         log_error("DLL build requires external window handle before reload");
@@ -171,6 +174,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
     }
 
     screen->window = screen->external_window;
+    screen->owns_window = 0;
 
     if (!screen->window) {
         log_error("Failed to create SDL window from external handle: %s", SDL_GetError());
@@ -512,7 +516,8 @@ void psxe_screen_destroy(psxe_screen_t* screen) {
 
     SDL_DestroyTexture(screen->texture);
     SDL_DestroyRenderer(screen->renderer);
-    SDL_DestroyWindow(screen->window);
+    if (screen->owns_window)
+        SDL_DestroyWindow(screen->window);
 
     SDL_Quit();
 

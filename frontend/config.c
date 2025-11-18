@@ -1,10 +1,20 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <limits.h>
 
 #include "config.h"
 #include "common.h"
 
 #include "../psx/log.h"
+#ifdef IOS_TARGET
+#include "SDL.h"
+#endif
+
+#ifdef IOS_TARGET
+static char* g_ios_settings_path = NULL;
+static char* g_ios_bios_path = NULL;
+#endif
 
 static const char* g_version_text =
 #ifdef _WIN32
@@ -206,6 +216,26 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     log_set_quiet(quiet);
 
     if (!use_args) {
+#ifdef IOS_TARGET
+        if (!settings_path) {
+            if (!g_ios_settings_path) {
+                char* pref_base = SDL_GetPrefPath("allkern", "psxe");
+
+                if (pref_base) {
+                    size_t len = strlen(pref_base) + strlen("settings.toml") + 1;
+                    g_ios_settings_path = (char*)malloc(len);
+
+                    if (g_ios_settings_path) {
+                        snprintf(g_ios_settings_path, len, "%ssettings.toml", pref_base);
+                    }
+
+                    SDL_free(pref_base);
+                }
+            }
+
+            settings_path = g_ios_settings_path;
+        }
+#endif
         if (!settings_path)
             settings_path = "settings.toml";
 
@@ -214,7 +244,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
         char error[0x100];
 
         if (!settings) {
-            settings = fopen("settings.toml", "w+b");
+            settings = fopen(settings_path, "w+b");
 
             if (!settings) {
                 log_error("Couldn't create settings file, loading default settings");
@@ -341,6 +371,26 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
     if (bios)
         cfg->bios = bios;
+
+#ifdef IOS_TARGET
+    if (!cfg->bios) {
+        if (!g_ios_bios_path) {
+            char* base_path = SDL_GetBasePath();
+
+            if (base_path) {
+                size_t len = strlen(base_path) + strlen("bios.bin") + 1;
+                g_ios_bios_path = (char*)malloc(len);
+
+                if (g_ios_bios_path)
+                    snprintf(g_ios_bios_path, len, "%sbios.bin", base_path);
+
+                SDL_free(base_path);
+            }
+        }
+
+        cfg->bios = g_ios_bios_path ? g_ios_bios_path : "bios.bin";
+    }
+#endif
 
     if (bios_search)
         cfg->bios_search = bios_search;

@@ -26,6 +26,7 @@ typedef struct {
     unsigned int format;
     unsigned int texture_width, texture_height;
 
+    int owns_window;
     void* external_window;
     int texture_scale_mode;
     int bilinear;

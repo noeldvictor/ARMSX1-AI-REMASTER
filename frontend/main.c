@@ -28,7 +28,7 @@ void audio_update(void* ud, uint8_t* buf, int size) {
     }
 }
 
-static int psxe_run(int argc, const char* argv[], void* external_window) {
+int psxe_run(int argc, const char* argv[], void* external_window) {
     psxe_config_t* cfg = psxe_cfg_create();
 
     psxe_cfg_init(cfg);
@@ -149,6 +149,8 @@ PSXE_API int external_main(int argc, const char* argv[], void* external_window) 
     return psxe_run(argc, argv, external_window);
 }
 
+#ifndef __DLL_BUILD
 int main(int argc, const char* argv[]) {
     return psxe_run(argc, argv, NULL);
 }
+#endif
