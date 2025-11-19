@@ -7,23 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		5D3683F1D2042D2A8BAC4723 /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5EC6FB829F5C6AD2546D7EF9 /* AppDelegate.mm */; };
-		68349717D073C4AE0385B86A /* SDL2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A01495391971AB133B3AFFD8 /* SDL2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		6AF5FFC2E3CD827A9F31A606 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 999F47D9588819814C45BDCA /* main.m */; };
-		ACC2064FE5E2F90D3A0F16C7 /* libpsxe.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = D53C66EC4A234721BE725677 /* libpsxe.dylib */; };
-		EDE1BD21726D4F80F4E5472C /* libpsxe.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D53C66EC4A234721BE725677 /* libpsxe.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		F219115FA3A6F127221C5BDA /* SDL2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A01495391971AB133B3AFFD8 /* SDL2.xcframework */; };
+		0A79EE5517AAE0DFA8E8B5A7 /* libpsxe.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = ADA5E597FFB36DB70531D19B /* libpsxe.dylib */; };
+		10D5B99D2ECD30C400403BD6 /* bios.bin in Resources */ = {isa = PBXBuildFile; fileRef = 10D5B99C2ECD30C400403BD6 /* bios.bin */; };
+		3A83F5253BCB4AD47A6742B1 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F686B87C80EB4D3204CDEEC0 /* main.m */; };
+		48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; };
+		7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B16F42A290ECFF7DF154F24F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9484FEBF96C002F04D73B70C /* AppDelegate.mm */; };
+		B27EB197AB6B4ACA054BBA0E /* libpsxe.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = ADA5E597FFB36DB70531D19B /* libpsxe.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		407C12AF9D249B99377E0681 /* Embed Frameworks */ = {
+		8F7F79E31569D7CF1ACBC707 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				68349717D073C4AE0385B86A /* SDL2.xcframework in Embed Frameworks */,
-				EDE1BD21726D4F80F4E5472C /* libpsxe.dylib in Embed Frameworks */,
+				7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */,
+				B27EB197AB6B4ACA054BBA0E /* libpsxe.dylib in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -31,99 +32,102 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		2794EB2280F7162637293521 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		36B70E194D0488117051B30E /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
-		5EC6FB829F5C6AD2546D7EF9 /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
-		999F47D9588819814C45BDCA /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
-		A01495391971AB133B3AFFD8 /* SDL2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL2.xcframework; path = ../Frameworks/SDL2.xcframework; sourceTree = "<group>"; };
-		B28D0F70E8CC0B20390C5EEB /* psxe_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = psxe_bridge.h; sourceTree = "<group>"; };
-		BAFA68B0A358D0F79C73478A /* PSXEHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PSXEHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		D53C66EC4A234721BE725677 /* libpsxe.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libpsxe.dylib; path = ../Frameworks/libpsxe.dylib; sourceTree = "<group>"; };
+		019479875FC7433ACB65A02E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		10D5B99C2ECD30C400403BD6 /* bios.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = bios.bin; path = ../bios.bin; sourceTree = "<group>"; };
+		518B2258235B15B15373B04A /* SDL2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL2.xcframework; path = ../Frameworks/SDL2.xcframework; sourceTree = "<group>"; };
+		64E02E161FEB892FC40F8BE1 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		87BA3EE4597141AA97A5557D /* ARMSX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARMSX.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9484FEBF96C002F04D73B70C /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
+		ADA5E597FFB36DB70531D19B /* libpsxe.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libpsxe.dylib; path = ../Frameworks/libpsxe.dylib; sourceTree = "<group>"; };
+		DA91A1D6D1FF1401745F47ED /* psxe_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = psxe_bridge.h; sourceTree = "<group>"; };
+		F686B87C80EB4D3204CDEEC0 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		231D5C4E32A18381DAE05872 /* Frameworks */ = {
+		D6910F21954EF81975654CFA /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F219115FA3A6F127221C5BDA /* SDL2.xcframework in Frameworks */,
-				ACC2064FE5E2F90D3A0F16C7 /* libpsxe.dylib in Frameworks */,
+				48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */,
+				0A79EE5517AAE0DFA8E8B5A7 /* libpsxe.dylib in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		2A442F528E80338CC50CFEE9 /* Sources */ = {
+		473DBC863A1B097C0DD3710F /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				36B70E194D0488117051B30E /* AppDelegate.h */,
-				5EC6FB829F5C6AD2546D7EF9 /* AppDelegate.mm */,
-				2794EB2280F7162637293521 /* Info.plist */,
-				999F47D9588819814C45BDCA /* main.m */,
-				B28D0F70E8CC0B20390C5EEB /* psxe_bridge.h */,
+				ADA5E597FFB36DB70531D19B /* libpsxe.dylib */,
+				518B2258235B15B15373B04A /* SDL2.xcframework */,
 			);
-			path = Sources;
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		3681D7B5BA04BCD18E5C9CA2 /* Products */ = {
+		48D57A41DAF59CF0D443A086 = {
 			isa = PBXGroup;
 			children = (
-				BAFA68B0A358D0F79C73478A /* PSXEHost.app */,
+				10D5B99C2ECD30C400403BD6 /* bios.bin */,
+				D0581165A1AB8CE875BD92E0 /* Sources */,
+				473DBC863A1B097C0DD3710F /* Frameworks */,
+				9B7D6BDFE7232B2E5D8A379F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9B7D6BDFE7232B2E5D8A379F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				87BA3EE4597141AA97A5557D /* ARMSX.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		546C76F2CCC195C420FD4175 = {
+		D0581165A1AB8CE875BD92E0 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				2A442F528E80338CC50CFEE9 /* Sources */,
-				CA1F7E0D63E2AA1CA3132F18 /* Frameworks */,
-				3681D7B5BA04BCD18E5C9CA2 /* Products */,
+				64E02E161FEB892FC40F8BE1 /* AppDelegate.h */,
+				9484FEBF96C002F04D73B70C /* AppDelegate.mm */,
+				019479875FC7433ACB65A02E /* Info.plist */,
+				F686B87C80EB4D3204CDEEC0 /* main.m */,
+				DA91A1D6D1FF1401745F47ED /* psxe_bridge.h */,
 			);
-			sourceTree = "<group>";
-		};
-		CA1F7E0D63E2AA1CA3132F18 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				D53C66EC4A234721BE725677 /* libpsxe.dylib */,
-				A01495391971AB133B3AFFD8 /* SDL2.xcframework */,
-			);
-			name = Frameworks;
+			path = Sources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A3CFBE7DFA9AB0650154F8C1 /* PSXEHost */ = {
+		6B7EECC7E0E8E94CFC0841B0 /* ARMSX */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 4BDD7640BB767F51546223D5 /* Build configuration list for PBXNativeTarget "PSXEHost" */;
+			buildConfigurationList = 1A8EEE030E970E82EC7B77F8 /* Build configuration list for PBXNativeTarget "ARMSX" */;
 			buildPhases = (
-				7D311A055208CAA79C2489A2 /* Sources */,
-				231D5C4E32A18381DAE05872 /* Frameworks */,
-				407C12AF9D249B99377E0681 /* Embed Frameworks */,
+				21709ABD74D1031F0389C4EC /* Sources */,
+				D6910F21954EF81975654CFA /* Frameworks */,
+				8F7F79E31569D7CF1ACBC707 /* Embed Frameworks */,
+				10D5B99B2ECD30B600403BD6 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = PSXEHost;
+			name = ARMSX;
 			packageProductDependencies = (
 			);
-			productName = PSXEHost;
-			productReference = BAFA68B0A358D0F79C73478A /* PSXEHost.app */;
+			productName = ARMSX;
+			productReference = 87BA3EE4597141AA97A5557D /* ARMSX.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		CB90791B3026D88BAC76755D /* Project object */ = {
+		4FA5867908AE4E4AEECC69A2 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 			};
-			buildConfigurationList = 1B75F5F2BC395D4D2819DE6A /* Build configuration list for PBXProject "PSXEHost" */;
+			buildConfigurationList = FBD22F5C337AFF8855769BCD /* Build configuration list for PBXProject "ARMSX" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -131,35 +135,46 @@
 				Base,
 				en,
 			);
-			mainGroup = 546C76F2CCC195C420FD4175;
+			mainGroup = 48D57A41DAF59CF0D443A086;
 			minimizedProjectReferenceProxies = 1;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A3CFBE7DFA9AB0650154F8C1 /* PSXEHost */,
+				6B7EECC7E0E8E94CFC0841B0 /* ARMSX */,
 			);
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		10D5B99B2ECD30B600403BD6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10D5B99D2ECD30C400403BD6 /* bios.bin in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
-		7D311A055208CAA79C2489A2 /* Sources */ = {
+		21709ABD74D1031F0389C4EC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5D3683F1D2042D2A8BAC4723 /* AppDelegate.mm in Sources */,
-				6AF5FFC2E3CD827A9F31A606 /* main.m in Sources */,
+				B16F42A290ECFF7DF154F24F /* AppDelegate.mm in Sources */,
+				3A83F5253BCB4AD47A6742B1 /* main.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		0842134F2E7E15B696020658 /* Debug */ = {
+		6C84D25B5BF8B28E170A1AC3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 29Z9DF4K5A;
+				DEVELOPMENT_TEAM = L296QD7JFU;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/../Frameworks",
 					"\"../Frameworks\"",
@@ -172,37 +187,13 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../Frameworks";
 				OTHER_LDFLAGS = "-ObjC";
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.psxehost;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.armsx;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
-		3046E142D690DDB13017601E /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 29Z9DF4K5A;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/../Frameworks",
-					"\"../Frameworks\"",
-				);
-				INFOPLIST_FILE = Sources/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../Frameworks";
-				OTHER_LDFLAGS = "-ObjC";
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.psxehost;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		E275C83D507CE0E42817D8FA /* Debug */ = {
+		D98035B897969C0612DD6745 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -266,7 +257,7 @@
 			};
 			name = Debug;
 		};
-		F6C40910874FA420AACF1260 /* Release */ = {
+		E5A851D09B8D6818D185F944 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -323,28 +314,52 @@
 			};
 			name = Release;
 		};
+		EA79FDBEDBB17F1B501A7D1A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = L296QD7JFU;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/../Frameworks",
+					"\"../Frameworks\"",
+				);
+				INFOPLIST_FILE = Sources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../Frameworks";
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.armsx;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1B75F5F2BC395D4D2819DE6A /* Build configuration list for PBXProject "PSXEHost" */ = {
+		1A8EEE030E970E82EC7B77F8 /* Build configuration list for PBXNativeTarget "ARMSX" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E275C83D507CE0E42817D8FA /* Debug */,
-				F6C40910874FA420AACF1260 /* Release */,
+				6C84D25B5BF8B28E170A1AC3 /* Debug */,
+				EA79FDBEDBB17F1B501A7D1A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		4BDD7640BB767F51546223D5 /* Build configuration list for PBXNativeTarget "PSXEHost" */ = {
+		FBD22F5C337AFF8855769BCD /* Build configuration list for PBXProject "ARMSX" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				0842134F2E7E15B696020658 /* Debug */,
-				3046E142D690DDB13017601E /* Release */,
+				D98035B897969C0612DD6745 /* Debug */,
+				E5A851D09B8D6818D185F944 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = CB90791B3026D88BAC76755D /* Project object */;
+	rootObject = 4FA5867908AE4E4AEECC69A2 /* Project object */;
 }

@@ -87,18 +87,9 @@ int psxe_run(int argc, const char* argv[], void* external_window, void* external
     psxe_screen_t* screen = psxe_screen_create();
     psxe_screen_init(screen, psx, cfg);
 
-#ifdef IOS_TARGET
-
-#endif
-
 #if defined(__DLL_BUILD) && !defined(IOS_TARGET)
-    if (!external_window) {
-        log_fatal("DLL build requires host-provided SDL window handle");
-        return 1;
-    }
-
-    if (!external_renderer) {
-        log_fatal("DLL build requires host-provided SDL renderer handle");
+    if (!external_window || !external_renderer) {
+        log_fatal("DLL (non-iOS) build requires host-provided SDL window and renderer");
         return 1;
     }
 #endif

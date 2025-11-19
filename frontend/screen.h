@@ -27,7 +27,9 @@ typedef struct {
     unsigned int texture_width, texture_height;
 
     int owns_window;
+    int owns_renderer;
     void* external_window;
+    void* external_renderer;
     int texture_scale_mode;
     int bilinear;
     int fullscreen;
@@ -50,6 +52,7 @@ void psxe_screen_update(psxe_screen_t*);
 void psxe_screen_destroy(psxe_screen_t*);
 void psxe_screen_set_scale(psxe_screen_t*, unsigned int);
 PSXE_API void psxe_screen_set_window_handle(psxe_screen_t*, void* native_handle);
+PSXE_API void psxe_screen_set_renderer_handle(psxe_screen_t*, void* native_handle);
 void psxe_screen_toggle_debug_mode(psxe_screen_t*);
 
 // GPU event handlers

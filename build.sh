@@ -49,6 +49,8 @@ if [ "$MODE" = "ios" ]; then
     make clean
     IOS_ENV="IOS_TARGET=1 IOS_SDK=${IOS_SDK} IOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET} SDKROOT=${IOS_SDKROOT} CC=${IOS_CC} CXX=${IOS_CXX} SDL_STATIC=0 IOS_SDL_FRAMEWORK=${IOS_SDL_FRAMEWORK}"
     eval "make shared ${IOS_ENV}"
+    echo "Copying libpsxe.dylib to ios/Frameworks/"
+    cp bin/libpsxe.dylib ios/Frameworks/
 
 elif [ "$MODE" = "shared" ]; then
     make clean

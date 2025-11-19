@@ -7,7 +7,6 @@
 #import "psxe_bridge.h"
 
 @interface AppDelegate ()
-@property (nonatomic, assign) SDL_Window *sdlWindow;
 @property (nonatomic, assign) BOOL psxeRunning;
 @end
 
@@ -40,56 +39,88 @@
         return;
     }
 
-    CGSize screenSize = [UIScreen mainScreen].bounds.size;
-    self.sdlWindow = SDL_CreateWindow(
-        "psxe",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        (int)screenSize.width,
-        (int)screenSize.height,
-        SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI
-    );
-
-    if (!self.sdlWindow) {
-        NSLog(@"SDL_CreateWindow failed: %s", SDL_GetError());
-        return;
-    }
-
     self.psxeRunning = YES;
 
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    // Run the SDL/psxe entry on the main thread to satisfy UIKit threading requirements
+    dispatch_async(dispatch_get_main_queue(), ^{
         @autoreleasepool {
             NSMutableArray<NSString *> *nativeArgs = [NSMutableArray arrayWithObject:@"psxe"];
             NSFileManager *fm = [NSFileManager defaultManager];
 
-            // Look for bios.bin packaged in the bundle (root or Contents/)
-            NSString *biosPath = [[NSBundle mainBundle] pathForResource:@"bios" ofType:@"bin"];
+            // Look for bios.bin packaged in the bundle (root, Contents/, or resource dir)
+            NSMutableArray<NSString *> *candidatePaths = [NSMutableArray array];
+            NSBundle *bundle = [NSBundle mainBundle];
 
-            if (!biosPath) {
-                biosPath = [[NSBundle mainBundle] pathForResource:@"bios" ofType:@"bin" inDirectory:@"Contents"];
+            NSString *bundleRoot = bundle.bundlePath;
+            NSString *resourceRoot = bundle.resourcePath;
+
+            // Common bundle layouts
+            if (bundleRoot.length) {
+                [candidatePaths addObject:[bundleRoot stringByAppendingPathComponent:@"bios.bin"]];
+                [candidatePaths addObject:[bundleRoot stringByAppendingPathComponent:@"Contents/bios.bin"]];
+            }
+            if (resourceRoot.length) {
+                [candidatePaths addObject:[resourceRoot stringByAppendingPathComponent:@"bios.bin"]];
             }
 
-            if (!biosPath) {
-                NSString *basePath = [NSString stringWithUTF8String:SDL_GetBasePath()];
-                biosPath = [basePath stringByAppendingPathComponent:@"bios.bin"];
+            // XcodeGen resources (if the optional BIOS is present)
+            NSString *biosPath = [bundle pathForResource:@"bios" ofType:@"bin"];
+            if (biosPath.length) {
+                [candidatePaths insertObject:biosPath atIndex:0];
+            }
+
+            biosPath = nil;
+
+            for (NSString *candidate in candidatePaths) {
+                if ([fm fileExistsAtPath:candidate]) {
+                    biosPath = candidate;
+                    break;
+                }
+            }
+
+            // As a last resort, try SDL's base path
+            if (!biosPath.length) {
+                char *basePathC = SDL_GetBasePath();
+                if (basePathC) {
+                    NSString *basePath = [NSString stringWithUTF8String:basePathC];
+                    SDL_free(basePathC);
+                    NSString *fallback = [basePath stringByAppendingPathComponent:@"bios.bin"];
+                    if ([fm fileExistsAtPath:fallback]) {
+                        biosPath = fallback;
+                    }
+                }
             }
 
             // If found, copy to a writable pref path to avoid any translocation issues
             if (biosPath.length && [fm fileExistsAtPath:biosPath]) {
-                NSString *prefBase = [NSString stringWithUTF8String:SDL_GetPrefPath("allkern", "psxe")];
-                NSString *writableBios = [prefBase stringByAppendingPathComponent:@"bios.bin"];
+                char *prefPathC = SDL_GetPrefPath("allkern", "psxe");
+                NSString *prefBase = prefPathC ? [NSString stringWithUTF8String:prefPathC] : nil;
+                if (prefPathC) {
+                    SDL_free(prefPathC);
+                }
+
+                NSString *writableBios = prefBase ? [prefBase stringByAppendingPathComponent:@"bios.bin"] : nil;
                 NSError *copyErr = nil;
 
                 // Clean existing copy to avoid stale/corrupt data
-                if ([fm fileExistsAtPath:writableBios]) {
+                if (writableBios.length && [fm fileExistsAtPath:writableBios]) {
                     [fm removeItemAtPath:writableBios error:nil];
                 }
 
-                if ([fm copyItemAtPath:biosPath toPath:writableBios error:&copyErr]) {
+                if (writableBios.length && [fm copyItemAtPath:biosPath toPath:writableBios error:&copyErr]) {
                     biosPath = writableBios;
                     NSLog(@"Using bundled BIOS copied to writable path %@", biosPath);
-                } else {
+                } else if (writableBios.length) {
                     NSLog(@"Failed to copy BIOS to writable location (%@). Using bundle path. Error: %@", writableBios, copyErr);
                 }
+            }
+
+            if (biosPath.length && [fm fileExistsAtPath:biosPath]) {
+                [nativeArgs addObject:@"--bios"];
+                [nativeArgs addObject:biosPath];
+                NSLog(@"Passing BIOS path to libpsxe: %@", biosPath);
+            } else {
+                NSLog(@"No bundled BIOS found; libpsxe will rely on user-provided settings/CLI.");
             }
 
             std::vector<std::string> args;
@@ -104,7 +135,8 @@
 
             argv.push_back(nullptr);
 
-            external_main((int)args.size(), argv.data(), self.sdlWindow);
+            // Let the dylib create its own SDL window/renderer
+            external_main((int)args.size(), argv.data(), NULL, NULL);
         }
     });
 }

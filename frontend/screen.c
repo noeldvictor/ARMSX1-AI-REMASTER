@@ -166,7 +166,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         }
     }
 
-#if defined(IOS_TARGET) || defined(__DLL_BUILD)
+#if defined(IOS_TARGET)
     if (screen->external_window) {
         screen->window = screen->external_window;
         screen->owns_window = 0;
@@ -180,6 +180,21 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         );
         screen->owns_window = 1;
     }
+#elif defined(__DLL_BUILD)
+    if (!screen->external_window) {
+        log_error("DLL build requires external window handle before reload");
+        screen->open = 0;
+        return;
+    }
+
+    screen->window = screen->external_window;
+    screen->owns_window = 0;
+
+    if (!screen->window) {
+        log_error("Failed to use external SDL window handle: %s", SDL_GetError());
+        screen->open = 0;
+        return;
+    }
 #else
     screen->window = SDL_CreateWindow(
         "psxe " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH),
@@ -192,13 +207,11 @@ void psxe_screen_reload(psxe_screen_t* screen) {
 #endif
 
     // Prefer host-provided renderer when using an external window
-#if defined(IOS_TARGET) || defined(__DLL_BUILD)
+#if defined(IOS_TARGET)
     if (screen->external_renderer) {
         screen->renderer = (SDL_Renderer*)screen->external_renderer;
         screen->owns_renderer = 0;
-    } else
-#endif
-    {
+    } else {
         screen->renderer = SDL_CreateRenderer(
             screen->window,
             -1,
@@ -206,6 +219,23 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         );
         screen->owns_renderer = 1;
     }
+#elif defined(__DLL_BUILD)
+    if (!screen->external_renderer) {
+        log_error("DLL build requires external renderer before reload");
+        screen->open = 0;
+        return;
+    }
+
+    screen->renderer = (SDL_Renderer*)screen->external_renderer;
+    screen->owns_renderer = 0;
+#else
+    screen->renderer = SDL_CreateRenderer(
+        screen->window,
+        -1,
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+    );
+    screen->owns_renderer = 1;
+#endif
 
     if (!screen->renderer) {
         log_error("Failed to create SDL renderer: %s", SDL_GetError());
