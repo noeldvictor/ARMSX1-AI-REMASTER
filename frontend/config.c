@@ -18,13 +18,13 @@ static char* g_ios_bios_path = NULL;
 
 static const char* g_version_text =
 #ifdef _WIN32
-    "psxe.exe (" STR(OS_INFO) ") " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH) "\n"
+    "armsx.exe (" STR(OS_INFO) ") " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH) "\n"
 #elif __linux__
-    "psxe (" STR(OS_INFO) ") " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH) "\n"
+    "armsx (" STR(OS_INFO) ") " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH) "\n"
 #else
-    "psxe (" STR(OS_INFO) ") " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH) "\n"
+    "armsx (" STR(OS_INFO) ") " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH) "\n"
 #endif
-    "\nPSXE - A simple, fast and portable Sony PlayStation emulator.\n\n"
+    "\nARMSX - A simple, fast and portable Sony PlayStation emulator.\n\n"
     "Copyright (C) 2023 Allkern (Lisandro Alarcon)\n"
     "This is free software; see the source for copying conditions.  There is NO\n"
     "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n";

@@ -1,4 +1,4 @@
-name: PSXEHost
+name: ARMSXHost
 options:
   deploymentTarget:
     iOS: "13.0"
@@ -6,7 +6,7 @@ settings:
   DEVELOPMENT_TEAM: ""
   CLANG_ENABLE_OBJC_ARC: YES
 targets:
-  PSXEHost:
+  ARMSXHost:
     type: application
     platform: iOS
     deploymentTarget: "13.0"
@@ -19,7 +19,7 @@ targets:
         optional: true
     settings:
       INFOPLIST_FILE: Sources/Info.plist
-      PRODUCT_BUNDLE_IDENTIFIER: com.example.psxehost
+      PRODUCT_BUNDLE_IDENTIFIER: com.example.armsxhost
       LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
       OTHER_LDFLAGS: "-ObjC"
       LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/../Frameworks"
@@ -28,6 +28,6 @@ targets:
       - framework: ../Frameworks/SDL2.xcframework
         embed: true
         codeSign: true
-      - framework: ../Frameworks/libpsxe.dylib
+      - framework: ../Frameworks/libarmsx.dylib
         embed: true
         codeSign: true

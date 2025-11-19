@@ -40,6 +40,9 @@ typedef struct {
     int display_aspect;    // 0=classic,1=square,2=wide16x9
     int upscale_height;    // only used for wide16x9 output
     int open;
+    int paused;
+    int menu_visible;
+    char current_cd[512];
 
     SDL_GameController* controller;
 } psxe_screen_t;

@@ -77,7 +77,7 @@ ifeq ($(PLATFORM),Darwin)
 endif
 
 ifeq ($(IOS_TARGET),1)
-	SHARED_LDFLAGS += -Wl,-install_name,@rpath/libpsxe$(SHARED_EXT)
+	SHARED_LDFLAGS += -Wl,-install_name,@rpath/libarmsx$(SHARED_EXT)
 	SHARED_CFLAGS += -DIOS_TARGET
 	SHARED_CXXFLAGS += -DIOS_TARGET
 endif
@@ -88,8 +88,8 @@ COMMIT_HASH := $(shell git rev-parse --short HEAD)
 BIN_DIR := bin
 OBJ_DIR := $(BIN_DIR)/obj
 
-BIN      := $(BIN_DIR)/psxe
-SHARED_BIN := $(BIN_DIR)/libpsxe$(SHARED_EXT)
+BIN      := $(BIN_DIR)/armsx
+SHARED_BIN := $(BIN_DIR)/libarmsx$(SHARED_EXT)
 
 IMGUI_DIR := third_party/imgui
 

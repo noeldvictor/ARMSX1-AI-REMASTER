@@ -92,6 +92,11 @@ extern "C" PSXE_API void imgui_layer_render_overlay(const char* os_name, float f
     ImGui::Text("FPS: %.1f", fps);
     ImGui::Text("OS : %s", os_name ? os_name : "unknown");
     ImGui::End();
+}
+
+extern "C" PSXE_API void imgui_layer_flush(void) {
+    if (!g_imgui_initialized)
+        return;
 
     ImGui::Render();
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), g_renderer);
@@ -266,6 +271,7 @@ static bool file_picker_popup(const char* popup_id, FilePickerState& state, std:
 
     bool changed = false;
 
+    ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Appearing);
     if (ImGui::BeginPopupModal(popup_id, nullptr, ImGuiWindowFlags_NoResize)) {
         if (state.cwd.empty())
             state.cwd = get_current_directory();
@@ -277,6 +283,8 @@ static bool file_picker_popup(const char* popup_id, FilePickerState& state, std:
             if (pos != std::string::npos) {
                 state.cwd = state.cwd.substr(0, pos ? pos : 1);
                 state.selection.clear();
+            } else {
+                state.cwd = "/";
             }
         }
 
@@ -285,7 +293,7 @@ static bool file_picker_popup(const char* popup_id, FilePickerState& state, std:
             // simple redraw
         }
 
-        ImGui::BeginChild("browser", ImVec2(540, 360), true);
+        ImGui::BeginChild("browser", ImVec2(420, 260), true);
 
         std::vector<std::pair<std::string, bool>> entries;
         if (!list_directory(state.cwd, entries)) {
@@ -293,9 +301,12 @@ static bool file_picker_popup(const char* popup_id, FilePickerState& state, std:
         } else {
             for (const auto& entry : entries) {
                 const std::string& full = entry.first;
-                std::string label = full.substr(state.cwd.size());
-                if (!label.empty() && (label[0] == '/' || label[0] == '\\'))
-                    label = label.substr(1);
+                std::string label;
+                if (full.rfind(state.cwd, 0) == 0 && full.size() >= state.cwd.size()) {
+                    label = full.substr(state.cwd.size());
+                    if (!label.empty() && (label[0] == '/' || label[0] == '\\'))
+                        label = label.substr(1);
+                }
                 if (label.empty())
                     label = full;
                 bool is_dir = entry.second;
@@ -321,9 +332,14 @@ static bool file_picker_popup(const char* popup_id, FilePickerState& state, std:
 
         if (ImGui::Button("Select")) {
             if (!state.selection.empty()) {
-                target_path = state.selection;
-                changed = true;
-                ImGui::CloseCurrentPopup();
+                if (is_directory(state.selection)) {
+                    state.cwd = state.selection;
+                    state.selection.clear();
+                } else {
+                    target_path = state.selection;
+                    changed = true;
+                    ImGui::CloseCurrentPopup();
+                }
             }
         }
 
@@ -523,6 +539,7 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
             if (show_bios_popup)
                 ImGui::OpenPopup("Load BIOS");
 
+            ImGui::SetNextWindowSize(ImVec2(420.0f, 210.0f), ImGuiCond_Appearing);
             if (ImGui::BeginPopupModal("Load BIOS", &show_bios_popup, ImGuiWindowFlags_NoResize)) {
                 if (ImGui::InputText("Path", bios_buf.data(), bios_buf.size())) {
                     bios_path = bios_buf.data();
@@ -559,6 +576,7 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
             if (show_cd_popup)
                 ImGui::OpenPopup("Load CDROM");
 
+            ImGui::SetNextWindowSize(ImVec2(420.0f, 210.0f), ImGuiCond_Appearing);
             if (ImGui::BeginPopupModal("Load CDROM", &show_cd_popup, ImGuiWindowFlags_NoResize)) {
                 if (ImGui::InputText("Path", cdrom_buf.data(), cdrom_buf.size())) {
                     cdrom_path = cdrom_buf.data();
@@ -758,5 +776,94 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
     cfg->scale = scale;
 
     return psxe_run_configured(cfg, NULL, NULL);
+}
+#endif
+
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+static FilePickerState g_ingame_cd_picker{};
+static std::string g_ingame_cd_target;
+static bool g_ingame_about = false;
+
+extern "C" PSXE_API void imgui_ingame_menu_render(int paused, const char* current_cd, imgui_ingame_actions_t* actions) {
+    if (!actions)
+        return;
+
+    memset(actions, 0, sizeof(*actions));
+    actions->new_cd_path[0] = '\0';
+
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoBackground |
+        ImGuiWindowFlags_MenuBar;
+
+    if (ImGui::Begin("InGameMenuBar", nullptr, flags)) {
+        if (ImGui::BeginMenuBar()) {
+            if (ImGui::BeginMenu("Start")) {
+                if (ImGui::MenuItem(paused ? "Resume" : "Pause")) {
+                    actions->toggle_pause = 1;
+                }
+                if (ImGui::MenuItem("Reset")) {
+                    actions->reset = 1;
+                }
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("File")) {
+                if (ImGui::MenuItem("Load CDROM...")) {
+                    g_ingame_cd_picker.open = true;
+                    g_ingame_cd_picker.selection.clear();
+                    g_ingame_cd_picker.cwd.clear();
+                }
+                if (ImGui::MenuItem("Quit")) {
+                    actions->quit = 1;
+                }
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("About")) {
+                if (ImGui::MenuItem("About ARMSX")) {
+                    g_ingame_about = true;
+                }
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndMenuBar();
+        }
+
+        ImGui::TextWrapped("CDROM: %s", current_cd && current_cd[0] ? current_cd : "(none)");
+    }
+    ImGui::End();
+
+    ImGui::SetNextWindowSize(ImVec2(420.0f, 210.0f), ImGuiCond_Appearing);
+    if (file_picker_popup("Ingame CD Picker", g_ingame_cd_picker, g_ingame_cd_target)) {
+        if (g_ingame_cd_target.size() < sizeof(actions->new_cd_path)) {
+            memcpy(actions->new_cd_path, g_ingame_cd_target.c_str(), g_ingame_cd_target.size() + 1);
+        } else {
+            strncpy(actions->new_cd_path, g_ingame_cd_target.c_str(), sizeof(actions->new_cd_path) - 1);
+            actions->new_cd_path[sizeof(actions->new_cd_path) - 1] = '\0';
+        }
+        actions->swap_cd = 1;
+    }
+
+    if (g_ingame_about)
+        ImGui::OpenPopup("About In-Game");
+    ImGui::SetNextWindowSize(ImVec2(420.0f, 200.0f), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("About In-Game", &g_ingame_about, ImGuiWindowFlags_NoResize)) {
+        ImGui::TextWrapped("ARMSX in-game menu. Press F6 to toggle visibility.");
+        ImGui::Spacing();
+        ImGui::TextWrapped("Use Start -> Pause/Resume, Reset for soft reset, File -> Load CDROM... to reboot with a new image.");
+        ImGui::Spacing();
+        if (ImGui::Button("Close")) {
+            g_ingame_about = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 #endif

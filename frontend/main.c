@@ -149,8 +149,14 @@ int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* externa
 
     psxe_cfg_destroy(cfg);
 
-    while (psxe_screen_is_open(screen))
-        psx_update(psx);
+    while (psxe_screen_is_open(screen)) {
+        if (screen->paused) {
+            psxe_screen_update(screen);
+            SDL_Delay(16);
+        } else {
+            psx_update(psx);
+        }
+    }
 
     SDL_PauseAudioDevice(dev, 1);
 

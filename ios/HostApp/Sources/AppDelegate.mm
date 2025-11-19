@@ -7,7 +7,7 @@
 #import "psxe_bridge.h"
 
 @interface AppDelegate ()
-@property (nonatomic, assign) BOOL psxeRunning;
+@property (nonatomic, assign) BOOL armsxRunning;
 @end
 
 @implementation AppDelegate
@@ -27,7 +27,7 @@
 }
 
 - (void)startSDL {
-    if (self.psxeRunning) {
+    if (self.armsxRunning) {
         return;
     }
 
@@ -39,12 +39,12 @@
         return;
     }
 
-    self.psxeRunning = YES;
+    self.armsxRunning = YES;
 
-    // Run the SDL/psxe entry on the main thread to satisfy UIKit threading requirements
+    // Run the SDL/armsx entry on the main thread to satisfy UIKit threading requirements
     dispatch_async(dispatch_get_main_queue(), ^{
         @autoreleasepool {
-            NSMutableArray<NSString *> *nativeArgs = [NSMutableArray arrayWithObject:@"psxe"];
+            NSMutableArray<NSString *> *nativeArgs = [NSMutableArray arrayWithObject:@"armsx"];
             NSFileManager *fm = [NSFileManager defaultManager];
 
             // Look for bios.bin packaged in the bundle (root, Contents/, or resource dir)
@@ -118,9 +118,9 @@
             if (biosPath.length && [fm fileExistsAtPath:biosPath]) {
                 [nativeArgs addObject:@"--bios"];
                 [nativeArgs addObject:biosPath];
-                NSLog(@"Passing BIOS path to libpsxe: %@", biosPath);
+                NSLog(@"Passing BIOS path to libarmsx: %@", biosPath);
             } else {
-                NSLog(@"No bundled BIOS found; libpsxe will rely on user-provided settings/CLI.");
+                NSLog(@"No bundled BIOS found; libarmsx will rely on user-provided settings/CLI.");
             }
 
             std::vector<std::string> args;
@@ -142,7 +142,7 @@
 }
 
 - (void)applicationWillTerminate:(UIApplication *)application {
-    self.psxeRunning = NO;
+    self.armsxRunning = NO;
 }
 
 @end

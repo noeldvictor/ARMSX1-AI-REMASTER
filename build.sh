@@ -6,16 +6,16 @@ set -e
 #   ./build.sh             -> desktop build (static SDL if available)
 #   ./build.sh shared      -> build shared lib (forces dynamic SDL)
 #   ./build.sh ios         -> build iOS dylib using iPhone SDK + ios/Frameworks/SDL2.xcframework
-#   ./build.sh macosapp    -> build desktop exe and bundle psxe.app
+#   ./build.sh macosapp    -> build desktop exe and bundle armsx.app
 
 MODE="$1"
 
 bundle_macos_app() {
-    mkdir -p psxe.app/Contents/MacOS/Libraries
-    cp bin/psxe psxe.app/Contents/MacOS
-    chmod 777 psxe.app/Contents/MacOS/psxe
-    dylibbundler -b -x ./psxe.app/Contents/MacOS/psxe -d ./psxe.app/Contents/Libraries/ -p @executable_path/../Libraries/ -cd
-    cp Info.plist psxe.app/Contents/Info.plist
+    mkdir -p armsx.app/Contents/MacOS/Libraries
+    cp bin/armsx armsx.app/Contents/MacOS
+    chmod 777 armsx.app/Contents/MacOS/armsx
+    dylibbundler -b -x ./armsx.app/Contents/MacOS/armsx -d ./armsx.app/Contents/Libraries/ -p @executable_path/../Libraries/ -cd
+    cp Info.plist armsx.app/Contents/Info.plist
 }
 
 if [ "$MODE" = "ios" ]; then
@@ -49,8 +49,8 @@ if [ "$MODE" = "ios" ]; then
     make clean
     IOS_ENV="IOS_TARGET=1 IOS_SDK=${IOS_SDK} IOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET} SDKROOT=${IOS_SDKROOT} CC=${IOS_CC} CXX=${IOS_CXX} SDL_STATIC=0 IOS_SDL_FRAMEWORK=${IOS_SDL_FRAMEWORK}"
     eval "make shared ${IOS_ENV}"
-    echo "Copying libpsxe.dylib to ios/Frameworks/"
-    cp bin/libpsxe.dylib ios/Frameworks/
+    echo "Copying libarmsx.dylib to ios/Frameworks/"
+    cp bin/libarmsx.dylib ios/Frameworks/
 
 elif [ "$MODE" = "shared" ]; then
     make clean
@@ -63,5 +63,5 @@ elif [ "$MODE" = "macosapp" ]; then
 
 else
     make clean
-    make SDL_STATIC="${SDL_STATIC:-1}"
+    make SDL_STATIC="${SDL_STATIC:-1}" IMGUI_FRONTEND=1
 fi

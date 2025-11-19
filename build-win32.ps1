@@ -19,7 +19,8 @@ gcc -I"$($PSX_DIR)" `
     "psx\input\*.c" `
     "psx\disc\*.c" `
     "frontend\*.c" `
-    -o "bin\psxe.exe" `
+    -DIMGUI_FRONTEND `
+    -o "bin\armsx.exe" `
     -DREP_VERSION="`"$($VERSION_TAG)`"" `
     -DREP_COMMIT_HASH="`"$($COMMIT_HASH)`"" `
     -DOS_INFO="`"$($OS_INFO)`"" `

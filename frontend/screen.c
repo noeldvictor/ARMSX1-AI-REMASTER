@@ -111,6 +111,11 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->stretch_mode = cfg ? cfg->stretch_mode : 0;
     screen->display_aspect = cfg ? cfg->display_aspect : 0;
     screen->upscale_height = cfg ? cfg->upscale_height : 480;
+    screen->paused = 0;
+    screen->menu_visible = 1;
+    memset(screen->current_cd, 0, sizeof(screen->current_cd));
+    if (cfg && cfg->cd_path)
+        strncpy(screen->current_cd, cfg->cd_path, sizeof(screen->current_cd) - 1);
 
     screen->texture_width = PSX_GPU_FB_WIDTH;
     screen->texture_height = PSX_GPU_FB_HEIGHT;
@@ -197,7 +202,7 @@ void psxe_screen_reload(psxe_screen_t* screen) {
     }
 #else
     screen->window = SDL_CreateWindow(
-        "psxe " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH),
+        "armsx " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH),
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         screen->width * screen->scale,
         screen->height * screen->scale,
@@ -252,8 +257,12 @@ void psxe_screen_reload(psxe_screen_t* screen) {
 
     psxe_screen_apply_texture_scale_mode(screen);
 
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+    imgui_layer_init(screen->window, screen->renderer);
+#else
     if (screen->debug_panel)
         imgui_layer_init(screen->window, screen->renderer);
+#endif
 
     // Check for retina displays
     int width = 0, height = 0;
@@ -338,23 +347,62 @@ void psxe_screen_update(psxe_screen_t* screen) {
         SDL_RenderCopy(screen->renderer, screen->texture, NULL, NULL);
     }
 
-    if (screen->debug_panel) {
-        static uint64_t last_tick = 0;
-        static float fps = 0.0f;
-        uint64_t now = SDL_GetTicks();
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+    imgui_ingame_actions_t actions;
+    memset(&actions, 0, sizeof(actions));
+#endif
 
-        if (last_tick) {
-            uint64_t delta = now - last_tick;
-            if (delta)
-                fps = 1000.0f / (float)delta;
-        }
-        last_tick = now;
-
+    if (screen->debug_panel
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+        || screen->menu_visible
+#endif
+    ) {
         imgui_layer_new_frame();
-        imgui_layer_render_overlay(STR(OS_INFO), fps);
+        if (screen->debug_panel) {
+            static uint64_t last_tick = 0;
+            static float fps = 0.0f;
+            uint64_t now = SDL_GetTicks();
+
+            if (last_tick) {
+                uint64_t delta = now - last_tick;
+                if (delta)
+                    fps = 1000.0f / (float)delta;
+            }
+            last_tick = now;
+
+            imgui_layer_render_overlay(STR(OS_INFO), fps);
+        }
+
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+        if (screen->menu_visible) {
+            imgui_ingame_menu_render(screen->paused, screen->current_cd, &actions);
+        }
+#endif
+
+        imgui_layer_flush();
     }
 
     SDL_RenderPresent(screen->renderer);
+
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+    if (actions.toggle_pause)
+        screen->paused = !screen->paused;
+
+    if (actions.reset)
+        psx_soft_reset(screen->psx);
+
+    if (actions.quit)
+        screen->open = 0;
+
+    if (actions.swap_cd && actions.new_cd_path[0]) {
+        strncpy(screen->current_cd, actions.new_cd_path, sizeof(screen->current_cd) - 1);
+        screen->current_cd[sizeof(screen->current_cd) - 1] = '\0';
+        if (psx_swap_disc(screen->psx, screen->current_cd) == 0) {
+            psx_soft_reset(screen->psx);
+            screen->paused = 0;
+        }
+    }
+#endif
 
     SDL_Event event;
 
@@ -421,13 +469,22 @@ void psxe_screen_update(psxe_screen_t* screen) {
                         SDL_RenderClear(screen->renderer);
                     } break;
 
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+                    case SDLK_F6: {
+                        screen->menu_visible = !screen->menu_visible;
+                        return;
+                    } break;
                     case SDLK_F5: {
                         psx_soft_reset(screen->psx);
                     } break;
-
+#else
+                    case SDLK_F5: {
+                        psx_soft_reset(screen->psx);
+                    } break;
                     case SDLK_F6: {
                         psx_swap_disc(screen->psx, ".\\roms\\Street Fighter II Movie (Japan) (Disc 2)\\Street Fighter II Movie (Japan) (Disc 2).cue");
                     } break;
+#endif
                 }
 
                 uint32_t mask = screen_get_button(event.key.keysym.sym);
