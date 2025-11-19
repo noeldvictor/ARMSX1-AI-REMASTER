@@ -3,6 +3,7 @@
 #include "../psx/input/guncon.h"
 #include "../psx/dev/cdrom/cdrom.h"
 
+#include <errno.h>
 #include "screen.h"
 #include "config.h"
 
@@ -28,16 +29,45 @@ void audio_update(void* ud, uint8_t* buf, int size) {
     }
 }
 
-int psxe_run(int argc, const char* argv[], void* external_window) {
+int psxe_run(int argc, const char* argv[], void* external_window, void* external_renderer) {
     psxe_config_t* cfg = psxe_cfg_create();
 
     psxe_cfg_init(cfg);
     psxe_cfg_load_defaults(cfg);
     psxe_cfg_load(cfg, argc, argv);
 
+    // Trace host entry parameters for diagnostics (particularly on iOS host builds)
+    log_info("psxe_run argc=%d external_window=%p external_renderer=%p", argc, external_window, external_renderer);
+    log_info("psxe_run (after config load) window=%p renderer=%p", external_window, external_renderer);
+    for (int i = 0; i < argc; i++) {
+        log_info("argv[%d]=%s", i, argv[i]);
+    }
+
+    // On iOS we want noisy logs for troubleshooting; otherwise respect config.
+#ifdef IOS_TARGET
+    log_set_quiet(0);
+    log_set_level(LOG_DEBUG);
+#else
     log_set_level(cfg->log_level);
+#endif
 
     psx_t* psx = psx_create();
+    // Pre-flight BIOS visibility to give clearer errors
+    if (cfg->bios) {
+        FILE* bios_test = fopen(cfg->bios, "rb");
+        if (!bios_test) {
+            log_error("BIOS file not accessible at '%s': %s", cfg->bios, strerror(errno));
+        } else {
+            fseek(bios_test, 0, SEEK_END);
+            long bios_size = ftell(bios_test);
+            rewind(bios_test);
+            log_info("BIOS file '%s' opened, size=%ld bytes", cfg->bios, bios_size);
+            fclose(bios_test);
+        }
+    } else {
+        log_error("No BIOS path set before initialization");
+    }
+
     int init_result = psx_init(psx, cfg->bios, cfg->exp_path);
 
     if (init_result) {
@@ -57,15 +87,26 @@ int psxe_run(int argc, const char* argv[], void* external_window) {
     psxe_screen_t* screen = psxe_screen_create();
     psxe_screen_init(screen, psx, cfg);
 
-#ifdef __DLL_BUILD
+#ifdef IOS_TARGET
+
+#endif
+
+#if defined(__DLL_BUILD) && !defined(IOS_TARGET)
     if (!external_window) {
         log_fatal("DLL build requires host-provided SDL window handle");
+        return 1;
+    }
+
+    if (!external_renderer) {
+        log_fatal("DLL build requires host-provided SDL renderer handle");
         return 1;
     }
 #endif
 
     if (external_window)
         psxe_screen_set_window_handle(screen, external_window);
+    if (external_renderer)
+        psxe_screen_set_renderer_handle(screen, external_renderer);
 
     psxe_screen_set_scale(screen, cfg->scale);
     psxe_screen_reload(screen);
@@ -145,12 +186,12 @@ int psxe_run(int argc, const char* argv[], void* external_window) {
     return 0;
 }
 
-PSXE_API int external_main(int argc, const char* argv[], void* external_window) {
-    return psxe_run(argc, argv, external_window);
+PSXE_API int external_main(int argc, const char* argv[], void* external_window, void* external_renderer) {
+    return psxe_run(argc, argv, external_window, external_renderer);
 }
 
 #ifndef __DLL_BUILD
 int main(int argc, const char* argv[]) {
-    return psxe_run(argc, argv, NULL);
+    return psxe_run(argc, argv, NULL, NULL);
 }
 #endif

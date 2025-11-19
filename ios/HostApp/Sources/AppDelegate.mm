@@ -59,6 +59,8 @@
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         @autoreleasepool {
             NSMutableArray<NSString *> *nativeArgs = [NSMutableArray arrayWithObject:@"psxe"];
+            NSFileManager *fm = [NSFileManager defaultManager];
+
             // Look for bios.bin packaged in the bundle (root or Contents/)
             NSString *biosPath = [[NSBundle mainBundle] pathForResource:@"bios" ofType:@"bin"];
 
@@ -71,11 +73,23 @@
                 biosPath = [basePath stringByAppendingPathComponent:@"bios.bin"];
             }
 
-            if (biosPath.length) {
-                [nativeArgs addObject:@"--bios"];
-                [nativeArgs addObject:biosPath];
-            } else {
-                NSLog(@"bios.bin not found in app bundle; proceeding without explicit BIOS override");
+            // If found, copy to a writable pref path to avoid any translocation issues
+            if (biosPath.length && [fm fileExistsAtPath:biosPath]) {
+                NSString *prefBase = [NSString stringWithUTF8String:SDL_GetPrefPath("allkern", "psxe")];
+                NSString *writableBios = [prefBase stringByAppendingPathComponent:@"bios.bin"];
+                NSError *copyErr = nil;
+
+                // Clean existing copy to avoid stale/corrupt data
+                if ([fm fileExistsAtPath:writableBios]) {
+                    [fm removeItemAtPath:writableBios error:nil];
+                }
+
+                if ([fm copyItemAtPath:biosPath toPath:writableBios error:&copyErr]) {
+                    biosPath = writableBios;
+                    NSLog(@"Using bundled BIOS copied to writable path %@", biosPath);
+                } else {
+                    NSLog(@"Failed to copy BIOS to writable location (%@). Using bundle path. Error: %@", writableBios, copyErr);
+                }
             }
 
             std::vector<std::string> args;

@@ -104,6 +104,7 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->psx = psx;
     screen->pad = psx_get_pad(psx);
     screen->owns_window = 1;
+    screen->owns_renderer = 1;
     screen->texture_scale_mode = cfg ? cfg->texture_scale_mode : 0;
     screen->bilinear = screen->texture_scale_mode ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
     screen->debug_panel = cfg ? cfg->debug_panel : 0;
@@ -114,9 +115,12 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->texture_width = PSX_GPU_FB_WIDTH;
     screen->texture_height = PSX_GPU_FB_HEIGHT;
 
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
+        log_error("SDL_Init(video/events/controllers) failed: %s", SDL_GetError());
+        screen->open = 0;
+        return;
+    }
     SDL_GameControllerEventState(SDL_ENABLE);
-    SDL_SetRenderDrawColor(screen->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 
     screen->controller = screen_find_controller();
 
@@ -129,9 +133,14 @@ PSXE_API void psxe_screen_set_window_handle(psxe_screen_t* screen, void* native_
     screen->owns_window = 0;
 }
 
+PSXE_API void psxe_screen_set_renderer_handle(psxe_screen_t* screen, void* native_handle) {
+    screen->external_renderer = native_handle;
+    screen->owns_renderer = 0;
+}
+
 void psxe_screen_reload(psxe_screen_t* screen) {
     if (screen->texture) SDL_DestroyTexture(screen->texture);
-    if (screen->renderer) SDL_DestroyRenderer(screen->renderer);
+    if (screen->renderer && screen->owns_renderer) SDL_DestroyRenderer(screen->renderer);
     if (screen->window && screen->owns_window) SDL_DestroyWindow(screen->window);
 
     if (screen->debug_mode) {
@@ -157,7 +166,21 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         }
     }
 
-#ifndef __DLL_BUILD
+#if defined(IOS_TARGET) || defined(__DLL_BUILD)
+    if (screen->external_window) {
+        screen->window = screen->external_window;
+        screen->owns_window = 0;
+    } else {
+        screen->window = SDL_CreateWindow(
+            "psxe " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH),
+            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+            screen->width * screen->scale,
+            screen->height * screen->scale,
+            screen->stretch_mode ? SDL_WINDOW_RESIZABLE : 0
+        );
+        screen->owns_window = 1;
+    }
+#else
     screen->window = SDL_CreateWindow(
         "psxe " STR(REP_VERSION) "-" STR(REP_COMMIT_HASH),
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -166,28 +189,29 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         screen->stretch_mode ? SDL_WINDOW_RESIZABLE : 0
     );
     screen->owns_window = 1;
-#else
-    if (!screen->external_window) {
-        log_error("DLL build requires external window handle before reload");
-        screen->open = 0;
-        return;
-    }
-
-    screen->window = screen->external_window;
-    screen->owns_window = 0;
-
-    if (!screen->window) {
-        log_error("Failed to create SDL window from external handle: %s", SDL_GetError());
-        screen->open = 0;
-        return;
-    }
 #endif
 
-    screen->renderer = SDL_CreateRenderer(
-        screen->window,
-        -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
-    );
+    // Prefer host-provided renderer when using an external window
+#if defined(IOS_TARGET) || defined(__DLL_BUILD)
+    if (screen->external_renderer) {
+        screen->renderer = (SDL_Renderer*)screen->external_renderer;
+        screen->owns_renderer = 0;
+    } else
+#endif
+    {
+        screen->renderer = SDL_CreateRenderer(
+            screen->window,
+            -1,
+            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        );
+        screen->owns_renderer = 1;
+    }
+
+    if (!screen->renderer) {
+        log_error("Failed to create SDL renderer: %s", SDL_GetError());
+        screen->open = 0;
+        return;
+    }
 
     screen->texture = SDL_CreateTexture(
         screen->renderer,
@@ -515,7 +539,8 @@ void psxe_screen_destroy(psxe_screen_t* screen) {
     imgui_layer_shutdown();
 
     SDL_DestroyTexture(screen->texture);
-    SDL_DestroyRenderer(screen->renderer);
+    if (screen->owns_renderer)
+        SDL_DestroyRenderer(screen->renderer);
     if (screen->owns_window)
         SDL_DestroyWindow(screen->window);
 
