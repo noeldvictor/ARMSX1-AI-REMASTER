@@ -114,6 +114,7 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->paused = 0;
     screen->menu_visible = 1;
     memset(screen->current_cd, 0, sizeof(screen->current_cd));
+    screen->audio_dev = 0;
     if (cfg && cfg->cd_path)
         strncpy(screen->current_cd, cfg->cd_path, sizeof(screen->current_cd) - 1);
 
@@ -299,6 +300,7 @@ void psxe_screen_toggle_debug_mode(psxe_screen_t* screen) {
 void psxe_screen_update(psxe_screen_t* screen) {
     void* display_buf = screen->debug_mode ?
         psx_get_vram(screen->psx) : psx_get_display_buffer(screen->psx);
+    int out_width = 0, out_height = 0;
 
     // printf("res=(%u,%u) off=(%u,%u) disp=(%u,%u-%u,%u) draw=(%u,%u-%u,%u) vres=%u\n",
     //     screen->texture_width,
@@ -352,6 +354,8 @@ void psxe_screen_update(psxe_screen_t* screen) {
     memset(&actions, 0, sizeof(actions));
 #endif
 
+    SDL_GetRendererOutputSize(screen->renderer, &out_width, &out_height);
+
     if (screen->debug_panel
 #if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
         || screen->menu_visible
@@ -361,16 +365,22 @@ void psxe_screen_update(psxe_screen_t* screen) {
         if (screen->debug_panel) {
             static uint64_t last_tick = 0;
             static float fps = 0.0f;
+            static float frame_ms = 0.0f;
+            static int dropped_frames = 0;
             uint64_t now = SDL_GetTicks();
 
             if (last_tick) {
                 uint64_t delta = now - last_tick;
-                if (delta)
+                if (delta) {
                     fps = 1000.0f / (float)delta;
+                    frame_ms = (float)delta;
+                    if (delta > 25)
+                        dropped_frames++;
+                }
             }
             last_tick = now;
 
-            imgui_layer_render_overlay(STR(OS_INFO), fps);
+            imgui_layer_render_overlay(STR(OS_INFO), fps, frame_ms, dropped_frames, screen->paused, screen->texture_width, screen->texture_height, out_width, out_height);
         }
 
 #if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
@@ -387,6 +397,9 @@ void psxe_screen_update(psxe_screen_t* screen) {
 #if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
     if (actions.toggle_pause)
         screen->paused = !screen->paused;
+    if (screen->audio_dev) {
+        SDL_PauseAudioDevice(screen->audio_dev, screen->paused ? 1 : 0);
+    }
 
     if (actions.reset)
         psx_soft_reset(screen->psx);
@@ -397,9 +410,11 @@ void psxe_screen_update(psxe_screen_t* screen) {
     if (actions.swap_cd && actions.new_cd_path[0]) {
         strncpy(screen->current_cd, actions.new_cd_path, sizeof(screen->current_cd) - 1);
         screen->current_cd[sizeof(screen->current_cd) - 1] = '\0';
-        if (psx_swap_disc(screen->psx, screen->current_cd) == 0) {
-            psx_soft_reset(screen->psx);
-            screen->paused = 0;
+        psx_swap_disc(screen->psx, screen->current_cd);
+        psx_soft_reset(screen->psx);
+        screen->paused = 0;
+        if (screen->audio_dev) {
+            SDL_PauseAudioDevice(screen->audio_dev, 0);
         }
     }
 #endif

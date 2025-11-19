@@ -72,7 +72,7 @@ extern "C" PSXE_API void imgui_layer_new_frame(void) {
     ImGui::NewFrame();
 }
 
-extern "C" PSXE_API void imgui_layer_render_overlay(const char* os_name, float fps) {
+extern "C" PSXE_API void imgui_layer_render_overlay(const char* os_name, float fps, float frame_ms, int dropped_frames, int paused, int tex_w, int tex_h, int out_w, int out_h) {
     if (!g_imgui_initialized)
         return;
 
@@ -86,10 +86,14 @@ extern "C" PSXE_API void imgui_layer_render_overlay(const char* os_name, float f
         ImGuiWindowFlags_NoBackground;
 
     ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(240.0f, 60.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(240.0f, 115.0f), ImGuiCond_Always);
 
     ImGui::Begin("Overlay", nullptr, flags);
     ImGui::Text("FPS: %.1f", fps);
+    ImGui::Text("Frame: %.2f ms", frame_ms);
+    ImGui::Text("Dropped: %d", dropped_frames);
+    ImGui::Text("Paused: %s", paused ? "yes" : "no");
+    ImGui::Text("Tex: %dx%d Out: %dx%d", tex_w, tex_h, out_w, out_h);
     ImGui::Text("OS : %s", os_name ? os_name : "unknown");
     ImGui::End();
 }
@@ -836,7 +840,7 @@ extern "C" PSXE_API void imgui_ingame_menu_render(int paused, const char* curren
             ImGui::EndMenuBar();
         }
 
-        ImGui::TextWrapped("CDROM: %s", current_cd && current_cd[0] ? current_cd : "(none)");
+        //ImGui::TextWrapped("CDROM: %s", current_cd && current_cd[0] ? current_cd : "(none)");
     }
     ImGui::End();
 

@@ -43,6 +43,7 @@ typedef struct {
     int paused;
     int menu_visible;
     char current_cd[512];
+    SDL_AudioDeviceID audio_dev;
 
     SDL_GameController* controller;
 } psxe_screen_t;

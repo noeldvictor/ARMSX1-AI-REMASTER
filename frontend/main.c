@@ -114,8 +114,10 @@ int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* externa
 
     dev = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
 
-    if (dev)
+    if (dev) {
         SDL_PauseAudioDevice(dev, 0);
+        screen->audio_dev = dev;
+    }
     
     psx_gpu_t* gpu = psx_get_gpu(psx);
     psx_gpu_set_event_callback(gpu, GPU_EVENT_DMODE, psxe_gpu_dmode_event_cb);
