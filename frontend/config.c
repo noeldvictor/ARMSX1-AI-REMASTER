@@ -219,7 +219,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 #ifdef IOS_TARGET
         if (!settings_path) {
             if (!g_ios_settings_path) {
-                char* pref_base = SDL_GetPrefPath("allkern", "psxe");
+                char* pref_base = SDL_GetPrefPath("nanodata", "armsx");
 
                 if (pref_base) {
                     size_t len = strlen(pref_base) + strlen("settings.toml") + 1;

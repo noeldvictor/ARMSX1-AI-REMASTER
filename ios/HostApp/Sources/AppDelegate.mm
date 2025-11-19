@@ -93,7 +93,7 @@
 
             // If found, copy to a writable pref path to avoid any translocation issues
             if (biosPath.length && [fm fileExistsAtPath:biosPath]) {
-                char *prefPathC = SDL_GetPrefPath("allkern", "psxe");
+                char *prefPathC = SDL_GetPrefPath("nanodata", "armsx");
                 NSString *prefBase = prefPathC ? [NSString stringWithUTF8String:prefPathC] : nil;
                 if (prefPathC) {
                     SDL_free(prefPathC);
