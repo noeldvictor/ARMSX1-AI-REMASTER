@@ -6,8 +6,11 @@
 #include <errno.h>
 #include "screen.h"
 #include "config.h"
+#include "imgui_layer.h"
 
 #undef main
+
+PSXE_API int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* external_renderer);
 
 void audio_update(void* ud, uint8_t* buf, int size) {
     psx_cdrom_t* cdrom = ((psx_t*)ud)->cdrom;
@@ -29,19 +32,14 @@ void audio_update(void* ud, uint8_t* buf, int size) {
     }
 }
 
-int psxe_run(int argc, const char* argv[], void* external_window, void* external_renderer) {
-    psxe_config_t* cfg = psxe_cfg_create();
-
-    psxe_cfg_init(cfg);
-    psxe_cfg_load_defaults(cfg);
-    psxe_cfg_load(cfg, argc, argv);
+int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* external_renderer) {
+    if (!cfg) {
+        log_fatal("psxe_run_configured received null config");
+        return 1;
+    }
 
     // Trace host entry parameters for diagnostics (particularly on iOS host builds)
-    log_info("psxe_run argc=%d external_window=%p external_renderer=%p", argc, external_window, external_renderer);
-    log_info("psxe_run (after config load) window=%p renderer=%p", external_window, external_renderer);
-    for (int i = 0; i < argc; i++) {
-        log_info("argv[%d]=%s", i, argv[i]);
-    }
+    log_info("psxe_run_configured cfg=%p external_window=%p external_renderer=%p", cfg, external_window, external_renderer);
 
     // On iOS we want noisy logs for troubleshooting; otherwise respect config.
 #ifdef IOS_TARGET
@@ -177,12 +175,31 @@ int psxe_run(int argc, const char* argv[], void* external_window, void* external
     return 0;
 }
 
+int psxe_run(int argc, const char* argv[], void* external_window, void* external_renderer) {
+    psxe_config_t* cfg = psxe_cfg_create();
+
+    psxe_cfg_init(cfg);
+    psxe_cfg_load_defaults(cfg);
+    psxe_cfg_load(cfg, argc, argv);
+
+    log_info("psxe_run argc=%d external_window=%p external_renderer=%p", argc, external_window, external_renderer);
+    for (int i = 0; i < argc; i++) {
+        log_info("argv[%d]=%s", i, argv[i]);
+    }
+
+    return psxe_run_configured(cfg, external_window, external_renderer);
+}
+
 PSXE_API int external_main(int argc, const char* argv[], void* external_window, void* external_renderer) {
     return psxe_run(argc, argv, external_window, external_renderer);
 }
 
 #ifndef __DLL_BUILD
 int main(int argc, const char* argv[]) {
+#if defined(IMGUI_FRONTEND) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+    return imgui_frontend_main(argc, argv);
+#else
     return psxe_run(argc, argv, NULL, NULL);
+#endif
 }
 #endif

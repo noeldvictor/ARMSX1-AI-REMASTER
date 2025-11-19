@@ -17,6 +17,7 @@ IOS_DEPLOYMENT_TARGET ?= 13.0
 IOS_SDL_FRAMEWORK ?= $(CURDIR)/ios/Frameworks/SDL2.xcframework/ios-arm64/SDL2.framework
 IOS_SDL_FRAMEWORK_PARENT := $(dir $(IOS_SDL_FRAMEWORK))
 SDKROOT ?=
+IMGUI_FRONTEND ?= 0
 
 ifeq ($(IOS_TARGET),1)
 	SDKROOT ?= $(shell xcrun --sdk $(IOS_SDK) --show-sdk-path)
@@ -40,6 +41,17 @@ BASE_CXXFLAGS = -std=c++17 $(BASE_CFLAGS)
 ifeq ($(IOS_TARGET),1)
 	BASE_CFLAGS += -fembed-bitcode
 	BASE_CXXFLAGS += -fembed-bitcode
+endif
+
+ifeq ($(IMGUI_FRONTEND),1)
+ifneq ($(IOS_TARGET),1)
+ifneq ($(filter shared,$(MAKECMDGOALS)),)
+$(warning IMGUI_FRONTEND is disabled for shared builds)
+else
+	BASE_CFLAGS += -DIMGUI_FRONTEND
+	BASE_CXXFLAGS += -DIMGUI_FRONTEND
+endif
+endif
 endif
 
 ifneq ($(IOS_TARGET),1)

@@ -13,6 +13,10 @@ PSXE_API void imgui_layer_handle_event(const SDL_Event* event);
 PSXE_API void imgui_layer_new_frame(void);
 PSXE_API void imgui_layer_render_overlay(const char* os_name, float fps);
 
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+PSXE_API int imgui_frontend_main(int argc, const char* argv[]);
+#endif
+
 #ifdef __cplusplus
 }
 #endif
