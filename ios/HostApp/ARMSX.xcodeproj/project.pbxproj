@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0A79EE5517AAE0DFA8E8B5A7 /* libarmsx.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = ADA5E597FFB36DB70531D19B /* libarmsx.dylib */; };
-		10DE73E72ECE5526004BED3C /* bios.bin in Resources */ = {isa = PBXBuildFile; fileRef = 10DE73E62ECE5526004BED3C /* bios.bin */; };
+		10D70EE12ECE99150088BC1D /* bios.bin in Resources */ = {isa = PBXBuildFile; fileRef = 10DE73E62ECE5526004BED3C /* bios.bin */; };
 		3A83F5253BCB4AD47A6742B1 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F686B87C80EB4D3204CDEEC0 /* main.m */; };
 		48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; };
 		7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -39,7 +39,7 @@
 		87BA3EE4597141AA97A5557D /* ARMSX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARMSX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9484FEBF96C002F04D73B70C /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
 		ADA5E597FFB36DB70531D19B /* libarmsx.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libarmsx.dylib; path = ../Frameworks/libarmsx.dylib; sourceTree = "<group>"; };
-		DA91A1D6D1FF1401745F47ED /* psxe_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = psxe_bridge.h; sourceTree = "<group>"; };
+		DA91A1D6D1FF1401745F47ED /* armsx_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = armsx_bridge.h; sourceTree = "<group>"; };
 		F686B87C80EB4D3204CDEEC0 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -90,7 +90,7 @@
 				9484FEBF96C002F04D73B70C /* AppDelegate.mm */,
 				019479875FC7433ACB65A02E /* Info.plist */,
 				F686B87C80EB4D3204CDEEC0 /* main.m */,
-				DA91A1D6D1FF1401745F47ED /* psxe_bridge.h */,
+				DA91A1D6D1FF1401745F47ED /* armsx_bridge.h */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -105,7 +105,7 @@
 				21709ABD74D1031F0389C4EC /* Sources */,
 				D6910F21954EF81975654CFA /* Frameworks */,
 				8F7F79E31569D7CF1ACBC707 /* Embed Frameworks */,
-				10D5B99B2ECD30B600403BD6 /* Resources */,
+				10D70EE02ECE99100088BC1D /* Resources */,
 			);
 			buildRules = (
 			);
@@ -146,11 +146,11 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		10D5B99B2ECD30B600403BD6 /* Resources */ = {
+		10D70EE02ECE99100088BC1D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				10DE73E72ECE5526004BED3C /* bios.bin in Resources */,
+				10D70EE12ECE99150088BC1D /* bios.bin in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

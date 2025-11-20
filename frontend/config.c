@@ -244,10 +244,14 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
         char error[0x100];
 
         if (!settings) {
-            settings = fopen("settings.toml", "w+b");
+            log_info("Settings file not found; attempting to create one at %s", settings_path ? settings_path : "settings.toml");
+            if (settings_path)
+                settings = fopen(settings_path, "w+b");
+            else
+                settings = fopen("settings.toml", "w+b");
 
             if (!settings) {
-                log_error("Couldn't create settings file, loading default settings");
+                log_error("Couldn't create settings file %s, loading default settings", settings_path ? settings_path : "settings.toml");
 
                 psxe_cfg_load_defaults(cfg);
 

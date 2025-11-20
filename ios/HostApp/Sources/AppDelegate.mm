@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 
-#import "psxe_bridge.h"
+#import "armsx_bridge.h"
 
 @interface AppDelegate ()
 @property (nonatomic, assign) BOOL armsxRunning;

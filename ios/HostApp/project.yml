@@ -19,7 +19,7 @@ targets:
         optional: true
     settings:
       INFOPLIST_FILE: Sources/Info.plist
-      PRODUCT_BUNDLE_IDENTIFIER: com.example.armsxhost
+      PRODUCT_BUNDLE_IDENTIFIER: com.nanodata.armsx
       LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
       OTHER_LDFLAGS: "-ObjC"
       LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/../Frameworks"
