@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0A79EE5517AAE0DFA8E8B5A7 /* libarmsx.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = ADA5E597FFB36DB70531D19B /* libarmsx.dylib */; };
-		10D5B99D2ECD30C400403BD6 /* bios.bin in Resources */ = {isa = PBXBuildFile; fileRef = 10D5B99C2ECD30C400403BD6 /* bios.bin */; };
+		10DE73E72ECE5526004BED3C /* bios.bin in Resources */ = {isa = PBXBuildFile; fileRef = 10DE73E62ECE5526004BED3C /* bios.bin */; };
 		3A83F5253BCB4AD47A6742B1 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F686B87C80EB4D3204CDEEC0 /* main.m */; };
 		48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; };
 		7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -33,7 +33,7 @@
 
 /* Begin PBXFileReference section */
 		019479875FC7433ACB65A02E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		10D5B99C2ECD30C400403BD6 /* bios.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = bios.bin; path = ../bios.bin; sourceTree = "<group>"; };
+		10DE73E62ECE5526004BED3C /* bios.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = bios.bin; path = ../../bios.bin; sourceTree = "<group>"; };
 		518B2258235B15B15373B04A /* SDL2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL2.xcframework; path = ../Frameworks/SDL2.xcframework; sourceTree = "<group>"; };
 		64E02E161FEB892FC40F8BE1 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		87BA3EE4597141AA97A5557D /* ARMSX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARMSX.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -68,7 +68,7 @@
 		48D57A41DAF59CF0D443A086 = {
 			isa = PBXGroup;
 			children = (
-				10D5B99C2ECD30C400403BD6 /* bios.bin */,
+				10DE73E62ECE5526004BED3C /* bios.bin */,
 				D0581165A1AB8CE875BD92E0 /* Sources */,
 				473DBC863A1B097C0DD3710F /* Frameworks */,
 				9B7D6BDFE7232B2E5D8A379F /* Products */,
@@ -150,7 +150,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				10D5B99D2ECD30C400403BD6 /* bios.bin in Resources */,
+				10DE73E72ECE5526004BED3C /* bios.bin in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -25,3 +25,5 @@ snap/
 *.rom
 *.o
 psxe.app
+.DS_Store
+*/.DS_Store
