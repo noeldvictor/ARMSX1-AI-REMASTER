@@ -19,7 +19,7 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut canvas = window
+    let canvas = window
         .into_canvas()
         .present_vsync()
         .accelerated()
