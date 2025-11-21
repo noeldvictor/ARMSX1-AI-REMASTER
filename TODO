@@ -1,0 +1,8 @@
+- restore memory card
+- add WASM target
+- add Android target
+- add full screen ui imgui with IMGUI_TV_FRONTEND
+- finish RN/SwiftUI/appkit/xml for mobile devices with on screen controls
+- add save states 
+- finish the imgui frontend on PCs
+- finish the UWP target 

@@ -9,7 +9,7 @@ This directory contains a minimal UIKit host for the shared `libarmsx` build. It
 
 ## Building libarmsx for iOS
 ```
-./build.sh IOS_TARGET=1 IOS_SDL_FRAMEWORK="$(pwd)/ios/Frameworks/SDL2.xcframework/ios-arm64"
+./build.sh ios
 ```
 This forces dynamic SDL, uses the iPhone SDK toolchain, and outputs `bin/libarmsx.dylib` for device (arm64). You can tweak `IOS_SDK`/`IOS_DEPLOYMENT_TARGET` as needed.
 
