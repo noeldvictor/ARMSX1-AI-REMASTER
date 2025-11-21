@@ -1,4 +1,4 @@
-name: ARMSXHost
+name: ARMSX
 options:
   deploymentTarget:
     iOS: "13.0"
@@ -6,7 +6,7 @@ settings:
   DEVELOPMENT_TEAM: ""
   CLANG_ENABLE_OBJC_ARC: YES
 targets:
-  ARMSXHost:
+  ARMSX:
     type: application
     platform: iOS
     deploymentTarget: "13.0"
@@ -17,6 +17,8 @@ targets:
         optional: true
       - path: ../bios.bin
         optional: true
+      - path: ../../icon.icon
+        optional: true
     settings:
       INFOPLIST_FILE: Sources/Info.plist
       PRODUCT_BUNDLE_IDENTIFIER: com.nanodata.armsx
@@ -24,6 +26,7 @@ targets:
       OTHER_LDFLAGS: "-ObjC"
       LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/../Frameworks"
       FRAMEWORK_SEARCH_PATHS: "$(PROJECT_DIR)/../Frameworks"
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - framework: ../Frameworks/SDL2.xcframework
         embed: true

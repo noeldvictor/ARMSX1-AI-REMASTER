@@ -7,13 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0A79EE5517AAE0DFA8E8B5A7 /* libarmsx.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = ADA5E597FFB36DB70531D19B /* libarmsx.dylib */; };
-		10D70EE12ECE99150088BC1D /* bios.bin in Resources */ = {isa = PBXBuildFile; fileRef = 10DE73E62ECE5526004BED3C /* bios.bin */; };
+		3464725A44F4A69FBE2AB974 /* libarmsx.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 653A133BDB61BD1059CFAF23 /* libarmsx.dylib */; };
 		3A83F5253BCB4AD47A6742B1 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F686B87C80EB4D3204CDEEC0 /* main.m */; };
 		48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; };
+		5480B78F3661F4CB9446657C /* libarmsx.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 653A133BDB61BD1059CFAF23 /* libarmsx.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B16F42A290ECFF7DF154F24F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9484FEBF96C002F04D73B70C /* AppDelegate.mm */; };
-		B27EB197AB6B4ACA054BBA0E /* libarmsx.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = ADA5E597FFB36DB70531D19B /* libarmsx.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -24,7 +23,7 @@
 			dstSubfolderSpec = 10;
 			files = (
 				7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */,
-				B27EB197AB6B4ACA054BBA0E /* libarmsx.dylib in Embed Frameworks */,
+				5480B78F3661F4CB9446657C /* libarmsx.dylib in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -33,13 +32,12 @@
 
 /* Begin PBXFileReference section */
 		019479875FC7433ACB65A02E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		10DE73E62ECE5526004BED3C /* bios.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = bios.bin; path = ../../bios.bin; sourceTree = "<group>"; };
+		1760EE6722F9E2BEDFDCCC6D /* armsx_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = armsx_bridge.h; sourceTree = "<group>"; };
 		518B2258235B15B15373B04A /* SDL2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL2.xcframework; path = ../Frameworks/SDL2.xcframework; sourceTree = "<group>"; };
 		64E02E161FEB892FC40F8BE1 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		653A133BDB61BD1059CFAF23 /* libarmsx.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libarmsx.dylib; path = ../Frameworks/libarmsx.dylib; sourceTree = "<group>"; };
 		87BA3EE4597141AA97A5557D /* ARMSX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARMSX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9484FEBF96C002F04D73B70C /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
-		ADA5E597FFB36DB70531D19B /* libarmsx.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libarmsx.dylib; path = ../Frameworks/libarmsx.dylib; sourceTree = "<group>"; };
-		DA91A1D6D1FF1401745F47ED /* armsx_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = armsx_bridge.h; sourceTree = "<group>"; };
 		F686B87C80EB4D3204CDEEC0 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -49,7 +47,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */,
-				0A79EE5517AAE0DFA8E8B5A7 /* libarmsx.dylib in Frameworks */,
+				3464725A44F4A69FBE2AB974 /* libarmsx.dylib in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,7 +57,7 @@
 		473DBC863A1B097C0DD3710F /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				ADA5E597FFB36DB70531D19B /* libarmsx.dylib */,
+				653A133BDB61BD1059CFAF23 /* libarmsx.dylib */,
 				518B2258235B15B15373B04A /* SDL2.xcframework */,
 			);
 			name = Frameworks;
@@ -68,7 +66,6 @@
 		48D57A41DAF59CF0D443A086 = {
 			isa = PBXGroup;
 			children = (
-				10DE73E62ECE5526004BED3C /* bios.bin */,
 				D0581165A1AB8CE875BD92E0 /* Sources */,
 				473DBC863A1B097C0DD3710F /* Frameworks */,
 				9B7D6BDFE7232B2E5D8A379F /* Products */,
@@ -88,9 +85,9 @@
 			children = (
 				64E02E161FEB892FC40F8BE1 /* AppDelegate.h */,
 				9484FEBF96C002F04D73B70C /* AppDelegate.mm */,
+				1760EE6722F9E2BEDFDCCC6D /* armsx_bridge.h */,
 				019479875FC7433ACB65A02E /* Info.plist */,
 				F686B87C80EB4D3204CDEEC0 /* main.m */,
-				DA91A1D6D1FF1401745F47ED /* armsx_bridge.h */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -105,7 +102,6 @@
 				21709ABD74D1031F0389C4EC /* Sources */,
 				D6910F21954EF81975654CFA /* Frameworks */,
 				8F7F79E31569D7CF1ACBC707 /* Embed Frameworks */,
-				10D70EE02ECE99100088BC1D /* Resources */,
 			);
 			buildRules = (
 			);
@@ -125,7 +121,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 2600;
 			};
 			buildConfigurationList = FBD22F5C337AFF8855769BCD /* Build configuration list for PBXProject "ARMSX" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -145,17 +141,6 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXResourcesBuildPhase section */
-		10D70EE02ECE99100088BC1D /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				10D70EE12ECE99150088BC1D /* bios.bin in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		21709ABD74D1031F0389C4EC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -174,7 +159,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = L296QD7JFU;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/../Frameworks",
 					"\"../Frameworks\"",
@@ -187,7 +171,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../Frameworks";
 				OTHER_LDFLAGS = "-ObjC";
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.armsx;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nanodata.armsx;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -228,9 +212,10 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = L296QD7JFU;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -251,6 +236,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -292,9 +278,10 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = L296QD7JFU;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -308,6 +295,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -319,7 +307,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = L296QD7JFU;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/../Frameworks",
 					"\"../Frameworks\"",
@@ -332,7 +319,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../Frameworks";
 				OTHER_LDFLAGS = "-ObjC";
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.armsx;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nanodata.armsx;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
