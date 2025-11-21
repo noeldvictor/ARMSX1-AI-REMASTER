@@ -63,5 +63,6 @@ elif [ "$MODE" = "macosapp" ]; then
 
 else
     make clean
-    make SDL_STATIC="${SDL_STATIC:-1}" IMGUI_FRONTEND=1
+    # REVERT THIS TO USE STATIC SDL!!!!
+    make SDL_STATIC=0 IMGUI_FRONTEND=1
 fi
