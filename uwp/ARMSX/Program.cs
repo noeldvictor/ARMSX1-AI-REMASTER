@@ -60,7 +60,7 @@ namespace WindowsHostSDL2
                 return -1;
             }
 
-            string[] arguments = { "ChonkyStation3UWP", "", localFolder.Path };
+            string[] arguments = { "ARMSX", "", "" };
             int newArgc = arguments.Length;
             IntPtr[] argvPtrs = new IntPtr[newArgc];
             for (int i = 0; i < newArgc; i++)

@@ -18,6 +18,7 @@ snap/
 *.exe
 *.out
 *.toml
+!Cargo.toml
 *.zip
 *.cue
 *.iso
