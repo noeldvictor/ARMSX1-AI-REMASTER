@@ -60,9 +60,9 @@ elif [ "$MODE" = "shared" ]; then
 elif [ "$MODE" = "wasm" ]; then
     make clean
     if command -v emmake >/dev/null 2>&1; then
-        emmake make wasm
+        emmake make wasm IMGUI_FRONTEND="${IMGUI_FRONTEND:-1}"
     else
-        make wasm 
+        make wasm IMGUI_FRONTEND="${IMGUI_FRONTEND:-1}"
     fi
 
 elif [ "$MODE" = "macosapp" ]; then

@@ -9,8 +9,7 @@ SDL_STATIC := 0
 SDL_CFLAGS := -sUSE_SDL=2
 SDL_LIBS_DYNAMIC :=
 SDL_LIBS_STATIC :=
-WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main"]'
-IMGUI_FRONTEND := 0
+WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main","_psxe_wasm_on_file"]'
 endif
 
 SDL_CONFIG ?= sdl2-config
@@ -52,7 +51,7 @@ ifeq ($(IOS_TARGET),1)
 endif
 
 BASE_CFLAGS = -g -DLOG_USE_COLOR -I"." -I"psx" $(SDL_CFLAGS)
-BASE_CFLAGS += -Ofast -Wno-overflow -Wall -pedantic -Wno-address-of-packed-member -flto
+BASE_CFLAGS += -O3 -ffast-math -Wno-overflow -Wall -pedantic -Wno-address-of-packed-member -flto
 
 BASE_CXXFLAGS = -std=c++17 $(BASE_CFLAGS)
 

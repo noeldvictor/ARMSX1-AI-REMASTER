@@ -1,7 +1,7 @@
 name: ARMSX
 options:
   deploymentTarget:
-    iOS: "13.0"
+    iOS: "15.1"
 settings:
   DEVELOPMENT_TEAM: ""
   CLANG_ENABLE_OBJC_ARC: YES
@@ -9,7 +9,7 @@ targets:
   ARMSX:
     type: application
     platform: iOS
-    deploymentTarget: "13.0"
+    deploymentTarget: "15.1"
     sources:
       - path: Sources
     resources:
@@ -24,8 +24,13 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: com.nanodata.armsx
       LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
       OTHER_LDFLAGS: "$(inherited) -ObjC"
-      LIBRARY_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/../Frameworks"
-      FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/../Frameworks"
+      LIBRARY_SEARCH_PATHS:
+        - "$(inherited)"
+        - "$(SDKROOT)/usr/lib/swift"
+        - "$(PROJECT_DIR)/../Frameworks"
+      FRAMEWORK_SEARCH_PATHS:
+        - "$(inherited)"
+        - "$(PROJECT_DIR)/../Frameworks"
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     configFiles:
       Debug: Pods/Target Support Files/Pods-ARMSX/Pods-ARMSX.debug.xcconfig

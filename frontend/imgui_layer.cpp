@@ -5,6 +5,9 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "../third_party/imgui/imgui.h"
 #include "../third_party/imgui/backends/imgui_impl_sdl2.h"
@@ -106,7 +109,7 @@ extern "C" PSXE_API void imgui_layer_flush(void) {
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), g_renderer);
 }
 
-#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
 extern "C" {
 #include "config.h"
 PSXE_API int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* external_renderer);
@@ -186,6 +189,46 @@ static std::string upscale_label_from_height(int height) {
         default: return "480p";
     }
 }
+
+#ifdef __EMSCRIPTEN__
+static std::string g_wasm_pending_bios;
+static std::string g_wasm_pending_cd;
+
+extern "C" void psxe_wasm_on_file(const char* path, int is_bios) {
+    if (!path)
+        return;
+    if (is_bios) {
+        g_wasm_pending_bios = path;
+    } else {
+        g_wasm_pending_cd = path;
+    }
+}
+
+extern "C" void psxe_wasm_pick_file(int is_bios) {
+    EM_ASM({
+        const isBios = $0 === 1;
+        const accept = isBios ? '.bin' : '.cue,.bin,.iso,.img';
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = accept;
+        input.style.display = 'none';
+        document.body.appendChild(input);
+        input.addEventListener('change', async function() {
+            const file = input.files[0];
+            if (!file) {
+                document.body.removeChild(input);
+                return;
+            }
+            const data = new Uint8Array(await file.arrayBuffer());
+            const mountPath = isBios ? '/bios.bin' : '/cdrom.bin';
+            FS.writeFile(mountPath, data);
+            Module.ccall('psxe_wasm_on_file', null, ['string','number'], [mountPath, isBios ? 1 : 0]);
+            document.body.removeChild(input);
+        });
+        input.click();
+    }, is_bios);
+}
+#endif
 
 static bool write_settings_file(
     const std::string& path,
@@ -497,6 +540,9 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
 
             if (ImGui::BeginMenu("File")) {
                 if (ImGui::MenuItem("Load BIOS")) {
+#ifdef __EMSCRIPTEN__
+                    psxe_wasm_pick_file(1);
+#else
                     bios_picker.open = true;
                     bios_picker.selection.clear();
                     bios_picker.cwd.clear();
@@ -504,8 +550,12 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
                     show_cd_popup = false;
                     show_settings = false;
                     show_about = false;
+#endif
                 }
                 if (ImGui::MenuItem("Load CDROM")) {
+#ifdef __EMSCRIPTEN__
+                    psxe_wasm_pick_file(0);
+#else
                     cd_picker.open = true;
                     cd_picker.selection.clear();
                     cd_picker.cwd.clear();
@@ -513,6 +563,7 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
                     show_bios_popup = false;
                     show_settings = false;
                     show_about = false;
+#endif
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Quit")) {
@@ -539,7 +590,11 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
         }
         ImGui::End();
 
-        if (show_bios_popup || bios_picker.open) {
+        if (show_bios_popup || bios_picker.open
+#ifdef __EMSCRIPTEN__
+            || !g_wasm_pending_bios.empty()
+#endif
+        ) {
             if (show_bios_popup)
                 ImGui::OpenPopup("Load BIOS");
 
@@ -548,9 +603,15 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
                 if (ImGui::InputText("Path", bios_buf.data(), bios_buf.size())) {
                     bios_path = bios_buf.data();
                 }
+#ifndef __EMSCRIPTEN__
                 if (ImGui::Button("Browse...")) {
                     bios_picker.open = true;
                 }
+#else
+                if (ImGui::Button("Browse...")) {
+                    psxe_wasm_pick_file(1);
+                }
+#endif
                 ImGui::SameLine();
                 if (ImGui::Button("Use BIOS")) {
                     bios_path = bios_buf.data();
@@ -574,9 +635,22 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
                 show_bios_popup = false;
                 settings_dirty = true;
             }
+#ifdef __EMSCRIPTEN__
+            if (!g_wasm_pending_bios.empty()) {
+                bios_path = g_wasm_pending_bios;
+                sync_buffer(bios_buf, bios_path);
+                show_bios_popup = false;
+                settings_dirty = true;
+                g_wasm_pending_bios.clear();
+            }
+#endif
         }
 
-        if (show_cd_popup || cd_picker.open) {
+        if (show_cd_popup || cd_picker.open
+#ifdef __EMSCRIPTEN__
+            || !g_wasm_pending_cd.empty()
+#endif
+        ) {
             if (show_cd_popup)
                 ImGui::OpenPopup("Load CDROM");
 
@@ -585,9 +659,15 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
                 if (ImGui::InputText("Path", cdrom_buf.data(), cdrom_buf.size())) {
                     cdrom_path = cdrom_buf.data();
                 }
+#ifndef __EMSCRIPTEN__
                 if (ImGui::Button("Browse...")) {
                     cd_picker.open = true;
                 }
+#else
+                if (ImGui::Button("Browse...")) {
+                    psxe_wasm_pick_file(0);
+                }
+#endif
                 ImGui::SameLine();
                 if (ImGui::Button("Use CDROM")) {
                     cdrom_path = cdrom_buf.data();
@@ -609,6 +689,14 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
                 sync_buffer(cdrom_buf, cdrom_path);
                 show_cd_popup = false;
             }
+#ifdef __EMSCRIPTEN__
+            if (!g_wasm_pending_cd.empty()) {
+                cdrom_path = g_wasm_pending_cd;
+                sync_buffer(cdrom_buf, cdrom_path);
+                show_cd_popup = false;
+                g_wasm_pending_cd.clear();
+            }
+#endif
         }
 
         if (show_settings) {

@@ -1,26 +1,43 @@
-project_root = File.expand_path('../..', __dir__)
+PROJECT_ROOT = File.expand_path('../..', __dir__)
 
-react_native_pods = File.expand_path('../../node_modules/react-native/scripts/react_native_pods.rb', __dir__)
-native_modules = File.expand_path('../../node_modules/@react-native-community/cli-platform-ios/native_modules.rb', __dir__)
+rn_pod_candidates = [
+  File.expand_path('../../node_modules/react-native/scripts/react_native_pods.rb', __dir__),
+  File.expand_path(File.join(PROJECT_ROOT, 'node_modules/react-native/scripts/react_native_pods.rb'))
+]
+rn_cli_candidates = [
+  File.expand_path('../../node_modules/@react-native-community/cli/package.json', __dir__),
+  File.expand_path(File.join(PROJECT_ROOT, 'node_modules/@react-native-community/cli/package.json'))
+]
 
-react_native_available = File.exist?(react_native_pods) && File.exist?(native_modules)
+react_native_pods = rn_pod_candidates.find { |p| File.exist?(p) }
+react_native_cli = rn_cli_candidates.find { |p| File.exist?(p) }
+
+react_native_available = !!react_native_pods
+react_native_cli_available = !!react_native_cli
 
 unless react_native_available
   Pod::UI.puts "⚠️  React Native dependencies not found. Proceeding without RN pods.".yellow
-  Pod::UI.puts "    Run `npm install` (or `yarn install`) at #{project_root} to enable the overlay."
+  Pod::UI.puts "    Run `npm install` (or `yarn install`) at #{PROJECT_ROOT} to enable the overlay."
+  Pod::UI.puts "    Ensure @react-native-community/cli is installed so autolinking can run."
 end
 
 if react_native_available
   require_relative react_native_pods
-  require_relative native_modules
+
+  unless react_native_cli_available
+    Pod::UI.puts "⚠️  @react-native-community/cli not found; skipping autolinking.".yellow
+    def use_native_modules!(*)
+      { reactNativePath: File.join(PROJECT_ROOT, 'node_modules', 'react-native') }
+    end
+  end
 
   def armsx_use_react_native!(config)
     use_react_native!(
       :path => config[:reactNativePath],
-      :app_path => File.expand_path('..', __dir__),
+      :app_path => PROJECT_ROOT,
+      :config_file_dir => PROJECT_ROOT,
       :hermes_enabled => true,
-      :fabric_enabled => true,
-      :flipper_configuration => FlipperConfiguration.disabled
+      :fabric_enabled => true
     )
   end
 else
@@ -29,11 +46,12 @@ else
     { reactNativePath: File.join(File.expand_path('../..', __dir__), 'node_modules', 'react-native') }
   end
 
+  def prepare_react_native_project!(*); end
   def armsx_use_react_native!(*); end
   def react_native_post_install(*); end
 end
 
-platform :ios, '14.0'
+platform :ios, '15.1'
 prepare_react_native_project!
 
 target 'ARMSX' do
@@ -44,8 +62,31 @@ target 'ARMSX' do
   post_install do |installer|
     react_native_post_install(
       installer,
-      use_hermes: true,
+      config[:reactNativePath],
       mac_catalyst_enabled: false
     ) if react_native_available
+
+    # Ensure Hermes is enabled for compilation (prevents JSC headers from being pulled) and
+    # strip bad DerivedData search paths that occasionally sneak in from pods like DoubleConversion.
+    installer.pods_project.targets.each do |t|
+      t.build_configurations.each do |config|
+        config.build_settings['USE_HERMES'] = 'YES'
+        if config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].is_a?(Array)
+          defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+          defs << 'USE_HERMES=1' unless defs.any? { |d| d.include?('USE_HERMES') }
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+        else
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'USE_HERMES=1']
+        end
+      end
+    end
+
+    installer.aggregate_targets.each do |aggregate_target|
+      aggregate_target.user_project.native_targets.each do |nt|
+        nt.build_configurations.each do |config|
+          config.build_settings['USE_HERMES'] = 'YES'
+        end
+      end
+    end
   end
 end

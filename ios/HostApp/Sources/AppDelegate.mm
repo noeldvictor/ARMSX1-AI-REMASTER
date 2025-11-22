@@ -1,7 +1,14 @@
 #import "AppDelegate.h"
 
 #import <SDL2/SDL.h>
+#ifndef USE_HERMES
+#define USE_HERMES 1
+#endif
+#if __has_include(<React-RCTAppDelegate/RCTAppSetupUtils.h>)
+#import <React-RCTAppDelegate/RCTAppSetupUtils.h>
+#else
 #import <React/RCTAppSetupUtils.h>
+#endif
 #import <React/RCTBridge.h>
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTRootView.h>
@@ -19,7 +26,9 @@
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    RCTAppSetupPrepareApp(application);
+    // We deliberately keep the old architecture/turbo-modules off here to avoid missing dev modules
+    // (e.g. NativeRedBox) that were spamming the logs and blank-screening the overlay.
+    RCTAppSetupPrepareApp(application, NO);
 
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     self.window.backgroundColor = [UIColor blackColor];
@@ -182,7 +191,7 @@
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge {
 #if DEBUG
-    return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index" fallbackResource:nil];
+    return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
 #else
     return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
 #endif

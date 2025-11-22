@@ -8,7 +8,11 @@
     "bundle:ios": "react-native bundle --platform ios --dev false --entry-file mobile/index.js --bundle-output ios/HostApp/main.jsbundle --assets-dest ios/HostApp"
   },
   "dependencies": {
+    "@react-native-community/cli": "^20.0.2",
     "react": "18.2.0",
     "react-native": "0.76.0"
+  },
+  "devDependencies": {
+    "@react-native/metro-config": "0.76.0"
   }
 }

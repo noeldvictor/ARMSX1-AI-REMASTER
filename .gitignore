@@ -29,3 +29,5 @@ psxe.app
 .DS_Store
 */.DS_Store
 node_modules
+ios/HostApp/Pods/*
+ios/HostApp/build/*
