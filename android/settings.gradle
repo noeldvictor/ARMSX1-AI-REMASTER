@@ -1,0 +1,26 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+    includeBuild("../node_modules/@react-native/gradle-plugin")
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url("$rootDir/../node_modules/react-native/android") }
+    }
+}
+
+rootProject.name = "ARMSX"
+include(":app")
+
+def nativeModulesSettingsFile = file('../node_modules/@react-native-community/cli-platform-android/native_modules.gradle')
+if (nativeModulesSettingsFile.isFile()) {
+    apply from: nativeModulesSettingsFile
+    applyNativeModulesSettingsGradle(settings)
+}

@@ -37,7 +37,10 @@ if react_native_available
       :app_path => PROJECT_ROOT,
       :config_file_dir => PROJECT_ROOT,
       :hermes_enabled => true,
-      :fabric_enabled => true
+      # Keep the app on the classic architecture so the RN dev tooling
+      # (DevMenu, NativeRedBox, etc.) stays available while Metro is down.
+      :fabric_enabled => false,
+      :new_arch_enabled => false
     )
   end
 else

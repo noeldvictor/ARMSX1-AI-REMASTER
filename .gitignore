@@ -31,3 +31,4 @@ psxe.app
 node_modules
 ios/HostApp/Pods/*
 ios/HostApp/build/*
+helpers/*

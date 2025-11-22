@@ -25,10 +25,33 @@
 
 @implementation AppDelegate
 
+- (void)forceLandscapeIfNeeded {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIInterfaceOrientation currentOrientation = UIInterfaceOrientationUnknown;
+        if (@available(iOS 13.0, *)) {
+            currentOrientation = self.window.windowScene.interfaceOrientation;
+        } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            currentOrientation = UIApplication.sharedApplication.statusBarOrientation;
+#pragma clang diagnostic pop
+        }
+
+        if (UIInterfaceOrientationIsLandscape(currentOrientation)) {
+            return;
+        }
+
+        NSNumber *value = @(UIInterfaceOrientationLandscapeRight);
+        [[UIDevice currentDevice] setValue:value forKey:@"orientation"];
+        [UIViewController attemptRotationToDeviceOrientation];
+    });
+}
+
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    // We deliberately keep the old architecture/turbo-modules off here to avoid missing dev modules
-    // (e.g. NativeRedBox) that were spamming the logs and blank-screening the overlay.
-    RCTAppSetupPrepareApp(application, NO);
+    // Force the classic architecture so the dev tooling (DevMenu/RedBox) stays alive when Metro is
+    // unavailable. This must stay in sync with the Podfile (fabric/new-arch disabled).
+    BOOL enableTurboModules = NO;
+    RCTAppSetupPrepareApp(application, enableTurboModules);
 
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     self.window.backgroundColor = [UIColor blackColor];
@@ -74,6 +97,7 @@
     }
 
     [self teardownReactSurface];
+    [self forceLandscapeIfNeeded];
 
     SDL_SetMainReady();
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
