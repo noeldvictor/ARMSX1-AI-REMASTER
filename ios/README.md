@@ -21,3 +21,10 @@ xcodegen generate
 open PSXEHost.xcodeproj
 ```
 The target embeds both `SDL2.xcframework` and `libarmsx.dylib` into the app bundle and runs `external_main` on launch using the host `UIWindow`.
+
+## React Native brownfield overlay
+- Install JS dependencies at the repo root: `npm install`
+- Regenerate the Xcode project, then install pods: `cd ios/HostApp && xcodegen generate && pod install`
+- Start Metro from the repo root (project root is `mobile/`): `npm run start`
+- Open the workspace created by CocoaPods: `ios/HostApp/ARMSX.xcworkspace`
+- The overlay component is registered as `ARMSXOverlay` with entry `mobile/index.js`; use `npm run bundle:ios` to emit a release bundle into `ios/HostApp/main.jsbundle`.

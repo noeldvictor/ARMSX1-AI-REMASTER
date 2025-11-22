@@ -106,7 +106,7 @@ extern "C" PSXE_API void imgui_layer_flush(void) {
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), g_renderer);
 }
 
-#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__)
+#if defined(IMGUI_FRONTEND) && !defined(__DLL_BUILD) && !defined(IOS_TARGET) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 extern "C" {
 #include "config.h"
 PSXE_API int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* external_renderer);

@@ -81,7 +81,7 @@ cd psxe
 
 ## Configuration
 
-A `settings.toml` is generated on first run next to the executable. CLI flags always override file settings for a session.
+A `settings.toml` is generated on first run under SDL's pref path (`SDL_GetPrefPath("nanodata", "armsx")`), falling back to the working directory if unavailable. CLI flags always override file settings for a session.
 
 ### Settings file keys
 - `psxe_version` (string, managed by PSXE)

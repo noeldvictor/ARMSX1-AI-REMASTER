@@ -1,0 +1,51 @@
+project_root = File.expand_path('../..', __dir__)
+
+react_native_pods = File.expand_path('../../node_modules/react-native/scripts/react_native_pods.rb', __dir__)
+native_modules = File.expand_path('../../node_modules/@react-native-community/cli-platform-ios/native_modules.rb', __dir__)
+
+react_native_available = File.exist?(react_native_pods) && File.exist?(native_modules)
+
+unless react_native_available
+  Pod::UI.puts "⚠️  React Native dependencies not found. Proceeding without RN pods.".yellow
+  Pod::UI.puts "    Run `npm install` (or `yarn install`) at #{project_root} to enable the overlay."
+end
+
+if react_native_available
+  require_relative react_native_pods
+  require_relative native_modules
+
+  def armsx_use_react_native!(config)
+    use_react_native!(
+      :path => config[:reactNativePath],
+      :app_path => File.expand_path('..', __dir__),
+      :hermes_enabled => true,
+      :fabric_enabled => true,
+      :flipper_configuration => FlipperConfiguration.disabled
+    )
+  end
+else
+  # Minimal shims so pod install can proceed without RN deps present.
+  def use_native_modules!(*)
+    { reactNativePath: File.join(File.expand_path('../..', __dir__), 'node_modules', 'react-native') }
+  end
+
+  def armsx_use_react_native!(*); end
+  def react_native_post_install(*); end
+end
+
+platform :ios, '14.0'
+prepare_react_native_project!
+
+target 'ARMSX' do
+  config = use_native_modules!
+
+  armsx_use_react_native!(config)
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      use_hermes: true,
+      mac_catalyst_enabled: false
+    ) if react_native_available
+  end
+end

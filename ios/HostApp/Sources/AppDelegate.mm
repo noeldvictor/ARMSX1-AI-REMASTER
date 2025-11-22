@@ -1,18 +1,26 @@
 #import "AppDelegate.h"
 
 #import <SDL2/SDL.h>
+#import <React/RCTAppSetupUtils.h>
+#import <React/RCTBridge.h>
+#import <React/RCTBundleURLProvider.h>
+#import <React/RCTRootView.h>
 #include <vector>
 #include <string>
 
 #import "armsx_bridge.h"
 
-@interface AppDelegate ()
+@interface AppDelegate () <RCTBridgeDelegate>
 @property (nonatomic, assign) BOOL armsxRunning;
+@property (nonatomic, strong) RCTBridge *reactBridge;
+@property (nonatomic, strong) RCTRootView *reactRootView;
 @end
 
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    RCTAppSetupPrepareApp(application);
+
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     self.window.backgroundColor = [UIColor blackColor];
 
@@ -21,15 +29,42 @@
     self.window.rootViewController = controller;
     [self.window makeKeyAndVisible];
 
-    [self startSDL];
+    [self attachReactNativeOverlay:launchOptions];
 
     return YES;
 }
 
-- (void)startSDL {
+- (void)attachReactNativeOverlay:(NSDictionary *)launchOptions {
+    if (!self.window) {
+        return;
+    }
+
+    if (!self.reactBridge) {
+        self.reactBridge = [[RCTBridge alloc] initWithDelegate:self launchOptions:launchOptions];
+    }
+
+    self.reactRootView = [[RCTRootView alloc] initWithBridge:self.reactBridge moduleName:@"ARMSXOverlay" initialProperties:nil];
+    self.reactRootView.backgroundColor = [UIColor blackColor];
+    self.reactRootView.frame = self.window.bounds;
+    self.reactRootView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    UIView *targetView = self.window.rootViewController.view ?: self.window;
+    [targetView addSubview:self.reactRootView];
+}
+
+- (void)teardownReactSurface {
+    if (self.reactRootView && self.reactRootView.superview) {
+        [self.reactRootView removeFromSuperview];
+    }
+    self.reactRootView = nil;
+}
+
+- (void)startSDLWithArgs:(NSArray<NSString *> *)args {
     if (self.armsxRunning) {
         return;
     }
+
+    [self teardownReactSurface];
 
     SDL_SetMainReady();
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
@@ -123,6 +158,10 @@
                 NSLog(@"No bundled BIOS found; libarmsx will rely on user-provided settings/CLI.");
             }
 
+            if (args.count) {
+                [nativeArgs addObjectsFromArray:args];
+            }
+
             std::vector<std::string> args;
             std::vector<const char *> argv;
 
@@ -139,6 +178,14 @@
             external_main((int)args.size(), argv.data(), NULL, NULL);
         }
     });
+}
+
+- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge {
+#if DEBUG
+    return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index" fallbackResource:nil];
+#else
+    return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+#endif
 }
 
 - (void)applicationWillTerminate:(UIApplication *)application {

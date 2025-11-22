@@ -1,0 +1,14 @@
+{
+  "name": "armsx-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "react-native start --projectRoot mobile",
+    "ios": "react-native run-ios --project-path ios/HostApp",
+    "bundle:ios": "react-native bundle --platform ios --dev false --entry-file mobile/index.js --bundle-output ios/HostApp/main.jsbundle --assets-dest ios/HostApp"
+  },
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.76.0"
+  }
+}

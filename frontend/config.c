@@ -2,19 +2,22 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <errno.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
 #include "config.h"
 #include "common.h"
 
 #include "../psx/log.h"
-#ifdef IOS_TARGET
 #include "SDL.h"
-#endif
 
-#ifdef IOS_TARGET
-static char* g_ios_settings_path = NULL;
-static char* g_ios_bios_path = NULL;
-#endif
+static char* g_pref_path = NULL;
+static char* g_settings_path = NULL;
+static char* g_bios_path = NULL;
 
 static const char* g_version_text =
 #ifdef _WIN32
@@ -83,6 +86,81 @@ static const char* g_regions_text =
 
 static const char* g_desc_text =
     "\nPlease report any bugs to <https://github.com/allkern/psxe/issues>\n";
+
+static void psxe_ensure_dir(const char* dir_path) {
+    if (!dir_path || !dir_path[0])
+        return;
+
+    struct stat st;
+    if (stat(dir_path, &st) == 0)
+        return;
+
+#ifdef _WIN32
+    _mkdir(dir_path);
+#else
+    mkdir(dir_path, 0755);
+#endif
+}
+
+static void psxe_ensure_parent_dir(const char* path) {
+    if (!path)
+        return;
+
+    char tmp[PATH_MAX];
+    strncpy(tmp, path, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+
+    char* slash = strrchr(tmp, '/');
+#ifdef _WIN32
+    char* bslash = strrchr(tmp, '\\');
+    if (!slash || (bslash && bslash > slash))
+        slash = bslash;
+#endif
+
+    if (slash && slash != tmp) {
+        *slash = '\0';
+        psxe_ensure_dir(tmp);
+    }
+}
+
+static const char* psxe_pref_path(void) {
+    if (g_pref_path)
+        return g_pref_path;
+
+    char* pref_base = SDL_GetPrefPath("nanodata", "armsx");
+
+    if (pref_base) {
+        size_t len = strlen(pref_base) + 1;
+        g_pref_path = (char*)malloc(len);
+
+        if (g_pref_path)
+            memcpy(g_pref_path, pref_base, len);
+
+        SDL_free(pref_base);
+    }
+
+    return g_pref_path;
+}
+
+static const char* psxe_prefixed_path(const char* leaf, char** cache) {
+    if (!leaf)
+        return NULL;
+
+    const char* base = psxe_pref_path();
+
+    if (base && cache && !*cache) {
+        size_t len = strlen(base) + strlen(leaf) + 1;
+        *cache = (char*)malloc(len);
+
+        if (*cache)
+            snprintf(*cache, len, "%s%s", base, leaf);
+    }
+
+    if (cache && *cache)
+        return *cache;
+
+    return leaf;
+}
 
 psxe_config_t* psxe_cfg_create(void) {
     return (psxe_config_t*)malloc(sizeof(psxe_config_t));
@@ -216,29 +294,13 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     log_set_quiet(quiet);
 
     if (!use_args) {
-#ifdef IOS_TARGET
         if (!settings_path) {
-            if (!g_ios_settings_path) {
-                char* pref_base = SDL_GetPrefPath("nanodata", "armsx");
-
-                if (pref_base) {
-                    size_t len = strlen(pref_base) + strlen("settings.toml") + 1;
-                    g_ios_settings_path = (char*)malloc(len);
-
-                    if (g_ios_settings_path) {
-                        snprintf(g_ios_settings_path, len, "%ssettings.toml", pref_base);
-                    }
-
-                    SDL_free(pref_base);
-                }
-            }
-
-            settings_path = g_ios_settings_path;
+            settings_path = psxe_prefixed_path("settings.toml", &g_settings_path);
         }
-#endif
         if (!settings_path)
             settings_path = "settings.toml";
 
+        psxe_ensure_parent_dir(settings_path);
         FILE* settings = fopen(settings_path, "rb");
 
         char error[0x100];
@@ -376,25 +438,28 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     if (bios)
         cfg->bios = bios;
 
-#ifdef IOS_TARGET
     if (!cfg->bios) {
-        if (!g_ios_bios_path) {
+        const char* bios_default = psxe_prefixed_path("bios.bin", &g_bios_path);
+
+#ifdef IOS_TARGET
+        if (!g_pref_path && !g_bios_path) {
             char* base_path = SDL_GetBasePath();
 
             if (base_path) {
                 size_t len = strlen(base_path) + strlen("bios.bin") + 1;
-                g_ios_bios_path = (char*)malloc(len);
+                g_bios_path = (char*)malloc(len);
 
-                if (g_ios_bios_path)
-                    snprintf(g_ios_bios_path, len, "%sbios.bin", base_path);
+                if (g_bios_path)
+                    snprintf(g_bios_path, len, "%sbios.bin", base_path);
 
                 SDL_free(base_path);
+                bios_default = g_bios_path ? g_bios_path : bios_default;
             }
         }
-
-        cfg->bios = g_ios_bios_path ? g_ios_bios_path : "bios.bin";
-    }
 #endif
+
+        cfg->bios = bios_default ? bios_default : "bios.bin";
+    }
 
     if (bios_search)
         cfg->bios_search = bios_search;
@@ -431,6 +496,10 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 // To-do: Implement BIOS searching
 char* psxe_cfg_get_bios_path(psxe_config_t* cfg) {
     return NULL;
+}
+
+const char* psxe_cfg_get_pref_path(void) {
+    return psxe_pref_path();
 }
 
 #undef STR1

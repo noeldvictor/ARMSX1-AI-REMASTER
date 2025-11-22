@@ -7,6 +7,7 @@ set -e
 #   ./build.sh shared      -> build shared lib (forces dynamic SDL)
 #   ./build.sh ios         -> build iOS dylib using iPhone SDK + ios/Frameworks/SDL2.xcframework
 #   ./build.sh macosapp    -> build desktop exe and bundle armsx.app
+#   ./build.sh wasm        -> build WebAssembly target to bin/wasm using emscripten
 
 MODE="$1"
 
@@ -56,6 +57,14 @@ elif [ "$MODE" = "shared" ]; then
     make clean
     SDL_STATIC=0 make shared
 
+elif [ "$MODE" = "wasm" ]; then
+    make clean
+    if command -v emmake >/dev/null 2>&1; then
+        emmake make wasm
+    else
+        make wasm 
+    fi
+
 elif [ "$MODE" = "macosapp" ]; then
     make clean
     make SDL_STATIC="${SDL_STATIC:-1}"
@@ -63,6 +72,5 @@ elif [ "$MODE" = "macosapp" ]; then
 
 else
     make clean
-    # REVERT THIS TO USE STATIC SDL!!!!
-    make SDL_STATIC=0 IMGUI_FRONTEND=1
+    make SDL_STATIC="${SDL_STATIC:-1}" IMGUI_FRONTEND="${IMGUI_FRONTEND:-1}"
 fi

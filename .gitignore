@@ -28,3 +28,4 @@ snap/
 psxe.app
 .DS_Store
 */.DS_Store
+node_modules

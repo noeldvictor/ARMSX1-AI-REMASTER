@@ -37,6 +37,7 @@ void psxe_cfg_init(psxe_config_t*);
 void psxe_cfg_load_defaults(psxe_config_t*);
 void psxe_cfg_load(psxe_config_t*, int, const char**);
 char* psxe_cfg_get_bios_path(psxe_config_t*);
+const char* psxe_cfg_get_pref_path(void);
 void psxe_cfg_destroy(psxe_config_t*);
 
 #endif

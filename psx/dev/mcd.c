@@ -1,5 +1,39 @@
 #include "mcd.h"
 #include "../log.h"
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <errno.h>
+#include <string.h>
+#include <limits.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
+
+static void psx_mcd_ensure_parent(const char* path) {
+    if (!path)
+        return;
+
+    char tmp[PATH_MAX];
+    strncpy(tmp, path, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+
+    char* slash = strrchr(tmp, '/');
+#ifdef _WIN32
+    char* bslash = strrchr(tmp, '\\');
+    if (!slash || (bslash && bslash > slash))
+        slash = bslash;
+#endif
+    if (!slash || slash == tmp)
+        return;
+
+    *slash = '\0';
+
+    struct stat st;
+    if (stat(tmp, &st) == 0)
+        return;
+
+    mkdir(tmp, 0755);
+}
 
 psx_mcd_t* psx_mcd_create(void) {
     return (psx_mcd_t*)malloc(sizeof(psx_mcd_t));
@@ -19,10 +53,24 @@ int psx_mcd_init(psx_mcd_t* mcd, const char* path) {
     if (!path)
         return 0;
 
+    psx_mcd_ensure_parent(path);
+
     FILE* file = fopen(path, "rb");
 
-    if (!file)
-        return 1;
+    if (!file) {
+        // Create a blank card if missing
+        file = fopen(path, "wb");
+        if (!file)
+            return 1;
+
+        fwrite(mcd->buf, 1, MCD_MEMORY_SIZE, file);
+        fclose(file);
+
+        // Re-open for read so subsequent logic flows
+        file = fopen(path, "rb");
+        if (!file)
+            return 1;
+    }
 
     if (!fread(mcd->buf, 1, MCD_MEMORY_SIZE, file))
         return 2;
@@ -152,12 +200,6 @@ uint8_t psx_mcd_read(psx_mcd_t* mcd) {
 }
 
 void psx_mcd_write(psx_mcd_t* mcd, uint8_t data) {
-    // log_set_quiet(0);
-    // log_fatal("mcd write %02x", data);
-    // log_set_quiet(1);
-
-    printf("mcd write %02x\n", data);
-
     switch (mcd->state) {
         case MCD_STATE_TX_FLG: mcd->mode = data; break;
         case MCD_R_STATE_RX_MSB: mcd->msb = data; break;
@@ -184,10 +226,12 @@ void psx_mcd_reset(psx_mcd_t* mcd) {
 }
 
 void psx_mcd_destroy(psx_mcd_t* mcd) {
-    FILE* file = fopen(mcd->path, "wb");
+    FILE* file = mcd->path ? fopen(mcd->path, "wb") : NULL;
 
-    fwrite(mcd->buf, 1, MCD_MEMORY_SIZE, file);
-    fclose(file);
+    if (file) {
+        fwrite(mcd->buf, 1, MCD_MEMORY_SIZE, file);
+        fclose(file);
+    }
 
     free(mcd->buf);
     free(mcd);

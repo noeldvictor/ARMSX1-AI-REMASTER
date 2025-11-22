@@ -33,6 +33,7 @@ uint32_t screen_get_button_joystick(uint8_t b) {
     if (b == SDL_CONTROLLER_BUTTON_Y            ) return PSXI_SW_SDA_TRIANGLE;
     if (b == SDL_CONTROLLER_BUTTON_B            ) return PSXI_SW_SDA_CIRCLE;
     if (b == SDL_CONTROLLER_BUTTON_START        ) return PSXI_SW_SDA_START;
+    if (b == SDL_CONTROLLER_BUTTON_BACK         ) return PSXI_SW_SDA_SELECT;
     if (b == SDL_CONTROLLER_BUTTON_GUIDE        ) return PSXI_SW_SDA_SELECT;
     if (b == SDL_CONTROLLER_BUTTON_DPAD_UP      ) return PSXI_SW_SDA_PAD_UP;
     if (b == SDL_CONTROLLER_BUTTON_DPAD_DOWN    ) return PSXI_SW_SDA_PAD_DOWN;
@@ -40,10 +41,9 @@ uint32_t screen_get_button_joystick(uint8_t b) {
     if (b == SDL_CONTROLLER_BUTTON_DPAD_RIGHT   ) return PSXI_SW_SDA_PAD_RIGHT;
     if (b == SDL_CONTROLLER_BUTTON_LEFTSHOULDER ) return PSXI_SW_SDA_L1;
     if (b == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) return PSXI_SW_SDA_R1;
-    if (b == SDL_CONTROLLER_AXIS_TRIGGERLEFT    ) return PSXI_SW_SDA_L2; // Can't map these yet
-    if (b == SDL_CONTROLLER_AXIS_TRIGGERRIGHT   ) return PSXI_SW_SDA_R2; // Can't map these yet
     if (b == SDL_CONTROLLER_BUTTON_LEFTSTICK    ) return PSXI_SW_SDA_L3;
     if (b == SDL_CONTROLLER_BUTTON_RIGHTSTICK   ) return PSXI_SW_SDA_R3;
+    if (b == SDL_CONTROLLER_BUTTON_MISC1        ) return PSXI_SW_SDA_SELECT;
 
     return 0;
 } 
@@ -57,6 +57,30 @@ SDL_GameController* screen_find_controller(void) {
     return NULL;
 }
 
+#ifdef CONTROLLER_GENERIC
+static void psxe_handle_trigger(psxe_screen_t* screen, int slot, int axis, Sint16 value) {
+    const int threshold = 8000;
+    int pressed = value > threshold;
+
+    if (axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) {
+        if (pressed != screen->trigger_left_down) {
+            screen->trigger_left_down = pressed;
+            if (pressed)
+                psx_pad_button_press(screen->pad, slot, PSXI_SW_SDA_L2);
+            else
+                psx_pad_button_release(screen->pad, slot, PSXI_SW_SDA_L2);
+        }
+    } else if (axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
+        if (pressed != screen->trigger_right_down) {
+            screen->trigger_right_down = pressed;
+            if (pressed)
+                psx_pad_button_press(screen->pad, slot, PSXI_SW_SDA_R2);
+            else
+                psx_pad_button_release(screen->pad, slot, PSXI_SW_SDA_R2);
+        }
+    }
+}
+#endif
 int screen_get_base_width(psxe_screen_t* screen) {
     int width = psx_get_dmode_width(screen->psx);
 
@@ -115,6 +139,8 @@ void psxe_screen_init(psxe_screen_t* screen, psx_t* psx, const psxe_config_t* cf
     screen->menu_visible = 1;
     memset(screen->current_cd, 0, sizeof(screen->current_cd));
     screen->audio_dev = 0;
+    screen->trigger_left_down = 0;
+    screen->trigger_right_down = 0;
     if (cfg && cfg->cd_path)
         strncpy(screen->current_cd, cfg->cd_path, sizeof(screen->current_cd) - 1);
 
@@ -218,10 +244,14 @@ void psxe_screen_reload(psxe_screen_t* screen) {
         screen->renderer = (SDL_Renderer*)screen->external_renderer;
         screen->owns_renderer = 0;
     } else {
+        Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
+#ifndef __EMSCRIPTEN__
+        renderer_flags |= SDL_RENDERER_PRESENTVSYNC;
+#endif
         screen->renderer = SDL_CreateRenderer(
             screen->window,
             -1,
-            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+            renderer_flags
         );
         screen->owns_renderer = 1;
     }
@@ -235,10 +265,14 @@ void psxe_screen_reload(psxe_screen_t* screen) {
     screen->renderer = (SDL_Renderer*)screen->external_renderer;
     screen->owns_renderer = 0;
 #else
+    Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
+#ifndef __EMSCRIPTEN__
+    renderer_flags |= SDL_RENDERER_PRESENTVSYNC;
+#endif
     screen->renderer = SDL_CreateRenderer(
         screen->window,
         -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        renderer_flags
     );
     screen->owns_renderer = 1;
 #endif
@@ -523,6 +557,8 @@ void psxe_screen_update(psxe_screen_t* screen) {
                     SDL_GameControllerClose(screen->controller);
 
                     screen->controller = screen_find_controller();
+                    screen->trigger_left_down = 0;
+                    screen->trigger_right_down = 0;
                 }
             } break;
 
@@ -571,6 +607,12 @@ void psxe_screen_update(psxe_screen_t* screen) {
                         case SDL_CONTROLLER_AXIS_LEFTY:
                             psx_pad_analog_change(screen->pad, 0, PSXI_AX_SDA_LEFT_VERT, mapped_axis);
                         break;
+#ifdef CONTROLLER_GENERIC
+                        case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
+                        case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
+                            psxe_handle_trigger(screen, 0, event.caxis.axis, event.caxis.value);
+                        break;
+#endif
                     }
                 }
             } break;

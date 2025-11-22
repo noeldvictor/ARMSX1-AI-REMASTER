@@ -1,16 +1,33 @@
 .ONESHELL:
 
+WASM_TARGET := $(filter wasm,$(MAKECMDGOALS))
+
+ifeq ($(WASM_TARGET),wasm)
+CC := emcc
+CXX := em++
+SDL_STATIC := 0
+SDL_CFLAGS := -sUSE_SDL=2
+SDL_LIBS_DYNAMIC :=
+SDL_LIBS_STATIC :=
+WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main"]'
+IMGUI_FRONTEND := 0
+endif
+
 SDL_CONFIG ?= sdl2-config
 
 CC ?= gcc
 CXX ?= g++
 
-SDL_CFLAGS ?= $(shell $(SDL_CONFIG) --cflags)
-SDL_LIBS_DYNAMIC ?= $(shell $(SDL_CONFIG) --libs)
-SDL_LIBS_STATIC ?= $(shell $(SDL_CONFIG) --static --libs 2>/dev/null)
+SDL_CFLAGS ?= $(shell $(SDL_CONFIG) --cflags 2>/dev/null)
+SDL_LIBS_DYNAMIC ?= $(shell $(SDL_CONFIG) --libs 2>/dev/null)
+SDL_LIBS_STATIC ?= $(shell $(SDL_CONFIG) --static-libs 2>/dev/null || $(SDL_CONFIG) --libs --static 2>/dev/null)
 SDL_STATIC ?= 1
+WASM_LDFLAGS ?=
 
 PLATFORM := $(shell uname -s)
+ifeq ($(WASM_TARGET),wasm)
+PLATFORM := Emscripten
+endif
 IOS_TARGET ?= 0
 IOS_SDK ?= iphoneos
 IOS_DEPLOYMENT_TARGET ?= 14.0
@@ -18,6 +35,7 @@ IOS_SDL_FRAMEWORK ?= $(CURDIR)/ios/Frameworks/SDL2.xcframework/ios-arm64/SDL2.fr
 IOS_SDL_FRAMEWORK_PARENT := $(dir $(IOS_SDL_FRAMEWORK))
 SDKROOT ?=
 IMGUI_FRONTEND ?= 0
+CONTROLLER_GENERIC ?= 0
 
 ifeq ($(IOS_TARGET),1)
 	SDKROOT ?= $(shell xcrun --sdk $(IOS_SDK) --show-sdk-path)
@@ -38,6 +56,16 @@ BASE_CFLAGS += -Ofast -Wno-overflow -Wall -pedantic -Wno-address-of-packed-membe
 
 BASE_CXXFLAGS = -std=c++17 $(BASE_CFLAGS)
 
+ifeq ($(CONTROLLER_GENERIC),1)
+	BASE_CFLAGS += -DCONTROLLER_GENERIC
+	BASE_CXXFLAGS += -DCONTROLLER_GENERIC
+endif
+
+ifeq ($(WASM_TARGET),wasm)
+	BASE_CFLAGS := $(filter-out -flto,$(BASE_CFLAGS))
+	BASE_CXXFLAGS := $(filter-out -flto,$(BASE_CXXFLAGS))
+endif
+
 ifeq ($(IOS_TARGET),1)
 	BASE_CFLAGS += -fembed-bitcode
 	BASE_CXXFLAGS += -fembed-bitcode
@@ -54,7 +82,9 @@ endif
 endif
 endif
 
-ifneq ($(IOS_TARGET),1)
+ifeq ($(WASM_TARGET),wasm)
+OS_INFO := Emscripten
+else ifneq ($(IOS_TARGET),1)
 OS_INFO := $(shell uname -rmo)
 else
 OS_INFO := iOS
@@ -86,9 +116,15 @@ VERSION_TAG := $(shell git describe --always --tags --abbrev=0)
 COMMIT_HASH := $(shell git rev-parse --short HEAD)
 
 BIN_DIR := bin
+ifeq ($(WASM_TARGET),wasm)
+BIN_DIR := bin/wasm
+endif
 OBJ_DIR := $(BIN_DIR)/obj
 
 BIN      := $(BIN_DIR)/armsx
+ifeq ($(WASM_TARGET),wasm)
+BIN      := $(BIN_DIR)/armsx.html
+endif
 SHARED_BIN := $(BIN_DIR)/libarmsx$(SHARED_EXT)
 
 IMGUI_DIR := third_party/imgui
@@ -130,11 +166,13 @@ endif
 SDL_LIBS := $(if $(filter 1,$(SDL_STATIC)),$(SDL_LIBS_STATIC),$(SDL_LIBS_DYNAMIC))
 SDL_LIBS_SHARED := $(SDL_LIBS_DYNAMIC)
 
-.PHONY: all clean shared
+.PHONY: all clean shared wasm
 
 all: $(BIN)
 
 shared: $(SHARED_BIN)
+
+wasm: $(BIN)
 
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
@@ -159,7 +197,7 @@ $(OBJ_DIR)/%.o: %.cpp | $(OBJ_DIR)
 		-DREP_COMMIT_HASH="$(COMMIT_HASH)"
 
 $(BIN): $(ALL_OBJS) | $(BIN_DIR)
-	$(CXX) $(ALL_OBJS) -o $(BIN) $(SDL_LIBS)
+	$(CXX) $(ALL_OBJS) -o $(BIN) $(SDL_LIBS) $(WASM_LDFLAGS)
 
 $(SHARED_BIN): $(ALL_OBJS_SHARED) | $(BIN_DIR)
 	$(CXX) $(SHARED_LDFLAGS) $(ALL_OBJS_SHARED) -o $(SHARED_BIN) $(SDL_LIBS_SHARED)

@@ -46,6 +46,8 @@ typedef struct {
     SDL_AudioDeviceID audio_dev;
 
     SDL_GameController* controller;
+    int trigger_left_down;
+    int trigger_right_down;
 } psxe_screen_t;
 
 psxe_screen_t* psxe_screen_create(void);

@@ -4,6 +4,12 @@
 #include "../psx/dev/cdrom/cdrom.h"
 
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 #include "screen.h"
 #include "config.h"
 #include "imgui_layer.h"
@@ -32,7 +38,97 @@ void audio_update(void* ud, uint8_t* buf, int size) {
     }
 }
 
+static int psxe_finish_run(psx_t* psx, psxe_screen_t* screen, SDL_AudioDeviceID dev) {
+    if (dev) {
+        SDL_PauseAudioDevice(dev, 1);
+    }
+
+    psx_cpu_t* cpu = psx_get_cpu(psx);
+
+    log_set_quiet(0);
+
+    log_fatal("r0=%08x at=%08x v0=%08x v1=%08x", cpu->r[0] , cpu->r[1] , cpu->r[2] , cpu->r[3] );
+    log_fatal("a0=%08x a1=%08x a2=%08x a3=%08x", cpu->r[4] , cpu->r[5] , cpu->r[6] , cpu->r[7] );
+    log_fatal("t0=%08x t1=%08x t2=%08x t3=%08x", cpu->r[8] , cpu->r[9] , cpu->r[10], cpu->r[11]);
+    log_fatal("t4=%08x t5=%08x t6=%08x t7=%08x", cpu->r[12], cpu->r[13], cpu->r[14], cpu->r[15]);
+    log_fatal("s0=%08x s1=%08x s2=%08x s3=%08x", cpu->r[16], cpu->r[17], cpu->r[18], cpu->r[19]);
+    log_fatal("s4=%08x s5=%08x s6=%08x s7=%08x", cpu->r[20], cpu->r[21], cpu->r[22], cpu->r[23]);
+    log_fatal("t8=%08x t9=%08x k0=%08x k1=%08x", cpu->r[24], cpu->r[25], cpu->r[26], cpu->r[27]);
+    log_fatal("gp=%08x sp=%08x fp=%08x ra=%08x", cpu->r[28], cpu->r[29], cpu->r[30], cpu->r[31]);
+    log_fatal("pc=%08x hi=%08x lo=%08x ep=%08x", cpu->pc, cpu->hi, cpu->lo, cpu->cop0_r[COP0_EPC]);
+
+    psx_pad_detach_joy(psx->pad, 0);
+    psx_destroy(psx);
+    psxe_screen_destroy(screen);
+
+    return 0;
+}
+
+#ifdef __EMSCRIPTEN__
+typedef struct psxe_wasm_loop_s {
+    psx_t* psx;
+    psxe_screen_t* screen;
+    SDL_AudioDeviceID audio_dev;
+} psxe_wasm_loop_t;
+
+static void psxe_wasm_loop(void* data) {
+    psxe_wasm_loop_t* loop = (psxe_wasm_loop_t*)data;
+
+    if (!loop || !loop->psx || !loop->screen) {
+        emscripten_cancel_main_loop();
+        return;
+    }
+
+    if (!psxe_screen_is_open(loop->screen)) {
+        psxe_finish_run(loop->psx, loop->screen, loop->audio_dev);
+        free(loop);
+        emscripten_cancel_main_loop();
+        return;
+    }
+
+    if (loop->screen->paused) {
+        psxe_screen_update(loop->screen);
+    } else {
+        psx_update(loop->psx);
+    }
+}
+
+static psxe_wasm_loop_t* g_psxe_wasm_loop_state = NULL;
+
+static void psxe_wasm_loop_dispatch(void* data) {
+    (void)data;
+    if (g_psxe_wasm_loop_state) {
+        psxe_wasm_loop(g_psxe_wasm_loop_state);
+    }
+}
+#endif
+
+static const char* psxe_data_path(const char* base, const char* leaf, char** cache) {
+    if (!leaf)
+        return NULL;
+
+    if (base && cache && !*cache) {
+        size_t len = strlen(base) + strlen(leaf) + 1;
+        *cache = (char*)malloc(len);
+
+        if (*cache)
+            snprintf(*cache, len, "%s%s", base, leaf);
+    }
+
+    if (cache && *cache)
+        return *cache;
+
+    return leaf;
+}
+
 int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* external_renderer) {
+#ifdef __EMSCRIPTEN__
+    static int wasm_loop_installed = 0;
+    if (!wasm_loop_installed) {
+        emscripten_set_main_loop_arg(psxe_wasm_loop_dispatch, NULL, 0, 1);
+        wasm_loop_installed = 1;
+    }
+#endif
     if (!cfg) {
         log_fatal("psxe_run_configured received null config");
         return 1;
@@ -102,7 +198,7 @@ int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* externa
 
     SDL_Init(SDL_INIT_AUDIO);
 
-    SDL_AudioDeviceID dev;
+    SDL_AudioDeviceID dev = 0;
     SDL_AudioSpec obtained, desired;
 
     desired.freq     = 44100;
@@ -138,9 +234,15 @@ int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* externa
     psxi_sda_init(controller, SDA_MODEL_DIGITAL);
     psxi_sda_init_input(controller, input);
 
+    static char* mcd1_path = NULL;
+    static char* mcd2_path = NULL;
+    const char* pref_base = psxe_cfg_get_pref_path();
+    const char* slot1_path = psxe_data_path(pref_base, "slot1.mcd", &mcd1_path);
+    const char* slot2_path = psxe_data_path(pref_base, "slot2.mcd", &mcd2_path);
+
     psx_pad_attach_joy(psx->pad, 0, input);
-    psx_pad_attach_mcd(psx->pad, 0, "slot1.mcd");
-    psx_pad_attach_mcd(psx->pad, 1, "slot2.mcd");
+    psx_pad_attach_mcd(psx->pad, 0, slot1_path);
+    psx_pad_attach_mcd(psx->pad, 1, slot2_path);
 
     if (cfg->exe) {
         while (psx->cpu->pc != 0x80030000)
@@ -151,6 +253,21 @@ int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* externa
 
     psxe_cfg_destroy(cfg);
 
+#ifdef __EMSCRIPTEN__
+    psxe_wasm_loop_t* loop = (psxe_wasm_loop_t*)calloc(1, sizeof(psxe_wasm_loop_t));
+
+    if (!loop) {
+        log_fatal("Failed to allocate WASM loop state");
+        return 1;
+    }
+
+    loop->psx = psx;
+    loop->screen = screen;
+    loop->audio_dev = dev;
+
+    g_psxe_wasm_loop_state = loop;
+    return 0;
+#else
     while (psxe_screen_is_open(screen)) {
         if (screen->paused) {
             psxe_screen_update(screen);
@@ -160,27 +277,8 @@ int psxe_run_configured(psxe_config_t* cfg, void* external_window, void* externa
         }
     }
 
-    SDL_PauseAudioDevice(dev, 1);
-
-    psx_cpu_t* cpu = psx_get_cpu(psx);
-
-    log_set_quiet(0);
-
-    log_fatal("r0=%08x at=%08x v0=%08x v1=%08x", cpu->r[0] , cpu->r[1] , cpu->r[2] , cpu->r[3] );
-    log_fatal("a0=%08x a1=%08x a2=%08x a3=%08x", cpu->r[4] , cpu->r[5] , cpu->r[6] , cpu->r[7] );
-    log_fatal("t0=%08x t1=%08x t2=%08x t3=%08x", cpu->r[8] , cpu->r[9] , cpu->r[10], cpu->r[11]);
-    log_fatal("t4=%08x t5=%08x t6=%08x t7=%08x", cpu->r[12], cpu->r[13], cpu->r[14], cpu->r[15]);
-    log_fatal("s0=%08x s1=%08x s2=%08x s3=%08x", cpu->r[16], cpu->r[17], cpu->r[18], cpu->r[19]);
-    log_fatal("s4=%08x s5=%08x s6=%08x s7=%08x", cpu->r[20], cpu->r[21], cpu->r[22], cpu->r[23]);
-    log_fatal("t8=%08x t9=%08x k0=%08x k1=%08x", cpu->r[24], cpu->r[25], cpu->r[26], cpu->r[27]);
-    log_fatal("gp=%08x sp=%08x fp=%08x ra=%08x", cpu->r[28], cpu->r[29], cpu->r[30], cpu->r[31]);
-    log_fatal("pc=%08x hi=%08x lo=%08x ep=%08x", cpu->pc, cpu->hi, cpu->lo, cpu->cop0_r[COP0_EPC]);
-
-    psx_pad_detach_joy(psx->pad, 0);
-    psx_destroy(psx);
-    psxe_screen_destroy(screen);
-
-    return 0;
+    return psxe_finish_run(psx, screen, dev);
+#endif
 }
 
 int psxe_run(int argc, const char* argv[], void* external_window, void* external_renderer) {
