@@ -1,8 +1,15 @@
 - restore memory card
 - add WASM target
 - add Android target
-- add full screen ui imgui with IMGUI_TV_FRONTEND
-- finish RN/SwiftUI/appkit/xml for mobile devices with on screen controls
-- add save states 
+- add full screen ui imgui with IMGUI_TV_FRONTEND optimized for controllers (heavily inspired by PCSX2 Full Screen UI)
+- finish RN/SwiftUI/appkit/xml for mobile devices with on screen controls (Probably RN brownfield at version 0.76 for android and ios)
+- add save states
 - finish the imgui frontend on PCs
 - finish the UWP target 
+- finish the vita target
+- add the switch target
+- fix bash build.sh failing to add static SDL to the exes 
+- refactor controller support to be more generic and working across everything
+- use sdl pref path across exe/dll mode for a more consistent settings.toml generation and path handling
+- add discord game SDK for PC platforms and social SDK for mobile ones 
+- add retroachievements integration
