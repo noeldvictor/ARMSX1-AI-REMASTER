@@ -19,6 +19,47 @@ targets:
         optional: true
       - path: ../../icon.icon
         optional: true
+    preBuildScripts:
+      - name: "Bundle React Native overlay"
+        shell: /bin/sh
+        script: |
+          set -euo pipefail
+          NODE_CANDIDATES=(
+            "${NODE_BINARY:-}"
+            "$(command -v node 2>/dev/null || true)"
+            "/opt/homebrew/bin/node"
+            "/usr/local/bin/node"
+            "/usr/bin/node"
+            "/usr/bin/env node"
+          )
+
+          for candidate in "${NODE_CANDIDATES[@]}"; do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              export NODE_BINARY="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "${NODE_BINARY:-}" ]; then
+            echo "error: Unable to locate node. Set NODE_BINARY to your node path (e.g. $(which node))." >&2
+            exit 1
+          fi
+          export RCT_METRO_PORT=${RCT_METRO_PORT:-8081}
+          export PROJECT_ROOT="$PROJECT_DIR/../../mobile"
+          cd "$PROJECT_ROOT/.."
+
+          if [ ! -f "$PROJECT_ROOT/../node_modules/react-native/scripts/react-native-xcode.sh" ]; then
+            echo "error: react-native-xcode.sh missing. Did you run npm install?" >&2
+            exit 1
+          fi
+
+          export ENTRY_FILE="index.js"
+          export BUNDLE_OUTPUT="$CONFIGURATION_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/main.jsbundle"
+          export ASSETS_DEST="$CONFIGURATION_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          export DEV=false
+
+          "$PROJECT_ROOT/../node_modules/react-native/scripts/react-native-xcode.sh"
+        basedOnDependencyAnalysis: false
     settings:
       INFOPLIST_FILE: Sources/Info.plist
       PRODUCT_BUNDLE_IDENTIFIER: com.nanodata.armsx
@@ -42,3 +83,8 @@ targets:
       - framework: ../Frameworks/libarmsx.dylib
         embed: true
         codeSign: true
+schemes:
+  ARMSX:
+    build:
+      targets:
+        ARMSX: all

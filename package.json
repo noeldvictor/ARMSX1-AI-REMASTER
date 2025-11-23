@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "react-native start --projectRoot mobile",
+    "start": "react-native start --projectRoot mobile --host 0.0.0.0 --port 8081",
     "ios": "react-native run-ios --project-path ios/HostApp",
     "bundle:ios": "react-native bundle --platform ios --dev false --entry-file mobile/index.js --bundle-output ios/HostApp/main.jsbundle --assets-dest ios/HostApp"
   },

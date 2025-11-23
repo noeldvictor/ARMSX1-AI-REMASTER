@@ -268,17 +268,31 @@ static bool write_settings_file(
     return true;
 }
 
+static std::string get_current_directory() {
+    char buf[PATH_MAX];
+    if (getcwd(buf, sizeof(buf)))
+        return std::string(buf);
+    return std::string(".");
+}
+
 struct FilePickerState {
     bool open = false;
     std::string cwd;
     std::string selection;
 };
 
-static std::string get_current_directory() {
-    char buf[PATH_MAX];
-    if (getcwd(buf, sizeof(buf)))
-        return std::string(buf);
-    return std::string(".");
+static std::string get_pref_directory() {
+    const char* pref = psxe_cfg_get_pref_path();
+    if (pref && pref[0])
+        return std::string(pref);
+    return get_current_directory();
+}
+
+static std::string default_settings_path() {
+    const char* pref = psxe_cfg_get_pref_path();
+    if (pref && pref[0])
+        return std::string(pref) + "settings.toml";
+    return std::string("settings.toml");
 }
 
 static bool is_directory(const std::string& path) {
@@ -321,7 +335,7 @@ static bool file_picker_popup(const char* popup_id, FilePickerState& state, std:
     ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Appearing);
     if (ImGui::BeginPopupModal(popup_id, nullptr, ImGuiWindowFlags_NoResize)) {
         if (state.cwd.empty())
-            state.cwd = get_current_directory();
+            state.cwd = get_pref_directory();
 
         ImGui::TextWrapped("Current folder:\n%s", state.cwd.c_str());
 
@@ -420,7 +434,7 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
     std::string exe_path = cfg->exe ? cfg->exe : "";
     std::string region = cfg->region ? cfg->region : "ntsc";
     std::string model = cfg->model ? cfg->model : "scph1001";
-    std::string settings_path = cfg->settings_path ? cfg->settings_path : "settings.toml";
+    std::string settings_path = cfg->settings_path ? cfg->settings_path : default_settings_path();
     std::string bios_search = cfg->bios_search ? cfg->bios_search : "bios";
     bool quiet = cfg->quiet != 0;
     bool use_args = cfg->use_args != 0;
@@ -491,8 +505,6 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
     bool start_requested = false;
     bool show_settings = false;
     bool show_about = false;
-    bool show_bios_popup = false;
-    bool show_cd_popup = false;
     FilePickerState bios_picker{};
     FilePickerState cd_picker{};
 
@@ -545,11 +557,7 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
 #else
                     bios_picker.open = true;
                     bios_picker.selection.clear();
-                    bios_picker.cwd.clear();
-                    show_bios_popup = true;
-                    show_cd_popup = false;
-                    show_settings = false;
-                    show_about = false;
+                    bios_picker.cwd = get_pref_directory();
 #endif
                 }
                 if (ImGui::MenuItem("Load CDROM")) {
@@ -558,11 +566,7 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
 #else
                     cd_picker.open = true;
                     cd_picker.selection.clear();
-                    cd_picker.cwd.clear();
-                    show_cd_popup = true;
-                    show_bios_popup = false;
-                    show_settings = false;
-                    show_about = false;
+                    cd_picker.cwd = get_pref_directory();
 #endif
                 }
                 ImGui::Separator();
@@ -575,129 +579,42 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
             if (ImGui::MenuItem("Settings")) {
                 show_settings = true;
                 show_about = false;
-                show_bios_popup = false;
-                show_cd_popup = false;
             }
 
             if (ImGui::MenuItem("About")) {
                 show_about = true;
                 show_settings = false;
-                show_bios_popup = false;
-                show_cd_popup = false;
             }
 
             ImGui::EndMenuBar();
         }
         ImGui::End();
 
-        if (show_bios_popup || bios_picker.open
-#ifdef __EMSCRIPTEN__
-            || !g_wasm_pending_bios.empty()
-#endif
-        ) {
-            if (show_bios_popup)
-                ImGui::OpenPopup("Load BIOS");
-
-            ImGui::SetNextWindowSize(ImVec2(420.0f, 210.0f), ImGuiCond_Appearing);
-            if (ImGui::BeginPopupModal("Load BIOS", &show_bios_popup, ImGuiWindowFlags_NoResize)) {
-                if (ImGui::InputText("Path", bios_buf.data(), bios_buf.size())) {
-                    bios_path = bios_buf.data();
-                }
-#ifndef __EMSCRIPTEN__
-                if (ImGui::Button("Browse...")) {
-                    bios_picker.open = true;
-                }
-#else
-                if (ImGui::Button("Browse...")) {
-                    psxe_wasm_pick_file(1);
-                }
-#endif
-                ImGui::SameLine();
-                if (ImGui::Button("Use BIOS")) {
-                    bios_path = bios_buf.data();
-                    settings_dirty = true;
-                    show_bios_popup = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Close")) {
-                    show_bios_popup = false;
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::Separator();
-                ImGui::TextWrapped("Select a BIOS file to override the default search/model.");
-                ImGui::EndPopup();
-            }
-
-            if (file_picker_popup("Browse BIOS File", bios_picker, bios_path)) {
-                sync_buffer(bios_buf, bios_path);
-                show_bios_popup = false;
-                settings_dirty = true;
-            }
-#ifdef __EMSCRIPTEN__
-            if (!g_wasm_pending_bios.empty()) {
-                bios_path = g_wasm_pending_bios;
-                sync_buffer(bios_buf, bios_path);
-                show_bios_popup = false;
-                settings_dirty = true;
-                g_wasm_pending_bios.clear();
-            }
-#endif
+        ImGui::SetNextWindowSize(ImVec2(420.0f, 210.0f), ImGuiCond_Appearing);
+        if (file_picker_popup("Browse BIOS File", bios_picker, bios_path)) {
+            sync_buffer(bios_buf, bios_path);
+            settings_dirty = true;
         }
-
-        if (show_cd_popup || cd_picker.open
 #ifdef __EMSCRIPTEN__
-            || !g_wasm_pending_cd.empty()
-#endif
-        ) {
-            if (show_cd_popup)
-                ImGui::OpenPopup("Load CDROM");
-
-            ImGui::SetNextWindowSize(ImVec2(420.0f, 210.0f), ImGuiCond_Appearing);
-            if (ImGui::BeginPopupModal("Load CDROM", &show_cd_popup, ImGuiWindowFlags_NoResize)) {
-                if (ImGui::InputText("Path", cdrom_buf.data(), cdrom_buf.size())) {
-                    cdrom_path = cdrom_buf.data();
-                }
-#ifndef __EMSCRIPTEN__
-                if (ImGui::Button("Browse...")) {
-                    cd_picker.open = true;
-                }
-#else
-                if (ImGui::Button("Browse...")) {
-                    psxe_wasm_pick_file(0);
-                }
-#endif
-                ImGui::SameLine();
-                if (ImGui::Button("Use CDROM")) {
-                    cdrom_path = cdrom_buf.data();
-                    show_cd_popup = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Close")) {
-                    show_cd_popup = false;
-                    ImGui::CloseCurrentPopup();
-                }
-
-                ImGui::Separator();
-                ImGui::TextWrapped("Choose a CDROM image to boot.");
-                ImGui::EndPopup();
-            }
-
-            if (file_picker_popup("Browse CDROM File", cd_picker, cdrom_path)) {
-                sync_buffer(cdrom_buf, cdrom_path);
-                show_cd_popup = false;
-            }
-#ifdef __EMSCRIPTEN__
-            if (!g_wasm_pending_cd.empty()) {
-                cdrom_path = g_wasm_pending_cd;
-                sync_buffer(cdrom_buf, cdrom_path);
-                show_cd_popup = false;
-                g_wasm_pending_cd.clear();
-            }
-#endif
+        if (!g_wasm_pending_bios.empty()) {
+            bios_path = g_wasm_pending_bios;
+            sync_buffer(bios_buf, bios_path);
+            settings_dirty = true;
+            g_wasm_pending_bios.clear();
         }
+#endif
+
+        ImGui::SetNextWindowSize(ImVec2(420.0f, 210.0f), ImGuiCond_Appearing);
+        if (file_picker_popup("Browse CDROM File", cd_picker, cdrom_path)) {
+            sync_buffer(cdrom_buf, cdrom_path);
+        }
+#ifdef __EMSCRIPTEN__
+        if (!g_wasm_pending_cd.empty()) {
+            cdrom_path = g_wasm_pending_cd;
+            sync_buffer(cdrom_buf, cdrom_path);
+            g_wasm_pending_cd.clear();
+        }
+#endif
 
         if (show_settings) {
             center_next_window(ImVec2(392.0f, 448.0f));
@@ -817,7 +734,9 @@ extern "C" PSXE_API int imgui_frontend_main(int argc, const char* argv[]) {
 
         ImGui::Render();
 
-        if (settings_dirty && !settings_path.empty()) {
+        if (settings_dirty) {
+            if (settings_path.empty())
+                settings_path = default_settings_path();
             write_settings_file(
                 settings_path,
                 bios_search,
@@ -910,7 +829,7 @@ extern "C" PSXE_API void imgui_ingame_menu_render(int paused, const char* curren
                 if (ImGui::MenuItem("Load CDROM...")) {
                     g_ingame_cd_picker.open = true;
                     g_ingame_cd_picker.selection.clear();
-                    g_ingame_cd_picker.cwd.clear();
+                    g_ingame_cd_picker.cwd = get_pref_directory();
                 }
                 if (ImGui::MenuItem("Quit")) {
                     actions->quit = 1;

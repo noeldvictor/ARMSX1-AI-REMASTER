@@ -2,6 +2,7 @@ package com.nanodata.armsx;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -36,10 +37,27 @@ public class ARMSXModule extends ReactContextBaseJavaModule {
             return;
         }
 
+        forceLandscapeInternal(host);
+
         Intent intent = new Intent(host, EmulatorActivity.class);
         intent.putExtra(EmulatorActivity.EXTRA_NATIVE_ARGS, readableArrayToStrings(args));
         host.startActivity(intent);
         promise.resolve(true);
+    }
+
+    @ReactMethod
+    public void forceLandscape(Promise promise) {
+        Activity host = getCurrentActivity();
+        if (host == null) {
+            promise.reject("no_activity", "Activity not available");
+            return;
+        }
+        forceLandscapeInternal(host);
+        promise.resolve(true);
+    }
+
+    private void forceLandscapeInternal(@NonNull Activity host) {
+        host.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     private @Nullable String[] readableArrayToStrings(@Nullable ReadableArray array) {

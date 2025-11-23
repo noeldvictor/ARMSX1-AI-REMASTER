@@ -34,3 +34,6 @@ ios/HostApp/build/*
 helpers/*
 android/app/src/main/jniLibs/
 android/native-deps/
+mobile/temp/*
+ios/HostApp/ARMSX.xcodeproj/
+ios/HostApp/ARMSX.xcworkspace/

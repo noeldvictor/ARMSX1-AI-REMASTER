@@ -23,7 +23,17 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor blackColor];
+    self.view.frame = [UIScreen mainScreen].bounds;
+    self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self mountOverlayIfNeeded];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    self.view.frame = [UIScreen mainScreen].bounds;
+    if (self.rootView) {
+        self.rootView.frame = self.view.bounds;
+    }
 }
 
 - (void)mountOverlayIfNeeded {
@@ -39,10 +49,16 @@
     }
 
     RCTRootView *rootView = [[RCTRootView alloc] initWithBridge:self.bridge moduleName:@"ARMSXOverlay" initialProperties:nil];
-    rootView.frame = self.view.bounds;
-    rootView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     rootView.backgroundColor = [UIColor blackColor];
+    rootView.sizeFlexibility = RCTRootViewSizeFlexibilityNone;
+    rootView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:rootView];
+    [NSLayoutConstraint activateConstraints:@[
+        [rootView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [rootView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [rootView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [rootView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+    ]];
     self.rootView = rootView;
 }
 
@@ -59,7 +75,8 @@
 #if DEBUG
     return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
 #else
-    return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+    NSURL *bundleURL = [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+    return bundleURL ?: [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
 #endif
 }
 
