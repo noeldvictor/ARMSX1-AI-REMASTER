@@ -32,7 +32,11 @@ static void psx_mcd_ensure_parent(const char* path) {
     if (stat(tmp, &st) == 0)
         return;
 
+#ifdef _WIN32
+    _mkdir(tmp);
+#else
     mkdir(tmp, 0755);
+#endif
 }
 
 psx_mcd_t* psx_mcd_create(void) {
