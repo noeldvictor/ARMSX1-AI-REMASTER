@@ -32,3 +32,5 @@ node_modules
 ios/HostApp/Pods/*
 ios/HostApp/build/*
 helpers/*
+android/app/src/main/jniLibs/
+android/native-deps/

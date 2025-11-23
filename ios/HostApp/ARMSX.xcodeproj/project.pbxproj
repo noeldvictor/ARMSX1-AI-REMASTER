@@ -7,16 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1085901F2ED1CE5200D77FB1 /* bios.bin in Resources */ = {isa = PBXBuildFile; fileRef = 1085901E2ED1CE5200D77FB1 /* bios.bin */; };
+		0F9A2930A40B75845584BE6B /* RNOverlayController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0D4D51B594CEA0DA332E5D3E /* RNOverlayController.mm */; };
 		3464725A44F4A69FBE2AB974 /* libarmsx.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 653A133BDB61BD1059CFAF23 /* libarmsx.dylib */; };
 		3A83F5253BCB4AD47A6742B1 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F686B87C80EB4D3204CDEEC0 /* main.m */; };
+		4193FB5FD92D4849FE747E3C /* libPods-ARMSX.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6AC80B70529AD04509472C06 /* libPods-ARMSX.a */; };
 		48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; };
 		5480B78F3661F4CB9446657C /* libarmsx.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 653A133BDB61BD1059CFAF23 /* libarmsx.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		8BC157B9E48AA3D81793AA6A /* ARMSXModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B35E8D4127C001F1E6F6F2AF /* ARMSXModule.m */; };
 		B16F42A290ECFF7DF154F24F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9484FEBF96C002F04D73B70C /* AppDelegate.mm */; };
-		CB535A71335895F3B1AFB7E3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EB192CCB1425D7B15B24E93A /* PrivacyInfo.xcprivacy */; };
-		EFAA42EF186BC1A6B4315DDF /* libPods-ARMSX.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B15244F288D2AB7C06E0752A /* libPods-ARMSX.a */; };
+		D01D643FB3D4148C346B6200 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 150B82E62E95502476AFB049 /* PrivacyInfo.xcprivacy */; };
+		E46372898534C89975BD3888 /* EmulatorRunner.mm in Sources */ = {isa = PBXBuildFile; fileRef = 6CFA7D190974AD439774FB40 /* EmulatorRunner.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -36,21 +37,24 @@
 
 /* Begin PBXFileReference section */
 		019479875FC7433ACB65A02E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		1085901E2ED1CE5200D77FB1 /* bios.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = bios.bin; path = ../../bios.bin; sourceTree = "<group>"; };
+		03BD4A1BC72E3DE47140D96E /* EmulatorRunner.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EmulatorRunner.h; sourceTree = "<group>"; };
+		0D4D51B594CEA0DA332E5D3E /* RNOverlayController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RNOverlayController.mm; sourceTree = "<group>"; };
+		150B82E62E95502476AFB049 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		1760EE6722F9E2BEDFDCCC6D /* armsx_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = armsx_bridge.h; sourceTree = "<group>"; };
+		2EC8F1F7ACC46D5FABC3595C /* Pods-ARMSX.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ARMSX.release.xcconfig"; path = "Target Support Files/Pods-ARMSX/Pods-ARMSX.release.xcconfig"; sourceTree = "<group>"; };
 		518B2258235B15B15373B04A /* SDL2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL2.xcframework; path = ../Frameworks/SDL2.xcframework; sourceTree = "<group>"; };
 		64E02E161FEB892FC40F8BE1 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		653A133BDB61BD1059CFAF23 /* libarmsx.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libarmsx.dylib; path = ../Frameworks/libarmsx.dylib; sourceTree = "<group>"; };
-		67F12B2E9A249BA431A15C7C /* Pods-ARMSX.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ARMSX.debug.xcconfig"; path = "Target Support Files/Pods-ARMSX/Pods-ARMSX.debug.xcconfig"; sourceTree = "<group>"; };
+		6AC80B70529AD04509472C06 /* libPods-ARMSX.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ARMSX.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6CFA7D190974AD439774FB40 /* EmulatorRunner.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = EmulatorRunner.mm; sourceTree = "<group>"; };
 		6E26D0ECD2CD966E5EA1C326 /* Pods-ARMSX.release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Pods-ARMSX.release.xcconfig"; sourceTree = "<group>"; };
 		87BA3EE4597141AA97A5557D /* ARMSX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARMSX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9484FEBF96C002F04D73B70C /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
 		996CB57F5DD4B88A0931BB95 /* ARMSXModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ARMSXModule.h; sourceTree = "<group>"; };
-		B15244F288D2AB7C06E0752A /* libPods-ARMSX.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ARMSX.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B35E8D4127C001F1E6F6F2AF /* ARMSXModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ARMSXModule.m; sourceTree = "<group>"; };
+		C65B43834B690E6C938FFCEB /* Pods-ARMSX.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ARMSX.debug.xcconfig"; path = "Target Support Files/Pods-ARMSX/Pods-ARMSX.debug.xcconfig"; sourceTree = "<group>"; };
+		D5E6D32A2F0405EA658F4F9F /* RNOverlayController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RNOverlayController.h; sourceTree = "<group>"; };
 		E3FAF87D7E4A2345FC43CA68 /* Pods-ARMSX.debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Pods-ARMSX.debug.xcconfig"; sourceTree = "<group>"; };
-		EB192CCB1425D7B15B24E93A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		F150862C7055ADDBB5B57CF1 /* Pods-ARMSX.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ARMSX.release.xcconfig"; path = "Target Support Files/Pods-ARMSX/Pods-ARMSX.release.xcconfig"; sourceTree = "<group>"; };
 		F686B87C80EB4D3204CDEEC0 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -61,7 +65,7 @@
 			files = (
 				48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */,
 				3464725A44F4A69FBE2AB974 /* libarmsx.dylib in Frameworks */,
-				EFAA42EF186BC1A6B4315DDF /* libPods-ARMSX.a in Frameworks */,
+				4193FB5FD92D4849FE747E3C /* libPods-ARMSX.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -73,7 +77,7 @@
 			children = (
 				653A133BDB61BD1059CFAF23 /* libarmsx.dylib */,
 				518B2258235B15B15373B04A /* SDL2.xcframework */,
-				B15244F288D2AB7C06E0752A /* libPods-ARMSX.a */,
+				6AC80B70529AD04509472C06 /* libPods-ARMSX.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -81,13 +85,12 @@
 		48D57A41DAF59CF0D443A086 = {
 			isa = PBXGroup;
 			children = (
-				1085901E2ED1CE5200D77FB1 /* bios.bin */,
 				B6E3FD0B464E641CA58C9EA3 /* Pods-ARMSX */,
 				D0581165A1AB8CE875BD92E0 /* Sources */,
 				473DBC863A1B097C0DD3710F /* Frameworks */,
 				9B7D6BDFE7232B2E5D8A379F /* Products */,
-				EB192CCB1425D7B15B24E93A /* PrivacyInfo.xcprivacy */,
-				A221D24E0608A650E479FF55 /* Pods */,
+				150B82E62E95502476AFB049 /* PrivacyInfo.xcprivacy */,
+				A03BFBC5506510D43087F66D /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -99,12 +102,13 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A221D24E0608A650E479FF55 /* Pods */ = {
+		A03BFBC5506510D43087F66D /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				67F12B2E9A249BA431A15C7C /* Pods-ARMSX.debug.xcconfig */,
-				F150862C7055ADDBB5B57CF1 /* Pods-ARMSX.release.xcconfig */,
+				C65B43834B690E6C938FFCEB /* Pods-ARMSX.debug.xcconfig */,
+				2EC8F1F7ACC46D5FABC3595C /* Pods-ARMSX.release.xcconfig */,
 			);
+			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -126,8 +130,12 @@
 				1760EE6722F9E2BEDFDCCC6D /* armsx_bridge.h */,
 				996CB57F5DD4B88A0931BB95 /* ARMSXModule.h */,
 				B35E8D4127C001F1E6F6F2AF /* ARMSXModule.m */,
+				03BD4A1BC72E3DE47140D96E /* EmulatorRunner.h */,
+				6CFA7D190974AD439774FB40 /* EmulatorRunner.mm */,
 				019479875FC7433ACB65A02E /* Info.plist */,
 				F686B87C80EB4D3204CDEEC0 /* main.m */,
+				D5E6D32A2F0405EA658F4F9F /* RNOverlayController.h */,
+				0D4D51B594CEA0DA332E5D3E /* RNOverlayController.mm */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -139,13 +147,13 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1A8EEE030E970E82EC7B77F8 /* Build configuration list for PBXNativeTarget "ARMSX" */;
 			buildPhases = (
-				EFC8122B20E4CF7480A3496D /* [CP] Check Pods Manifest.lock */,
+				317B2A99C6743282DB0B4378 /* [CP] Check Pods Manifest.lock */,
 				21709ABD74D1031F0389C4EC /* Sources */,
 				D6910F21954EF81975654CFA /* Frameworks */,
 				8F7F79E31569D7CF1ACBC707 /* Embed Frameworks */,
-				469D63DB0DB7A815B1CF8164 /* Resources */,
-				DBCAE27636921EA4F4D6F40B /* [CP] Embed Pods Frameworks */,
-				15CF2083A041D419876ECE72 /* [CP] Copy Pods Resources */,
+				CC0F3B60AB5121E52FB88488 /* Resources */,
+				A1F84CFC47166FD1D4F87D5C /* [CP] Embed Pods Frameworks */,
+				A2B4EFBBBDD2A4D81A6CEE13 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -185,53 +193,18 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		469D63DB0DB7A815B1CF8164 /* Resources */ = {
+		CC0F3B60AB5121E52FB88488 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1085901F2ED1CE5200D77FB1 /* bios.bin in Resources */,
-				CB535A71335895F3B1AFB7E3 /* PrivacyInfo.xcprivacy in Resources */,
+				D01D643FB3D4148C346B6200 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		15CF2083A041D419876ECE72 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Copy Pods Resources";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		DBCAE27636921EA4F4D6F40B /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		EFC8122B20E4CF7480A3496D /* [CP] Check Pods Manifest.lock */ = {
+		317B2A99C6743282DB0B4378 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +226,40 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		A1F84CFC47166FD1D4F87D5C /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A2B4EFBBBDD2A4D81A6CEE13 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -262,6 +269,8 @@
 			files = (
 				8BC157B9E48AA3D81793AA6A /* ARMSXModule.m in Sources */,
 				B16F42A290ECFF7DF154F24F /* AppDelegate.mm in Sources */,
+				E46372898534C89975BD3888 /* EmulatorRunner.mm in Sources */,
+				0F9A2930A40B75845584BE6B /* RNOverlayController.mm in Sources */,
 				3A83F5253BCB4AD47A6742B1 /* main.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -271,7 +280,7 @@
 /* Begin XCBuildConfiguration section */
 		6C84D25B5BF8B28E170A1AC3 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 67F12B2E9A249BA431A15C7C /* Pods-ARMSX.debug.xcconfig */;
+			baseConfigurationReference = C65B43834B690E6C938FFCEB /* Pods-ARMSX.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -438,7 +447,7 @@
 		};
 		EA79FDBEDBB17F1B501A7D1A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F150862C7055ADDBB5B57CF1 /* Pods-ARMSX.release.xcconfig */;
+			baseConfigurationReference = 2EC8F1F7ACC46D5FABC3595C /* Pods-ARMSX.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
