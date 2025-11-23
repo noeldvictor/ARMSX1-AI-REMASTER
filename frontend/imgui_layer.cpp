@@ -313,8 +313,12 @@ static bool list_directory(const std::string& cwd, std::vector<std::pair<std::st
         if (name == ".")
             continue;
         // include .. for navigation
-        std::string full = cwd + "/" + name;
-        bool dir_flag = (dent->d_type == DT_DIR) || ((dent->d_type == DT_UNKNOWN) && is_directory(full));
+    std::string full = cwd + "/" + name;
+#if defined(_WIN32)
+    bool dir_flag = is_directory(full);
+#else
+    bool dir_flag = (dent->d_type == DT_DIR) || ((dent->d_type == DT_UNKNOWN) && is_directory(full));
+#endif
         entries.emplace_back(full, dir_flag);
     }
     closedir(dir);
