@@ -4,6 +4,7 @@
 
 #include "disc.h"
 #include "cue.h"
+#include "chd.h"
 #include "../../log.h"
 
 #define MSF_TO_LBA(m, s, f) ((m * 4500) + (s * 75) + f)
@@ -12,6 +13,7 @@ const char* disc_cd_extensions[] = {
     "cue",
     "bin",
     "iso",
+    "chd",
     0
 };
 
@@ -167,6 +169,26 @@ int psx_disc_open_as(psx_disc_t* disc, const char* path, int type) {
             disc->get_track_count = raw_get_track_count;
             disc->get_track_lba = raw_get_track_lba;
             disc->destroy = raw_destroy;
+        } break;
+
+        case CD_EXT_CHD: {
+            chd_t* chd = chd_create();
+
+            chd_init(chd);
+
+            if (chd_load(chd, path)) {
+                chd_destroy(chd);
+
+                return CDT_ERROR;
+            }
+
+            disc->udata = chd;
+            disc->read_sector = chd_read;
+            disc->query_sector = chd_query;
+            disc->get_track_number = chd_get_track_number;
+            disc->get_track_count = chd_get_track_count;
+            disc->get_track_lba = chd_get_track_lba;
+            disc->destroy = chd_destroy;
         } break;
 
         default:

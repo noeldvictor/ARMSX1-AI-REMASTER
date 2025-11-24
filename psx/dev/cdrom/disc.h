@@ -29,7 +29,7 @@ enum {
     CD_EXT_CUE = 0,
     CD_EXT_BIN,
     CD_EXT_ISO,
-    CD_EXT_RAW,
+    CD_EXT_CHD,
     CD_EXT_UNSUPPORTED
 };
 
