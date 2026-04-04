@@ -43,11 +43,18 @@ build_fsui_wasm() {
 }
 
 bundle_macos_app() {
-    mkdir -p armsx.app/Contents/MacOS/Libraries
-    cp bin/armsx armsx.app/Contents/MacOS
-    chmod 777 armsx.app/Contents/MacOS/armsx
-    dylibbundler -b -x ./armsx.app/Contents/MacOS/armsx -d ./armsx.app/Contents/Libraries/ -p @executable_path/../Libraries/ -cd
-    cp Info.plist armsx.app/Contents/Info.plist
+	    mkdir -p armsx.app/Contents/MacOS/Libraries
+	    mkdir -p armsx.app/Contents/Resources/icons
+	    cp bin/armsx armsx.app/Contents/MacOS
+	    cp -R icons/. armsx.app/Contents/Resources/icons/
+	    chmod 777 armsx.app/Contents/MacOS/armsx
+	    dylibbundler -b -x ./armsx.app/Contents/MacOS/armsx -d ./armsx.app/Contents/Libraries/ -p @executable_path/../Libraries/ -cd
+	    cp Info.plist armsx.app/Contents/Info.plist
+}
+
+stage_android_runtime_icons() {
+	    mkdir -p android/app/src/main/assets/icons
+	    cp -R icons/. android/app/src/main/assets/icons/
 }
 
 prepare_ios_sdl_package() {
@@ -118,7 +125,8 @@ elif [ "$MODE" = "shared" ]; then
     SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" make shared
 
 elif [ "$MODE" = "android" ]; then
-    ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-${NDK_HOME:-}}}"
+	    stage_android_runtime_icons
+	    ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-${NDK_HOME:-}}}"
     if [ -z "${ANDROID_NDK_ROOT}" ]; then
         echo "ANDROID_NDK_ROOT (or ANDROID_NDK_HOME / NDK_HOME) must be set to a valid NDK path."
         exit 1

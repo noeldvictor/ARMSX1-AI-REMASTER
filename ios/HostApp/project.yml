@@ -17,6 +17,8 @@ targets:
         optional: true
       - path: ../bios.bin
         optional: true
+      - path: ../../icons
+        optional: true
       - path: ../../icon.icon
         optional: true
     settings:

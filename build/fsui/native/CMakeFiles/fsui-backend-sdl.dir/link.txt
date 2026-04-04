@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfsui-backend-sdl.a "CMakeFiles/fsui-backend-sdl.dir/src/backend_sdl.cpp.o"
+/usr/bin/ranlib libfsui-backend-sdl.a

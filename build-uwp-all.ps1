@@ -31,6 +31,7 @@ $SDL2Lib = Join-Path $SDL2Root "lib"
 $SDL2Dll = Join-Path $SDL2Root "bin\SDL2.dll"
 $NativeStageDir = Join-Path $RepoRoot "uwp\deps\bin"
 $UwpOutputDir = Join-Path $RepoRoot ("uwp\ARMSX\bin\{0}\{1}" -f $Platform, $Configuration)
+$UwpIconsDir = Join-Path $UwpOutputDir "icons"
 $SolutionPath = Join-Path $RepoRoot "uwp\ARMSX.sln"
 
 if (!(Test-Path $SDL2Root)) {
@@ -53,7 +54,7 @@ if (-not $MsBuildCommand) {
     throw "Unable to locate MSBuild in PATH."
 }
 
-New-Item -ItemType Directory -Force -Path bin, $NativeStageDir, $UwpOutputDir | Out-Null
+New-Item -ItemType Directory -Force -Path bin, $NativeStageDir, $UwpOutputDir, $UwpIconsDir | Out-Null
 
 cmake -S third_party/fsui-lib -B $FsuiBuildDir -G "MinGW Makefiles" `
     -DFSUI_BUILD_SAMPLES=OFF `
@@ -74,6 +75,7 @@ cmake --build $FsuiBuildDir -j4
 Copy-Item -Path $SDL2Dll -Destination $NativeStageDir -Force
 Copy-Item -Path (Join-Path $RepoRoot "bin\libarmsx.dll") -Destination $UwpOutputDir -Force
 Copy-Item -Path $SDL2Dll -Destination $UwpOutputDir -Force
+Copy-Item -Path (Join-Path $RepoRoot "icons\*") -Destination $UwpIconsDir -Recurse -Force
 
 & $MsBuildCommand.Source $SolutionPath `
     /m `

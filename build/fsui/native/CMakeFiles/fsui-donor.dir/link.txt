@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfsui-donor.a "CMakeFiles/fsui-donor.dir/src/donor.cpp.o"
+/usr/bin/ranlib libfsui-donor.a

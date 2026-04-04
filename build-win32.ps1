@@ -18,6 +18,7 @@ if (!(Test-Path $SDL2_ROOT)) {
 }
 
 mkdir -Force -Path bin > $null
+mkdir -Force -Path "bin\icons" > $null
 
 cmake -S third_party/fsui-lib -B $FSUI_BUILD_DIR -G "MinGW Makefiles" `
     -DFSUI_BUILD_SAMPLES=OFF `
@@ -34,3 +35,4 @@ mingw32-make `
     SDL_LIBS_DYNAMIC="-L$SDL2_LIB -lSDL2 -lsetupapi -limm32 -lversion -lwinmm -lgdi32 -lole32 -loleaut32 -lshell32 -luuid -lopengl32"
 
 Copy-Item -Path "$($SDL2_DIR)\bin\SDL2.dll" -Destination "bin"
+Copy-Item -Path "icons\*" -Destination "bin\icons" -Recurse -Force

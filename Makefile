@@ -3,13 +3,13 @@
 WASM_TARGET := $(filter wasm,$(MAKECMDGOALS))
 
 ifeq ($(WASM_TARGET),wasm)
-CC := emcc
-CXX := em++
-SDL_STATIC := 0
-SDL_CFLAGS := -sUSE_SDL=2
-SDL_LIBS_DYNAMIC :=
-SDL_LIBS_STATIC :=
-WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sFULL_ES3=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sNO_EXIT_RUNTIME=0 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main","_psxe_wasm_on_file"]'
+	CC := emcc
+	CXX := em++
+	SDL_STATIC := 0
+	SDL_CFLAGS := -sUSE_SDL=2
+	SDL_LIBS_DYNAMIC :=
+	SDL_LIBS_STATIC :=
+	WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sFULL_ES3=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sNO_EXIT_RUNTIME=0 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main","_psxe_wasm_on_file"]' --preload-file icons@/icons
 endif
 
 SDL_CONFIG ?= sdl2-config
@@ -141,6 +141,8 @@ else ifeq ($(WINDOWS_TARGET),1)
 BIN      := $(BIN_DIR)/armsx.exe
 endif
 SHARED_BIN := $(BIN_DIR)/libarmsx$(SHARED_EXT)
+RUNTIME_ICON_SRC := icons/AppIconLarge.png
+RUNTIME_ICON_DEST := $(BIN_DIR)/icons/AppIconLarge.png
 
 C_SOURCES := $(wildcard psx/*.c) \
              $(wildcard psx/dev/*.c) \
@@ -236,7 +238,11 @@ $(OBJ_DIR)/%.o: %.cpp | $(OBJ_DIR)
 		-DREP_VERSION="$(VERSION_TAG)" \
 		-DREP_COMMIT_HASH="$(COMMIT_HASH)"
 
-$(BIN): $(ALL_OBJS) | $(BIN_DIR)
+$(RUNTIME_ICON_DEST): $(RUNTIME_ICON_SRC) | $(BIN_DIR)
+	mkdir -p $(dir $@)
+	cp $< $@
+
+$(BIN): $(ALL_OBJS) $(RUNTIME_ICON_DEST) | $(BIN_DIR)
 	$(CXX) $(ALL_OBJS) $(FSUI_LIBS) -o $(BIN) $(SDL_LIBS) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS) $(WASM_LDFLAGS)
 ifeq ($(WASM_TARGET),wasm)
 	cmake -DINPUT_FILE="$(BIN)" -P "$(WASM_HTML_POSTPROCESS)"

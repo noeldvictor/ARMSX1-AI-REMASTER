@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfsui-core.a "CMakeFiles/fsui-core.dir/src/backend.cpp.o" "CMakeFiles/fsui-core.dir/src/core.cpp.o" "CMakeFiles/fsui-core.dir/src/fsui/imgui_fullscreen.cpp.o"
+/usr/bin/ranlib libfsui-core.a

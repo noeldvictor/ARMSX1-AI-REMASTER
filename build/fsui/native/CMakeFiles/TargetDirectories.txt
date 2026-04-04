@@ -1,0 +1,17 @@
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui_glad.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui_resources.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui_imgui.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-core.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-platform-sdl2.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-renderer-opengl.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-renderer-sdl2.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-renderer-sdl2surface.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-renderer-metal.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-backend-sdl.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/fsui-donor.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/edit_cache.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles/rebuild_cache.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/third_party/cmrc/CMakeFiles/edit_cache.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/third_party/cmrc/CMakeFiles/rebuild_cache.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/third_party/glad/cmake/CMakeFiles/edit_cache.dir
+/Users/mohammed/Documents/ARMSX/build/fsui/native/third_party/glad/cmake/CMakeFiles/rebuild_cache.dir

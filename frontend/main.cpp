@@ -1815,7 +1815,7 @@ class ArmsxApp {
         context.window = window_;
         context.fonts = fonts;
         context.app_title = "ARMSX";
-        context.app_icon_path = "icons/AppIconLarge.png";
+        context.app_icon_path = ResolveFsuiAppIconPath();
         context.platform_backend = fsui::PlatformBackendKind::SDL2;
         context.renderer_backend = fsui::RendererBackend::SDLRenderer;
 

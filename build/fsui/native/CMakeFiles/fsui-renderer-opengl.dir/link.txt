@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfsui-renderer-opengl.a "CMakeFiles/fsui-renderer-opengl.dir/src/renderer_opengl.cpp.o" "CMakeFiles/fsui-renderer-opengl.dir/third_party/imgui/backends/imgui_impl_opengl3.cpp.o"
+/usr/bin/ranlib libfsui-renderer-opengl.a

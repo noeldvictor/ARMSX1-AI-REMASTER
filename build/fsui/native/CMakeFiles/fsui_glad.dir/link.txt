@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfsui_glad.a CMakeFiles/fsui_glad.dir/gladsources/fsui_glad/src/gl.c.o
+/usr/bin/ranlib libfsui_glad.a
