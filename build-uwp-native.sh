@@ -13,6 +13,8 @@ Builds the UWP/WinRT native DLL with MinGW, then stages:
 Environment overrides:
   BUILD_JOBS   Parallel build jobs (default: 4)
   SDL2_DIR     Override the SDL2 package path relative to repo root
+  SDL_SOURCE_BUILD=1
+               Force building SDL from third_party/SDL instead of probing the system
   MINGW_MAKE   Override the make command (default: mingw32-make, fallback: make)
 EOF
 }
@@ -48,15 +50,12 @@ case "$configuration" in
 esac
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-sdl2_dir="${SDL2_DIR:-$default_sdl2_dir}"
-sdl2_root="$repo_root/$sdl2_dir"
-sdl2_include="$sdl2_root/include/SDL2"
-sdl2_lib="$sdl2_root/lib"
-sdl2_dll="$sdl2_root/bin/SDL2.dll"
 fsui_build_dir="$repo_root/build/fsui/uwp-$platform"
 native_stage_dir="$repo_root/uwp/deps/bin"
 uwp_output_dir="$repo_root/uwp/ARMSX/bin/$platform/$configuration"
 uwp_icons_dir="$uwp_output_dir/icons"
+sdl_build_root="$repo_root/build/sdl/uwp-$platform"
+sdl_install_root="$sdl_build_root/install"
 
 make_cmd="${MINGW_MAKE:-mingw32-make}"
 if ! command -v "$make_cmd" >/dev/null 2>&1; then
@@ -72,9 +71,109 @@ if ! command -v cmake >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ ! -d "$sdl2_root" ]; then
-    echo "SDL2 dependency directory not found at $sdl2_root" >&2
-    exit 1
+find_sdl_dll_in_prefix() {
+    local prefix="$1"
+    local candidate=
+
+    for candidate in \
+        "$prefix/bin/SDL2.dll" \
+        "$prefix/bin/libSDL2.dll" \
+        "$prefix/lib/SDL2.dll" \
+        "$prefix/lib/libSDL2.dll"; do
+        if [ -f "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+sanitize_sdl_cflags() {
+    printf '%s\n' "$1" | sed 's/[[:space:]]-Dmain=SDL_main//g; s/^-Dmain=SDL_main[[:space:]]*//'
+}
+
+configure_sdl_from_prefix() {
+    local prefix="$1"
+    local include_dir=
+    local lib_dir=
+    local dll_path=
+
+    if [ -d "$prefix/include/SDL2" ]; then
+        include_dir="$prefix/include/SDL2"
+    elif [ -d "$prefix/include" ]; then
+        include_dir="$prefix/include"
+    else
+        return 1
+    fi
+
+    if [ -d "$prefix/lib" ]; then
+        lib_dir="$prefix/lib"
+    elif [ -d "$prefix/lib64" ]; then
+        lib_dir="$prefix/lib64"
+    else
+        return 1
+    fi
+
+    dll_path="$(find_sdl_dll_in_prefix "$prefix")" || return 1
+
+    sdl_prefix="$prefix"
+    sdl_include="$include_dir"
+    sdl_lib="$lib_dir"
+    sdl_dll="$dll_path"
+    sdl_cflags="-I$sdl_include"
+    sdl_libs_dynamic="-L$sdl_lib -lSDL2"
+    return 0
+}
+
+detect_system_sdl() {
+    if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists sdl2; then
+        local prefix=
+        prefix="$(pkg-config --variable=prefix sdl2 2>/dev/null || true)"
+        if [ -n "$prefix" ] && configure_sdl_from_prefix "$prefix"; then
+            sdl_cflags="$(sanitize_sdl_cflags "$(pkg-config --cflags sdl2)")"
+            return 0
+        fi
+    fi
+
+    if command -v sdl2-config >/dev/null 2>&1; then
+        local prefix=
+        prefix="$(sdl2-config --prefix 2>/dev/null || true)"
+        if [ -n "$prefix" ] && configure_sdl_from_prefix "$prefix"; then
+            sdl_cflags="$(sanitize_sdl_cflags "$(sdl2-config --cflags)")"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+build_sdl_from_source() {
+    mkdir -p "$sdl_build_root"
+
+    cmake -S "$repo_root/third_party/SDL" -B "$sdl_build_root" -G "MinGW Makefiles" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=ON \
+        -DSDL_SHARED=ON \
+        -DSDL_STATIC=OFF \
+        -DSDL_TEST=OFF \
+        -DCMAKE_INSTALL_PREFIX="$sdl_install_root"
+    cmake --build "$sdl_build_root" -j"$build_jobs"
+    cmake --install "$sdl_build_root"
+
+    configure_sdl_from_prefix "$sdl_install_root"
+}
+
+if [ -n "${SDL2_DIR:-}" ]; then
+    sdl2_root="$repo_root/$SDL2_DIR"
+    if ! configure_sdl_from_prefix "$sdl2_root"; then
+        echo "SDL2_DIR points to an unusable SDL tree: $sdl2_root" >&2
+        exit 1
+    fi
+elif [ "${SDL_SOURCE_BUILD:-0}" = "1" ]; then
+    build_sdl_from_source
+elif ! detect_system_sdl; then
+    build_sdl_from_source
 fi
 
 mkdir -p "$repo_root/bin" "$native_stage_dir" "$uwp_output_dir" "$uwp_icons_dir"
@@ -83,7 +182,7 @@ cmake -S "$repo_root/third_party/fsui-lib" -B "$fsui_build_dir" -G "MinGW Makefi
     -DFSUI_BUILD_SAMPLES=OFF \
     -DFSUI_PLATFORM_BACKEND=SDL2 \
     -DFSUI_USE_SYSTEM_SDL2=ON \
-    -DCMAKE_PREFIX_PATH="$sdl2_root"
+    -DCMAKE_PREFIX_PATH="$sdl_prefix"
 cmake --build "$fsui_build_dir" -j"$build_jobs"
 
 "$make_cmd" clean
@@ -92,8 +191,8 @@ cmake --build "$fsui_build_dir" -j"$build_jobs"
     UWP_TARGET=1 \
     SDL_STATIC=0 \
     FSUI_BUILD_DIR="$fsui_build_dir" \
-    SDL_CFLAGS="-I$sdl2_include" \
-    SDL_LIBS_DYNAMIC="-L$sdl2_lib -lSDL2"
+    SDL_CFLAGS="$sdl_cflags" \
+    SDL_LIBS_DYNAMIC="$sdl_libs_dynamic"
 
 cp "$sdl2_dll" "$native_stage_dir/"
 cp "$repo_root/bin/libarmsx.dll" "$uwp_output_dir/"
