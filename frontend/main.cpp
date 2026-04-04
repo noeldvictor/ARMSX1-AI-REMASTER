@@ -1062,7 +1062,7 @@ class ArmsxSession {
 
         switch (request.kind) {
             case LaunchKind::Disc:
-                if (psx_cdrom_open(psx_get_cdrom(psx_), request.path.string().c_str()) != 0) {
+                if (psx_cdrom_open(psx_get_cdrom(psx_), request.path.string().c_str()) == 0) {
                     error = "Failed to open the selected disc image.";
                     destroy();
                     return false;
@@ -1212,7 +1212,7 @@ class ArmsxSession {
             return false;
         }
 
-        if (psx_swap_disc(psx_, path.string().c_str()) != 0) {
+        if (psx_swap_disc(psx_, path.string().c_str()) == 0) {
             return false;
         }
 
