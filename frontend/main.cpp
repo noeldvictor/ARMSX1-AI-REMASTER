@@ -964,8 +964,11 @@ bool SaveSettings(const FrontendSettings& settings) {
     return out.good();
 }
 
-void AudioUpdate(void* userdata, uint8_t* buffer, int size) {
-    psx_t* psx = static_cast<psx_t*>(userdata);
+void MixPsxAudio(psx_t* psx, uint8_t* buffer, int size) {
+    if (!psx || !buffer || size <= 0) {
+        return;
+    }
+
     psx_cdrom_t* cdrom = psx->cdrom;
     psx_spu_t* spu = psx->spu;
 
@@ -1104,10 +1107,13 @@ class ArmsxSession {
         desired.channels = 2;
         desired.samples = CD_SECTOR_SIZE >> 2;
         desired.callback = AudioUpdate;
-        desired.userdata = psx_;
+        desired.userdata = this;
 
         audio_dev_ = SDL_OpenAudioDevice(nullptr, 0, &desired, &obtained, 0);
         if (audio_dev_) {
+            audio_sample_accumulator_ = 0.0;
+            audio_queue_.clear();
+            audio_queue_read_offset_ = 0;
             SDL_PauseAudioDevice(audio_dev_, 0);
         }
 
@@ -1123,6 +1129,9 @@ class ArmsxSession {
 
     void destroy() {
         if (audio_dev_) {
+            SDL_LockAudioDevice(audio_dev_);
+            resetAudioQueueLocked();
+            SDL_UnlockAudioDevice(audio_dev_);
             SDL_PauseAudioDevice(audio_dev_, 1);
             SDL_CloseAudioDevice(audio_dev_);
             audio_dev_ = 0;
@@ -1174,6 +1183,11 @@ class ArmsxSession {
     void setPaused(bool paused) {
         paused_ = paused;
         if (audio_dev_) {
+            if (paused) {
+                SDL_LockAudioDevice(audio_dev_);
+                resetAudioQueueLocked();
+                SDL_UnlockAudioDevice(audio_dev_);
+            }
             SDL_PauseAudioDevice(audio_dev_, paused ? 1 : 0);
         }
     }
@@ -1188,6 +1202,7 @@ class ArmsxSession {
         }
 
         psx_run_frame(psx_);
+        queueAudioForFrame();
     }
 
     void setDebugView(bool enabled) {
@@ -1203,6 +1218,7 @@ class ArmsxSession {
             return false;
         }
 
+        clearQueuedAudio();
         psx_soft_reset(psx_);
         return true;
     }
@@ -1216,6 +1232,7 @@ class ArmsxSession {
             return false;
         }
 
+        clearQueuedAudio();
         disc_path_ = path;
         launch_kind_ = LaunchKind::Disc;
         title_ = StemToTitle(path);
@@ -1382,13 +1399,120 @@ class ArmsxSession {
         return result == 0;
     }
 
+    double frameRate() const {
+        if (!psx_ || !psx_->gpu) {
+            return 59.29;
+        }
+
+        return (psx_->gpu->display_mode & 0x8) ? 59.29 : 49.76;
+    }
+
   private:
+    static void AudioUpdate(void* userdata, uint8_t* buffer, int size) {
+        if (!buffer || size <= 0) {
+            return;
+        }
+
+        std::memset(buffer, 0, static_cast<size_t>(size));
+
+        auto* session = static_cast<ArmsxSession*>(userdata);
+        if (!session) {
+            return;
+        }
+
+        session->consumeQueuedAudio(buffer, static_cast<size_t>(size));
+    }
+
+    void queueAudioForFrame() {
+        if (!psx_ || !audio_dev_) {
+            return;
+        }
+
+        audio_sample_accumulator_ += static_cast<double>(kAudioMixRate) / frameRate();
+        const int sample_count = static_cast<int>(audio_sample_accumulator_);
+        if (sample_count <= 0) {
+            return;
+        }
+
+        audio_sample_accumulator_ -= static_cast<double>(sample_count);
+
+        const size_t byte_count = static_cast<size_t>(sample_count) * sizeof(int16_t) * 2;
+        if (byte_count == 0) {
+            return;
+        }
+
+        std::vector<uint8_t> frame_audio(byte_count);
+        MixPsxAudio(psx_, frame_audio.data(), static_cast<int>(frame_audio.size()));
+
+        SDL_LockAudioDevice(audio_dev_);
+        compactAudioQueueLocked();
+        if ((audio_queue_.size() - audio_queue_read_offset_) > kMaxQueuedAudioBytes) {
+            resetAudioQueueLocked();
+        }
+        audio_queue_.insert(audio_queue_.end(), frame_audio.begin(), frame_audio.end());
+        SDL_UnlockAudioDevice(audio_dev_);
+    }
+
+    void consumeQueuedAudio(uint8_t* buffer, size_t size) {
+        const size_t available = audio_queue_.size() - audio_queue_read_offset_;
+        const size_t to_copy = std::min(size, available);
+
+        if (to_copy > 0) {
+            std::memcpy(buffer, audio_queue_.data() + audio_queue_read_offset_, to_copy);
+            audio_queue_read_offset_ += to_copy;
+        }
+
+        if (audio_queue_read_offset_ >= audio_queue_.size()) {
+            resetAudioQueueLocked();
+        } else if (audio_queue_read_offset_ >= kAudioQueueCompactThreshold) {
+            compactAudioQueueLocked();
+        }
+    }
+
+    void clearQueuedAudio() {
+        if (!audio_dev_) {
+            resetAudioQueueLocked();
+            return;
+        }
+
+        SDL_LockAudioDevice(audio_dev_);
+        resetAudioQueueLocked();
+        SDL_UnlockAudioDevice(audio_dev_);
+    }
+
+    void resetAudioQueueLocked() {
+        audio_sample_accumulator_ = 0.0;
+        audio_queue_.clear();
+        audio_queue_read_offset_ = 0;
+    }
+
+    void compactAudioQueueLocked() {
+        if (audio_queue_read_offset_ == 0) {
+            return;
+        }
+
+        if (audio_queue_read_offset_ >= audio_queue_.size()) {
+            resetAudioQueueLocked();
+            return;
+        }
+
+        audio_queue_.erase(audio_queue_.begin(), audio_queue_.begin() + static_cast<std::ptrdiff_t>(audio_queue_read_offset_));
+        audio_queue_read_offset_ = 0;
+    }
+
+    static constexpr int kAudioMixRate = 44100;
+    static constexpr size_t kMaxQueuedAudioBytes = static_cast<size_t>(kAudioMixRate * sizeof(int16_t) * 2 / 2);
+    static constexpr size_t kAudioQueueCompactThreshold = 4096;
+
     SDL_Renderer* renderer_ = nullptr;
     psx_t* psx_ = nullptr;
     psx_input_t* input_ = nullptr;
     psxi_sda_t* pad_device_ = nullptr;
     SDL_Texture* texture_ = nullptr;
     SDL_AudioDeviceID audio_dev_ = 0;
+    std::vector<uint8_t> audio_queue_;
+    size_t audio_queue_read_offset_ = 0;
+    double audio_sample_accumulator_ = 0.0;
     std::filesystem::path disc_path_;
     std::filesystem::path exe_path_;
     std::string title_;
@@ -2101,12 +2225,29 @@ class ArmsxApp {
 
     void runFrame() {
         const bool fsui_was_active = fsui::HasActiveWindow();
+        const uint64_t now = SDL_GetPerformanceCounter();
 
         input_router_.tick(fsui_was_active);
 
-        if (session_.valid()) {
-            session_.runFrame();
+        if (last_frame_counter_ == 0) {
+            last_frame_counter_ = now;
+        }
+
+        if (session_.valid() && !session_.paused()) {
+            const double elapsed = static_cast<double>(now - last_frame_counter_) / static_cast<double>(SDL_GetPerformanceFrequency());
+            last_frame_counter_ = now;
+            frame_accumulator_ += std::clamp(elapsed, 0.0, 0.25) * session_.frameRate();
+            frame_accumulator_ = std::min(frame_accumulator_, 3.0);
+
+            while (frame_accumulator_ >= 1.0) {
+                session_.runFrame();
+                frame_accumulator_ -= 1.0;
+            }
+
             session_.updateTexture(settings_);
+        } else {
+            last_frame_counter_ = now;
+            frame_accumulator_ = 0.0;
         }
 
         imgui_backend_.newFrame();
@@ -2248,6 +2389,7 @@ class ArmsxApp {
         }
 
         input_router_.attach(session_.pad());
+        resetEmulationTiming();
         applyWindowMetrics();
         refreshGameList(false);
 
@@ -2261,6 +2403,7 @@ class ArmsxApp {
     void exitToLibrary() {
         input_router_.detach();
         session_.destroy();
+        resetEmulationTiming();
         fsui::ShowLandingWindow();
     }
 
@@ -3222,6 +3365,11 @@ class ArmsxApp {
         return initialBrowseDirectory();
     }
 
+    void resetEmulationTiming() {
+        last_frame_counter_ = SDL_GetPerformanceCounter();
+        frame_accumulator_ = 0.0;
+    }
+
     int argc_ = 0;
     const char* const* argv_ = nullptr;
     SDL_Window* external_window_ = nullptr;
@@ -3247,6 +3395,8 @@ class ArmsxApp {
     bool deferred_reset_ = false;
     bool deferred_screenshot_ = false;
     bool fsui_initialized_ = false;
+    uint64_t last_frame_counter_ = 0;
+    double frame_accumulator_ = 0.0;
 };
 
 } // namespace
