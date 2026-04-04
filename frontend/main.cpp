@@ -212,6 +212,63 @@ bool PathListContains(const std::vector<std::filesystem::path>& paths, const std
     });
 }
 
+bool FileContainsCaseInsensitive(const std::filesystem::path& path, const std::string& needle_lower) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input.good()) {
+        return false;
+    }
+
+    std::string content((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    return ToLower(content).find(needle_lower) != std::string::npos;
+}
+
+bool CueDirectoryReferencesImage(const std::filesystem::path& image_path) {
+    if (!image_path.has_parent_path()) {
+        return false;
+    }
+
+    const std::string needle = ToLower(image_path.filename().string());
+    std::error_code ec;
+
+    for (const auto& item : std::filesystem::directory_iterator(image_path.parent_path(), ec)) {
+        if (ec) {
+            break;
+        }
+        if (!item.is_regular_file()) {
+            continue;
+        }
+        if (ToLower(item.path().extension().string()) != ".cue") {
+            continue;
+        }
+        if (FileContainsCaseInsensitive(item.path(), needle)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool IsLikelyBiosImagePath(const std::filesystem::path& path, const FrontendSettings& settings) {
+    const std::string ext = ToLower(path.extension().string());
+    if (ext != ".bin" && ext != ".rom") {
+        return false;
+    }
+
+    if (!settings.bios_override.empty() && PathsMatch(path, std::filesystem::path(settings.bios_override))) {
+        return true;
+    }
+
+    const std::string stem = NormalizeModel(path.stem().string());
+    if (stem == "bios" || stem == "biosbin") {
+        return true;
+    }
+    if (stem.starts_with("scph")) {
+        return true;
+    }
+
+    return false;
+}
+
 std::string NormalizePathString(std::string value) {
 #if defined(_WIN32)
     std::replace(value.begin(), value.end(), '\\', '/');
@@ -2182,6 +2239,11 @@ class ArmsxApp {
 
         if (!session_.create(renderer_, settings_, request, error)) {
             pending_error_dialog_ = error;
+            if (request.kind == LaunchKind::Bios) {
+                fsui::ShowLandingWindow();
+            } else {
+                fsui::ShowGameListWindow();
+            }
             return false;
         }
 
@@ -2246,6 +2308,12 @@ class ArmsxApp {
 
                     const std::filesystem::path path = item.path();
                     if (!IsDiscPath(path) && !IsExePath(path)) {
+                        return;
+                    }
+                    if (IsLikelyBiosImagePath(path, settings_)) {
+                        return;
+                    }
+                    if (ToLower(path.extension().string()) == ".bin" && CueDirectoryReferencesImage(path)) {
                         return;
                     }
                     if (PathListContains(seen_game_paths, path)) {
