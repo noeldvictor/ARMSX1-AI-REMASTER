@@ -11,7 +11,7 @@
     <AssemblyName>ARMSX</AssemblyName>
     <DefaultLanguage>en-US</DefaultLanguage>
     <TargetPlatformIdentifier>UAP</TargetPlatformIdentifier>
-    <TargetPlatformVersion Condition=" '$(TargetPlatformVersion)' == '' ">10.0.19041.0</TargetPlatformVersion>
+    <TargetPlatformVersion Condition=" '$(TargetPlatformVersion)' == '' ">10.0.22621.0</TargetPlatformVersion>
     <TargetPlatformMinVersion>10.0.18362.0</TargetPlatformMinVersion>
     <MinimumVisualStudioVersion>14</MinimumVisualStudioVersion>
     <FileAlignment>512</FileAlignment>
@@ -147,6 +147,9 @@
     </AppxManifest>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="libgcc_s_seh-1.dll" />
+    <Content Include="libstdc++-6.dll" />
+    <Content Include="libwinpthread-1.dll" />
     <Content Include="Properties\Default.rd.xml" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -187,9 +190,6 @@
   </Target>
   -->
   <Target Name="StageNativeArmsxDll" AfterTargets="Build">
-    <Copy SourceFiles="..\..\bin\libarmsx.dll"
-          DestinationFolder="$(OutDir)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('..\..\bin\libarmsx.dll')" />
+    <Copy SourceFiles="..\..\bin\libarmsx.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('..\..\bin\libarmsx.dll')" />
   </Target>
 </Project>
