@@ -161,7 +161,10 @@ build_sdl_from_source() {
     cmake --build "$sdl_build_root" -j"$build_jobs"
     cmake --install "$sdl_build_root"
 
-    configure_sdl_from_prefix "$sdl_install_root"
+    if ! configure_sdl_from_prefix "$sdl_install_root"; then
+        echo "Built SDL, but could not locate headers/libs/DLL under $sdl_install_root" >&2
+        exit 1
+    fi
 }
 
 if [ -n "${SDL2_DIR:-}" ]; then
@@ -174,6 +177,11 @@ elif [ "${SDL_SOURCE_BUILD:-0}" = "1" ]; then
     build_sdl_from_source
 elif ! detect_system_sdl; then
     build_sdl_from_source
+fi
+
+if [ -z "${sdl_dll:-}" ]; then
+    echo "Unable to resolve an SDL2 runtime DLL for UWP staging." >&2
+    exit 1
 fi
 
 mkdir -p "$repo_root/bin" "$native_stage_dir" "$uwp_output_dir" "$uwp_icons_dir"
@@ -194,9 +202,9 @@ cmake --build "$fsui_build_dir" -j"$build_jobs"
     SDL_CFLAGS="$sdl_cflags" \
     SDL_LIBS_DYNAMIC="$sdl_libs_dynamic"
 
-cp "$sdl2_dll" "$native_stage_dir/"
+cp "$sdl_dll" "$native_stage_dir/"
 cp "$repo_root/bin/libarmsx.dll" "$uwp_output_dir/"
-cp "$sdl2_dll" "$uwp_output_dir/"
+cp "$sdl_dll" "$uwp_output_dir/"
 cp -R "$repo_root/icons/." "$uwp_icons_dir/"
 
 echo "Staged UWP native runtime to $uwp_output_dir"
