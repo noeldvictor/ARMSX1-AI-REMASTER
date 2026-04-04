@@ -212,6 +212,23 @@ bool PathListContains(const std::vector<std::filesystem::path>& paths, const std
     });
 }
 
+std::string NormalizePathString(std::string value) {
+#if defined(_WIN32)
+    std::replace(value.begin(), value.end(), '\\', '/');
+    if (value.size() == 2 && std::isalpha(static_cast<unsigned char>(value[0])) && value[1] == ':') {
+        value.push_back('/');
+    }
+#endif
+    return value;
+}
+
+std::string WithHiddenId(std::string_view label, std::string_view id) {
+    std::string out(label);
+    out += "##";
+    out += id;
+    return out;
+}
+
 bool ReadSdlFileBytes(std::string_view path, std::vector<unsigned char>& bytes) {
     SDL_RWops* handle = SDL_RWFromFile(std::string(path).c_str(), "rb");
     if (!handle) {
@@ -564,6 +581,15 @@ void CopyTomlString(const toml_datum_t& datum, std::string& out) {
     free(datum.u.s);
 }
 
+void CopyTomlPathString(const toml_datum_t& datum, std::string& out) {
+    if (!datum.ok || !datum.u.s) {
+        return;
+    }
+
+    out = NormalizePathString(datum.u.s);
+    free(datum.u.s);
+}
+
 void CopyTomlArrayStrings(const toml_array_t* array, std::vector<std::filesystem::path>& out) {
     out.clear();
 
@@ -581,7 +607,7 @@ void CopyTomlArrayStrings(const toml_array_t* array, std::vector<std::filesystem
             continue;
         }
 
-        out.emplace_back(value.u.s);
+        out.emplace_back(NormalizePathString(value.u.s));
         free(value.u.s);
     }
 }
@@ -657,6 +683,26 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
         return;
     }
 
+    if (toml_table_t* bios = toml_table_in(root, "bios")) {
+        if (!cli.bios_folder) {
+            CopyTomlPathString(toml_string_in(bios, "search_path"), settings.bios_search);
+        }
+
+        if (!cli.model) {
+            CopyTomlString(toml_string_in(bios, "preferred_model"), settings.model);
+        }
+
+        if (!cli.bios) {
+            CopyTomlPathString(toml_string_in(bios, "override_file"), settings.bios_override);
+        }
+    }
+
+    if (toml_table_t* console = toml_table_in(root, "console")) {
+        if (!cli.region) {
+            CopyTomlString(toml_string_in(console, "region"), settings.region);
+        }
+    }
+
     if (toml_table_t* runtime = toml_table_in(root, "runtime")) {
         if (!cli.scale) {
             toml_datum_t value = toml_int_in(runtime, "display_scale");
@@ -682,11 +728,52 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
 
     if (toml_table_t* paths = toml_table_in(root, "paths")) {
         if (!cli.exp_rom) {
-            CopyTomlString(toml_string_in(paths, "expansion_rom"), settings.exp_path);
+            CopyTomlPathString(toml_string_in(paths, "expansion_rom"), settings.exp_path);
         }
 
         if (!cli.exe) {
-            CopyTomlString(toml_string_in(paths, "default_psx_exe"), settings.default_exe_path);
+            CopyTomlPathString(toml_string_in(paths, "default_psx_exe"), settings.default_exe_path);
+        }
+    }
+
+    if (toml_table_t* video = toml_table_in(root, "video")) {
+        toml_datum_t texture_scale_mode = toml_bool_in(video, "texture_scale_mode");
+        if (texture_scale_mode.ok) {
+            settings.texture_scale_mode = texture_scale_mode.u.b != 0;
+        }
+
+        toml_datum_t debug_panel = toml_bool_in(video, "debug_panel");
+        if (debug_panel.ok) {
+            settings.debug_panel = debug_panel.u.b != 0;
+        }
+
+        toml_datum_t stretch_mode = toml_bool_in(video, "stretch_mode");
+        if (stretch_mode.ok) {
+            settings.stretch_mode = stretch_mode.u.b != 0;
+        }
+
+        toml_datum_t display_aspect = toml_string_in(video, "display_aspect");
+        if (display_aspect.ok && display_aspect.u.s) {
+            const std::string value = ToLower(display_aspect.u.s);
+            if (value == "square") {
+                settings.display_aspect = 1;
+            } else if (value == "wide16x9") {
+                settings.display_aspect = 2;
+            } else {
+                settings.display_aspect = 0;
+            }
+            free(display_aspect.u.s);
+        }
+
+        toml_datum_t wide_upscale = toml_string_in(video, "wide_upscale");
+        if (wide_upscale.ok && wide_upscale.u.s) {
+            const std::string value = ToLower(wide_upscale.u.s);
+            if (value == "720p") settings.upscale_height = 720;
+            else if (value == "1080p") settings.upscale_height = 1080;
+            else if (value == "1440p") settings.upscale_height = 1440;
+            else if (value == "2160p") settings.upscale_height = 2160;
+            else settings.upscale_height = 480;
+            free(wide_upscale.u.s);
         }
     }
 
@@ -2486,7 +2573,7 @@ class ArmsxApp {
                     "BIOS Folder",
                     true,
                     [this](const std::string& path) {
-                        settings_.bios_search = path;
+                        settings_.bios_search = NormalizePathString(path);
                         SaveSettings(settings_);
                     },
                     {},
@@ -2503,7 +2590,7 @@ class ArmsxApp {
                 external_folder.summary = "Use the external UWP path for BIOS scanning if the drive is mounted.";
                 external_folder.enabled = !PathsMatch(std::filesystem::path(settings_.bios_search), *external);
                 external_folder.on_activate = [this, path = external->string()]() {
-                    settings_.bios_search = path;
+                    settings_.bios_search = NormalizePathString(path);
                     SaveSettings(settings_);
                 };
                 rows.push_back(std::move(external_folder));
@@ -2520,7 +2607,7 @@ class ArmsxApp {
                     "BIOS Override",
                     false,
                     [this](const std::string& path) {
-                        settings_.bios_override = path;
+                        settings_.bios_override = NormalizePathString(path);
                         SaveSettings(settings_);
                     },
                     {".bin", ".rom"},
@@ -2579,7 +2666,7 @@ class ArmsxApp {
                     "Expansion ROM",
                     false,
                     [this](const std::string& path) {
-                        settings_.exp_path = path;
+                        settings_.exp_path = NormalizePathString(path);
                         SaveSettings(settings_);
                     },
                     {".bin", ".rom"},
@@ -2598,7 +2685,7 @@ class ArmsxApp {
                     "Default PS-X EXE",
                     false,
                     [this](const std::string& path) {
-                        settings_.default_exe_path = path;
+                        settings_.default_exe_path = NormalizePathString(path);
                         SaveSettings(settings_);
                     },
                     {".exe", ".ps-exe", ".psexe"},
@@ -2648,7 +2735,7 @@ class ArmsxApp {
                     "Add Library Folder",
                     true,
                     [this](const std::string& path) {
-                        settings_.ui_state.game_list_paths.emplace_back(path);
+                        settings_.ui_state.game_list_paths.emplace_back(NormalizePathString(path));
                         refreshGameList(true);
                         SaveSettings(settings_);
                     },
@@ -2688,7 +2775,7 @@ class ArmsxApp {
                     "Add Recursive Library Folder",
                     true,
                     [this](const std::string& path) {
-                        settings_.ui_state.game_list_recursive_paths.emplace_back(path);
+                        settings_.ui_state.game_list_recursive_paths.emplace_back(NormalizePathString(path));
                         refreshGameList(true);
                         SaveSettings(settings_);
                     },
@@ -2711,7 +2798,10 @@ class ArmsxApp {
                     fsui::SettingsRowDescriptor row;
                     row.kind = fsui::SettingsRowKind::Action;
                     row.id = std::string(recursive ? "recursive-" : "folder-") + std::to_string(index);
-                    row.title = recursive ? ICON_FA_FOLDER_OPEN " Recursive Folder" : ICON_FA_FOLDER " Library Folder";
+                    row.title = WithHiddenId(
+                        recursive ? ICON_FA_FOLDER_OPEN " Recursive Folder" : ICON_FA_FOLDER " Library Folder",
+                        row.id
+                    );
                     row.summary = folders[index].string();
                     row.on_activate = [this, index, recursive]() {
                         auto& list = recursive ? settings_.ui_state.game_list_recursive_paths : settings_.ui_state.game_list_paths;
