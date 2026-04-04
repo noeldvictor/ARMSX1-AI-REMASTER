@@ -293,7 +293,6 @@ void psx_pad_detach_joy(psx_pad_t* pad, int slot) {
 }
 
 int psx_pad_attach_mcd(psx_pad_t* pad, int slot, const char* path) {
-    return 0; // seems to loop forever 
     if (!path)
         return 1;
 
@@ -302,10 +301,13 @@ int psx_pad_attach_mcd(psx_pad_t* pad, int slot, const char* path) {
 
     psx_mcd_t* mcd = psx_mcd_create();
 
+    if (!mcd)
+        return 1;
+
     int r = psx_mcd_init(mcd, path);
     
     if (r) {
-        psx_pad_detach_mcd(pad, slot);
+        psx_mcd_destroy(mcd);
 
         return r;
     }

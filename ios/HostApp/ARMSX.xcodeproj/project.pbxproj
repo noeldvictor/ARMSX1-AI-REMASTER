@@ -3,19 +3,15 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0F9A2930A40B75845584BE6B /* RNOverlayController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0D4D51B594CEA0DA332E5D3E /* RNOverlayController.mm */; };
-		316438D36EEBE0DEF9F94F71 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D0A213EE07DA830C655C2A2A /* PrivacyInfo.xcprivacy */; };
 		3464725A44F4A69FBE2AB974 /* libarmsx.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 653A133BDB61BD1059CFAF23 /* libarmsx.dylib */; };
 		3A83F5253BCB4AD47A6742B1 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = F686B87C80EB4D3204CDEEC0 /* main.m */; };
 		48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; };
 		5480B78F3661F4CB9446657C /* libarmsx.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 653A133BDB61BD1059CFAF23 /* libarmsx.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		69C36E3140D59BA64EBFD982 /* libPods-ARMSX.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6E55729F629E2EF87949515F /* libPods-ARMSX.a */; };
 		7435C97274E9B2668E6C9C86 /* SDL2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 518B2258235B15B15373B04A /* SDL2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		8BC157B9E48AA3D81793AA6A /* ARMSXModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B35E8D4127C001F1E6F6F2AF /* ARMSXModule.m */; };
 		B16F42A290ECFF7DF154F24F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9484FEBF96C002F04D73B70C /* AppDelegate.mm */; };
 		E46372898534C89975BD3888 /* EmulatorRunner.mm in Sources */ = {isa = PBXBuildFile; fileRef = 6CFA7D190974AD439774FB40 /* EmulatorRunner.mm */; };
 /* End PBXBuildFile section */
@@ -38,23 +34,13 @@
 /* Begin PBXFileReference section */
 		019479875FC7433ACB65A02E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		03BD4A1BC72E3DE47140D96E /* EmulatorRunner.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EmulatorRunner.h; sourceTree = "<group>"; };
-		0D4D51B594CEA0DA332E5D3E /* RNOverlayController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RNOverlayController.mm; sourceTree = "<group>"; };
 		1760EE6722F9E2BEDFDCCC6D /* armsx_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = armsx_bridge.h; sourceTree = "<group>"; };
 		518B2258235B15B15373B04A /* SDL2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL2.xcframework; path = ../Frameworks/SDL2.xcframework; sourceTree = "<group>"; };
 		64E02E161FEB892FC40F8BE1 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		653A133BDB61BD1059CFAF23 /* libarmsx.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libarmsx.dylib; path = ../Frameworks/libarmsx.dylib; sourceTree = "<group>"; };
 		6CFA7D190974AD439774FB40 /* EmulatorRunner.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = EmulatorRunner.mm; sourceTree = "<group>"; };
-		6E26D0ECD2CD966E5EA1C326 /* Pods-ARMSX.release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Pods-ARMSX.release.xcconfig"; sourceTree = "<group>"; };
-		6E55729F629E2EF87949515F /* libPods-ARMSX.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ARMSX.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		87BA3EE4597141AA97A5557D /* ARMSX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARMSX.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		8E39205AA890680B1D4F8540 /* Pods-ARMSX.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ARMSX.debug.xcconfig"; path = "Target Support Files/Pods-ARMSX/Pods-ARMSX.debug.xcconfig"; sourceTree = "<group>"; };
+		87BA3EE4597141AA97A5557D /* ARMSX.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ARMSX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9484FEBF96C002F04D73B70C /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
-		996CB57F5DD4B88A0931BB95 /* ARMSXModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ARMSXModule.h; sourceTree = "<group>"; };
-		B35E8D4127C001F1E6F6F2AF /* ARMSXModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ARMSXModule.m; sourceTree = "<group>"; };
-		D0A213EE07DA830C655C2A2A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		D5E6D32A2F0405EA658F4F9F /* RNOverlayController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RNOverlayController.h; sourceTree = "<group>"; };
-		E3FAF87D7E4A2345FC43CA68 /* Pods-ARMSX.debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Pods-ARMSX.debug.xcconfig"; sourceTree = "<group>"; };
-		F639A592EA750B3ED0B3243E /* Pods-ARMSX.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ARMSX.release.xcconfig"; path = "Target Support Files/Pods-ARMSX/Pods-ARMSX.release.xcconfig"; sourceTree = "<group>"; };
 		F686B87C80EB4D3204CDEEC0 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -65,7 +51,6 @@
 			files = (
 				48352C131E8B0327373C61EC /* SDL2.xcframework in Frameworks */,
 				3464725A44F4A69FBE2AB974 /* libarmsx.dylib in Frameworks */,
-				69C36E3140D59BA64EBFD982 /* libPods-ARMSX.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,7 +62,6 @@
 			children = (
 				653A133BDB61BD1059CFAF23 /* libarmsx.dylib */,
 				518B2258235B15B15373B04A /* SDL2.xcframework */,
-				6E55729F629E2EF87949515F /* libPods-ARMSX.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -85,12 +69,9 @@
 		48D57A41DAF59CF0D443A086 = {
 			isa = PBXGroup;
 			children = (
-				B6E3FD0B464E641CA58C9EA3 /* Pods-ARMSX */,
 				D0581165A1AB8CE875BD92E0 /* Sources */,
 				473DBC863A1B097C0DD3710F /* Frameworks */,
 				9B7D6BDFE7232B2E5D8A379F /* Products */,
-				D0A213EE07DA830C655C2A2A /* PrivacyInfo.xcprivacy */,
-				D56003A6393AA918CDCBC1DD /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -102,42 +83,18 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		B6E3FD0B464E641CA58C9EA3 /* Pods-ARMSX */ = {
-			isa = PBXGroup;
-			children = (
-				E3FAF87D7E4A2345FC43CA68 /* Pods-ARMSX.debug.xcconfig */,
-				6E26D0ECD2CD966E5EA1C326 /* Pods-ARMSX.release.xcconfig */,
-			);
-			name = "Pods-ARMSX";
-			path = "Pods/Target Support Files/Pods-ARMSX";
-			sourceTree = "<group>";
-		};
 		D0581165A1AB8CE875BD92E0 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
 				64E02E161FEB892FC40F8BE1 /* AppDelegate.h */,
 				9484FEBF96C002F04D73B70C /* AppDelegate.mm */,
 				1760EE6722F9E2BEDFDCCC6D /* armsx_bridge.h */,
-				996CB57F5DD4B88A0931BB95 /* ARMSXModule.h */,
-				B35E8D4127C001F1E6F6F2AF /* ARMSXModule.m */,
 				03BD4A1BC72E3DE47140D96E /* EmulatorRunner.h */,
 				6CFA7D190974AD439774FB40 /* EmulatorRunner.mm */,
 				019479875FC7433ACB65A02E /* Info.plist */,
 				F686B87C80EB4D3204CDEEC0 /* main.m */,
-				D5E6D32A2F0405EA658F4F9F /* RNOverlayController.h */,
-				0D4D51B594CEA0DA332E5D3E /* RNOverlayController.mm */,
 			);
 			path = Sources;
-			sourceTree = "<group>";
-		};
-		D56003A6393AA918CDCBC1DD /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				8E39205AA890680B1D4F8540 /* Pods-ARMSX.debug.xcconfig */,
-				F639A592EA750B3ED0B3243E /* Pods-ARMSX.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -147,20 +104,17 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1A8EEE030E970E82EC7B77F8 /* Build configuration list for PBXNativeTarget "ARMSX" */;
 			buildPhases = (
-				28E2861D40C7116E64D8A8A7 /* [CP] Check Pods Manifest.lock */,
-				CFEF6A563B03F0739AAB6D78 /* Bundle React Native overlay */,
 				21709ABD74D1031F0389C4EC /* Sources */,
 				D6910F21954EF81975654CFA /* Frameworks */,
 				8F7F79E31569D7CF1ACBC707 /* Embed Frameworks */,
-				08BB0BDAE55155CA21616714 /* Resources */,
-				38A74F8F145E32A3662964C2 /* [CP] Embed Pods Frameworks */,
-				77DB61B4189D46655E081DCE /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			name = ARMSX;
+			packageProductDependencies = (
+			);
 			productName = ARMSX;
 			productReference = 87BA3EE4597141AA97A5557D /* ARMSX.app */;
 			productType = "com.apple.product-type.application";
@@ -173,6 +127,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					6B7EECC7E0E8E94CFC0841B0 = {
+						DevelopmentTeam = "";
+					};
+				};
 			};
 			buildConfigurationList = FBD22F5C337AFF8855769BCD /* Build configuration list for PBXProject "ARMSX" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -184,7 +143,7 @@
 			);
 			mainGroup = 48D57A41DAF59CF0D443A086;
 			minimizedProjectReferenceProxies = 1;
-			productRefGroup = 9B7D6BDFE7232B2E5D8A379F /* Products */;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -193,104 +152,13 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXResourcesBuildPhase section */
-		08BB0BDAE55155CA21616714 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				316438D36EEBE0DEF9F94F71 /* PrivacyInfo.xcprivacy in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		28E2861D40C7116E64D8A8A7 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-ARMSX-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		38A74F8F145E32A3662964C2 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		77DB61B4189D46655E081DCE /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Copy Pods Resources";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ARMSX/Pods-ARMSX-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		CFEF6A563B03F0739AAB6D78 /* Bundle React Native overlay */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Bundle React Native overlay";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nNODE_CANDIDATES=(\n  \"${NODE_BINARY:-}\"\n  \"$(command -v node 2>/dev/null || true)\"\n  \"/opt/homebrew/bin/node\"\n  \"/usr/local/bin/node\"\n  \"/usr/bin/node\"\n  \"/usr/bin/env node\"\n)\n\nfor candidate in \"${NODE_CANDIDATES[@]}\"; do\n  if [ -n \"$candidate\" ] && [ -x \"$candidate\" ]; then\n    export NODE_BINARY=\"$candidate\"\n    break\n  fi\ndone\n\nif [ -z \"${NODE_BINARY:-}\" ]; then\n  echo \"error: Unable to locate node. Set NODE_BINARY to your node path (e.g. $(which node)).\" >&2\n  exit 1\nfi\nexport RCT_METRO_PORT=${RCT_METRO_PORT:-8081}\nexport PROJECT_ROOT=\"$PROJECT_DIR/../../mobile\"\ncd \"$PROJECT_ROOT/..\"\n\nif [ ! -f \"$PROJECT_ROOT/../node_modules/react-native/scripts/react-native-xcode.sh\" ]; then\n  echo \"error: react-native-xcode.sh missing. Did you run npm install?\" >&2\n  exit 1\nfi\n\nexport ENTRY_FILE=\"index.js\"\nexport BUNDLE_OUTPUT=\"$CONFIGURATION_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/main.jsbundle\"\nexport ASSETS_DEST=\"$CONFIGURATION_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nexport DEV=false\n\n\"$PROJECT_ROOT/../node_modules/react-native/scripts/react-native-xcode.sh\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		21709ABD74D1031F0389C4EC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8BC157B9E48AA3D81793AA6A /* ARMSXModule.m in Sources */,
 				B16F42A290ECFF7DF154F24F /* AppDelegate.mm in Sources */,
 				E46372898534C89975BD3888 /* EmulatorRunner.mm in Sources */,
-				0F9A2930A40B75845584BE6B /* RNOverlayController.mm in Sources */,
 				3A83F5253BCB4AD47A6742B1 /* main.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -300,11 +168,9 @@
 /* Begin XCBuildConfiguration section */
 		6C84D25B5BF8B28E170A1AC3 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 8E39205AA890680B1D4F8540 /* Pods-ARMSX.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = L296QD7JFU;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../Frameworks",
@@ -312,23 +178,15 @@
 				);
 				INFOPLIST_FILE = Sources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SDKROOT)/usr/lib/swift",
 					"$(PROJECT_DIR)/../Frameworks",
 				);
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ObjC",
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.nanodata.armsx;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				USE_HERMES = YES;
 			};
 			name = Debug;
 		};
@@ -338,7 +196,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -388,17 +246,11 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					" ",
-				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../node_modules/react-native";
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				USE_HERMES = true;
 			};
 			name = Debug;
 		};
@@ -408,7 +260,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -451,27 +303,19 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					" ",
-				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
-				USE_HERMES = true;
 			};
 			name = Release;
 		};
 		EA79FDBEDBB17F1B501A7D1A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F639A592EA750B3ED0B3243E /* Pods-ARMSX.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = L296QD7JFU;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../Frameworks",
@@ -479,23 +323,15 @@
 				);
 				INFOPLIST_FILE = Sources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SDKROOT)/usr/lib/swift",
 					"$(PROJECT_DIR)/../Frameworks",
 				);
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ObjC",
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.nanodata.armsx;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				USE_HERMES = YES;
 			};
 			name = Release;
 		};

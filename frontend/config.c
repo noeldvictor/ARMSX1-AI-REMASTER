@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -48,13 +50,29 @@ static const char g_default_settings[] =
     "[console]\n"
     "    region          = \"auto\"\n"
     "\n"
+    "# Runtime settings\n"
+    "[runtime]\n"
+    "    display_scale = 3\n"
+    "    log_level = 5\n"
+    "    quiet = false\n"
+    "\n"
+    "# Launch path defaults\n"
+    "[paths]\n"
+    "    expansion_rom = \"\"\n"
+    "    default_psx_exe = \"\"\n"
+    "\n"
     "# Video settings\n"
     "[video]\n"
     "    texture_scale_mode = false\n"
     "    debug_panel = false\n"
     "    stretch_mode = false\n"
     "    display_aspect = \"classic\" # classic | square | wide16x9\n"
-    "    wide_upscale = \"480p\"      # 480p | 720p | 1080p | 1440p | 2160p\n";
+    "    wide_upscale = \"480p\"      # 480p | 720p | 1080p | 1440p | 2160p\n"
+    "\n"
+    "# Library folders used by the FSUI shell\n"
+    "[library]\n"
+    "    folders = []\n"
+    "    recursive_folders = []\n";
 
 static const char* g_models_text =
     "Available console models:\n"
@@ -86,6 +104,157 @@ static const char* g_regions_text =
 
 static const char* g_desc_text =
     "\nPlease report any bugs to <https://github.com/allkern/psxe/issues>\n";
+
+static int psxe_file_exists(const char* path) {
+    if (!path || !path[0])
+        return 0;
+
+    FILE* file = fopen(path, "rb");
+
+    if (!file)
+        return 0;
+
+    fclose(file);
+
+    return 1;
+}
+
+static int psxe_is_path_separator(char c) {
+    return (c == '/') || (c == '\\');
+}
+
+static void psxe_normalize_model_name(const char* src, char* dst, size_t dst_size) {
+    size_t out = 0;
+
+    if (!dst_size)
+        return;
+
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+
+    while (*src && (out + 1) < dst_size) {
+        unsigned char ch = (unsigned char)*src++;
+
+        if (!isalnum(ch))
+            continue;
+
+        dst[out++] = (char)tolower(ch);
+    }
+
+    dst[out] = '\0';
+}
+
+static const char* psxe_basename_no_ext(const char* path) {
+    const char* base = path ? path : "";
+    const char* scan = base;
+
+    while (*scan) {
+        if (psxe_is_path_separator(*scan))
+            base = scan + 1;
+        scan++;
+    }
+
+    return base;
+}
+
+static int psxe_extension_matches(const char* ext, const char* expected) {
+    if (!ext || !expected)
+        return 0;
+
+    return !strcasecmp(ext, expected);
+}
+
+static char* psxe_join_path(const char* dir, const char* leaf) {
+    size_t dir_len = dir ? strlen(dir) : 0;
+    size_t leaf_len = leaf ? strlen(leaf) : 0;
+    int needs_sep = dir_len && !psxe_is_path_separator(dir[dir_len - 1]);
+    char* path = (char*)malloc(dir_len + leaf_len + (needs_sep ? 2 : 1));
+
+    if (!path)
+        return NULL;
+
+    if (dir_len)
+        memcpy(path, dir, dir_len);
+
+    if (needs_sep)
+        path[dir_len++] = '/';
+
+    if (leaf_len)
+        memcpy(path + dir_len, leaf, leaf_len);
+
+    path[dir_len + leaf_len] = '\0';
+
+    return path;
+}
+
+static char* psxe_find_bios_in_dir(const char* dir_path, const char* model) {
+    char normalized_model[128];
+    char normalized_name[128];
+    char* fallback = NULL;
+    DIR* dir;
+
+    if (!dir_path || !dir_path[0])
+        return NULL;
+
+    dir = opendir(dir_path);
+
+    if (!dir)
+        return NULL;
+
+    psxe_normalize_model_name(model, normalized_model, sizeof(normalized_model));
+
+    struct dirent* entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        const char* name = entry->d_name;
+        const char* ext;
+        char* full_path;
+
+        if (!name || !name[0] || !strcmp(name, ".") || !strcmp(name, ".."))
+            continue;
+
+        ext = strrchr(name, '.');
+
+        if (!ext)
+            continue;
+
+        if (!psxe_extension_matches(ext, ".bin") && !psxe_extension_matches(ext, ".rom"))
+            continue;
+
+        full_path = psxe_join_path(dir_path, name);
+
+        if (!full_path)
+            continue;
+
+        if (!psxe_file_exists(full_path)) {
+            free(full_path);
+            continue;
+        }
+
+        if (!fallback && !strcasecmp(name, "bios.bin")) {
+            fallback = full_path;
+            continue;
+        }
+
+        psxe_normalize_model_name(psxe_basename_no_ext(name), normalized_name, sizeof(normalized_name));
+
+        if (normalized_model[0] && !strcmp(normalized_model, normalized_name)) {
+            if (fallback)
+                free(fallback);
+
+            closedir(dir);
+            return full_path;
+        }
+
+        free(full_path);
+    }
+
+    closedir(dir);
+
+    return fallback;
+}
 
 static void psxe_ensure_dir(const char* dir_path) {
     if (!dir_path || !dir_path[0])
@@ -432,6 +601,9 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     if (cd_path)
         cfg->cd_path = cd_path;
 
+    if (settings_path)
+        cfg->settings_path = settings_path;
+
     if (log_level)
         cfg->log_level = log_level - 1;
 
@@ -487,14 +659,32 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     cfg->stretch_mode = stretch_mode;
     cfg->display_aspect = display_aspect;
     cfg->upscale_height = upscale_height;
+    cfg->quiet = quiet;
+    cfg->use_args = use_args;
 
     log_info("Using BIOS path: %s", cfg->bios ? cfg->bios : "(none)");
 
     free(argv_filtered);
 }
 
-// To-do: Implement BIOS searching
 char* psxe_cfg_get_bios_path(psxe_config_t* cfg) {
+    char* bios_path = NULL;
+
+    if (!cfg)
+        return NULL;
+
+    if (cfg->bios && psxe_file_exists(cfg->bios))
+        return strdup(cfg->bios);
+
+    if (cfg->bios_search && cfg->bios_search[0])
+        bios_path = psxe_find_bios_in_dir(cfg->bios_search, cfg->model);
+
+    if (bios_path)
+        return bios_path;
+
+    if (cfg->bios)
+        return strdup(cfg->bios);
+
     return NULL;
 }
 

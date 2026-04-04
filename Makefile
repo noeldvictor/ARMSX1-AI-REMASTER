@@ -9,7 +9,7 @@ SDL_STATIC := 0
 SDL_CFLAGS := -sUSE_SDL=2
 SDL_LIBS_DYNAMIC :=
 SDL_LIBS_STATIC :=
-WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main","_psxe_wasm_on_file"]'
+WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sFULL_ES3=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sNO_EXIT_RUNTIME=0 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main","_psxe_wasm_on_file"]'
 endif
 
 SDL_CONFIG ?= sdl2-config
@@ -30,11 +30,16 @@ endif
 IOS_TARGET ?= 0
 IOS_SDK ?= iphoneos
 IOS_DEPLOYMENT_TARGET ?= 14.0
+MACOS_DEPLOYMENT_TARGET ?= 10.15
+WINDOWS_TARGET ?= 0
+UWP_TARGET ?= 0
 IOS_SDL_FRAMEWORK ?= $(CURDIR)/ios/Frameworks/SDL2.xcframework/ios-arm64/SDL2.framework
 IOS_SDL_FRAMEWORK_PARENT := $(dir $(IOS_SDL_FRAMEWORK))
 SDKROOT ?=
-IMGUI_FRONTEND ?= 0
 CONTROLLER_GENERIC ?= 0
+FSUI_DIR := third_party/fsui-lib
+FSUI_BUILD_DIR ?= build/fsui/native
+WASM_HTML_POSTPROCESS := $(FSUI_DIR)/cmake/postprocess_web_html.cmake
 
 ifeq ($(IOS_TARGET),1)
 	SDKROOT ?= $(shell xcrun --sdk $(IOS_SDK) --show-sdk-path)
@@ -53,11 +58,28 @@ endif
 BASE_CFLAGS = -g -DLOG_USE_COLOR -I"." -I"psx" $(SDL_CFLAGS)
 BASE_CFLAGS += -O3 -ffast-math -Wno-overflow -Wall -pedantic -Wno-address-of-packed-member -flto
 
-BASE_CXXFLAGS = -std=c++17 $(BASE_CFLAGS)
+FSUI_INCLUDE_FLAGS = \
+	-I$(FSUI_DIR)/include \
+	-I$(FSUI_DIR)/third_party/imgui \
+	-I$(FSUI_DIR)/third_party/imgui/backends \
+	-I$(FSUI_DIR)/third_party/stb
+
+ifneq ($(WASM_TARGET),wasm)
+FSUI_INCLUDE_FLAGS += -I$(FSUI_BUILD_DIR)/gladsources/fsui_glad/include
+endif
+
+FSUI_COMPILE_DEFS = -DIMGUI_FRONTEND -DFSUI_HAS_SDL2_PLATFORM -DFSUI_HAS_SDL2SURFACE_RENDERER -DFSUI_HAS_SDL2RENDERER_RENDERER -DSDL_MAIN_HANDLED
+
+BASE_CXXFLAGS = -std=c++20 $(BASE_CFLAGS) $(FSUI_INCLUDE_FLAGS) $(FSUI_COMPILE_DEFS)
 
 ifeq ($(CONTROLLER_GENERIC),1)
 	BASE_CFLAGS += -DCONTROLLER_GENERIC
 	BASE_CXXFLAGS += -DCONTROLLER_GENERIC
+endif
+
+ifeq ($(UWP_TARGET),1)
+	BASE_CFLAGS += -DUWP_TARGET
+	BASE_CXXFLAGS += -DUWP_TARGET
 endif
 
 ifeq ($(WASM_TARGET),wasm)
@@ -70,17 +92,6 @@ ifeq ($(IOS_TARGET),1)
 	BASE_CXXFLAGS += -fembed-bitcode
 endif
 
-ifeq ($(IMGUI_FRONTEND),1)
-ifneq ($(IOS_TARGET),1)
-ifneq ($(filter shared,$(MAKECMDGOALS)),)
-$(warning IMGUI_FRONTEND is disabled for shared builds)
-else
-	BASE_CFLAGS += -DIMGUI_FRONTEND
-	BASE_CXXFLAGS += -DIMGUI_FRONTEND
-endif
-endif
-endif
-
 ifeq ($(WASM_TARGET),wasm)
 OS_INFO := Emscripten
 else ifneq ($(IOS_TARGET),1)
@@ -91,7 +102,8 @@ endif
 
 ifeq ($(PLATFORM),Darwin)
 ifneq ($(IOS_TARGET),1)
-	BASE_CFLAGS += -mmacosx-version-min=10.9 -Wno-newline-eof
+	BASE_CFLAGS += -mmacosx-version-min=$(MACOS_DEPLOYMENT_TARGET) -Wno-newline-eof
+	BASE_CXXFLAGS += -mmacosx-version-min=$(MACOS_DEPLOYMENT_TARGET)
 endif
 endif
 
@@ -103,6 +115,8 @@ SHARED_CXXFLAGS := $(BASE_CXXFLAGS) -D__DLL_BUILD -fPIC
 ifeq ($(PLATFORM),Darwin)
 	SHARED_EXT := .dylib
 	SHARED_LDFLAGS := -dynamiclib
+else ifeq ($(WINDOWS_TARGET),1)
+	SHARED_EXT := .dll
 endif
 
 ifeq ($(IOS_TARGET),1)
@@ -123,26 +137,55 @@ OBJ_DIR := $(BIN_DIR)/obj
 BIN      := $(BIN_DIR)/armsx
 ifeq ($(WASM_TARGET),wasm)
 BIN      := $(BIN_DIR)/armsx.html
+else ifeq ($(WINDOWS_TARGET),1)
+BIN      := $(BIN_DIR)/armsx.exe
 endif
 SHARED_BIN := $(BIN_DIR)/libarmsx$(SHARED_EXT)
-
-IMGUI_DIR := third_party/imgui
 
 C_SOURCES := $(wildcard psx/*.c) \
              $(wildcard psx/dev/*.c) \
              $(wildcard psx/dev/cdrom/*.c) \
              $(wildcard psx/input/*.c) \
              $(wildcard psx/disc/*.c) \
-             $(wildcard frontend/*.c)
+             frontend/argparse.c \
+             frontend/config.c \
+             frontend/toml.c
 C_SOURCES_SHARED := $(C_SOURCES)
 
-CPP_SOURCES := frontend/imgui_layer.cpp \
-               $(IMGUI_DIR)/imgui.cpp \
-               $(IMGUI_DIR)/imgui_draw.cpp \
-               $(IMGUI_DIR)/imgui_tables.cpp \
-               $(IMGUI_DIR)/imgui_widgets.cpp \
-               $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp \
-               $(IMGUI_DIR)/backends/imgui_impl_sdlrenderer2.cpp
+CPP_SOURCES := frontend/main.cpp
+
+FSUI_LIBS := \
+	$(FSUI_BUILD_DIR)/libfsui-donor.a \
+	$(FSUI_BUILD_DIR)/libfsui-backend-sdl.a \
+	$(FSUI_BUILD_DIR)/libfsui-platform-sdl2.a \
+	$(FSUI_BUILD_DIR)/libfsui-renderer-sdl2.a \
+	$(FSUI_BUILD_DIR)/libfsui-renderer-sdl2surface.a \
+	$(FSUI_BUILD_DIR)/libfsui-renderer-opengl.a \
+	$(FSUI_BUILD_DIR)/libfsui-core.a \
+	$(FSUI_BUILD_DIR)/libfsui_imgui.a \
+	$(FSUI_BUILD_DIR)/libfsui_resources.a
+
+ifneq ($(WASM_TARGET),wasm)
+FSUI_LIBS += \
+	$(FSUI_BUILD_DIR)/libfsui_glad.a
+endif
+
+PLATFORM_EXTRA_LDFLAGS :=
+PLATFORM_EXTRA_LIBS :=
+
+ifeq ($(PLATFORM),Darwin)
+	FSUI_LIBS += $(FSUI_BUILD_DIR)/libfsui-renderer-metal.a
+	ifeq ($(IOS_TARGET),1)
+		PLATFORM_EXTRA_LIBS += -framework Foundation -framework Metal -framework OpenGLES -framework QuartzCore -framework UIKit
+	else
+		PLATFORM_EXTRA_LDFLAGS += -mmacosx-version-min=$(MACOS_DEPLOYMENT_TARGET)
+		PLATFORM_EXTRA_LIBS += -framework Cocoa -framework Foundation -framework IOKit -framework Metal -framework OpenGL -framework QuartzCore
+	endif
+else ifeq ($(WINDOWS_TARGET),1)
+	PLATFORM_EXTRA_LIBS += -lsetupapi -limm32 -lversion -lwinmm -lgdi32 -lole32 -loleaut32 -lshell32 -luuid -lopengl32
+else ifneq ($(WASM_TARGET),wasm)
+	PLATFORM_EXTRA_LIBS += -ldl -lGL
+endif
 
 C_OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(C_SOURCES))
 C_OBJS_SHARED := $(patsubst %.c,$(OBJ_DIR)/%.o,$(C_SOURCES_SHARED))
@@ -189,17 +232,18 @@ $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 $(OBJ_DIR)/%.o: %.cpp | $(OBJ_DIR)
 	mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(BASE_CXXFLAGS) \
-		-I$(IMGUI_DIR) \
-		-I$(IMGUI_DIR)/backends \
 		-DOS_INFO="$(OS_INFO)" \
 		-DREP_VERSION="$(VERSION_TAG)" \
 		-DREP_COMMIT_HASH="$(COMMIT_HASH)"
 
 $(BIN): $(ALL_OBJS) | $(BIN_DIR)
-	$(CXX) $(ALL_OBJS) -o $(BIN) $(SDL_LIBS) $(WASM_LDFLAGS)
+	$(CXX) $(ALL_OBJS) $(FSUI_LIBS) -o $(BIN) $(SDL_LIBS) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS) $(WASM_LDFLAGS)
+ifeq ($(WASM_TARGET),wasm)
+	cmake -DINPUT_FILE="$(BIN)" -P "$(WASM_HTML_POSTPROCESS)"
+endif
 
 $(SHARED_BIN): $(ALL_OBJS_SHARED) | $(BIN_DIR)
-	$(CXX) $(SHARED_LDFLAGS) $(ALL_OBJS_SHARED) -o $(SHARED_BIN) $(SDL_LIBS_SHARED)
+	$(CXX) $(SHARED_LDFLAGS) $(ALL_OBJS_SHARED) $(FSUI_LIBS) -o $(SHARED_BIN) $(SDL_LIBS_SHARED) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS)
 
 clean:
 	rm -rf "$(BIN_DIR)"

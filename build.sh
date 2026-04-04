@@ -11,6 +11,36 @@ set -e
 #   ./build.sh android     -> build SDL2/libarmsx for Android and stage under android/app/src/main/jniLibs
 
 MODE="$1"
+BUILD_JOBS="${BUILD_JOBS:-4}"
+
+build_fsui_native() {
+    if [ "$(uname -s)" = "Darwin" ]; then
+        MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}"
+        cmake -S third_party/fsui-lib -B build/fsui/native \
+            -DFSUI_BUILD_SAMPLES=OFF \
+            -DFSUI_PLATFORM_BACKEND=SDL2 \
+            -DFSUI_USE_SYSTEM_SDL2=ON \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET}"
+    else
+        cmake -S third_party/fsui-lib -B build/fsui/native \
+            -DFSUI_BUILD_SAMPLES=OFF \
+            -DFSUI_PLATFORM_BACKEND=SDL2 \
+            -DFSUI_USE_SYSTEM_SDL2=ON
+    fi
+    cmake --build build/fsui/native -j"${BUILD_JOBS}"
+}
+
+build_fsui_wasm() {
+    if ! command -v emcmake >/dev/null 2>&1; then
+        echo "emcmake is required for the wasm FSUI build."
+        exit 1
+    fi
+
+    emcmake cmake -S third_party/fsui-lib -B build/fsui/wasm \
+        -DFSUI_BUILD_SAMPLES=OFF \
+        -DFSUI_PLATFORM_BACKEND=SDL2
+    cmake --build build/fsui/wasm -j"${BUILD_JOBS}"
+}
 
 bundle_macos_app() {
     mkdir -p armsx.app/Contents/MacOS/Libraries
@@ -18,6 +48,22 @@ bundle_macos_app() {
     chmod 777 armsx.app/Contents/MacOS/armsx
     dylibbundler -b -x ./armsx.app/Contents/MacOS/armsx -d ./armsx.app/Contents/Libraries/ -p @executable_path/../Libraries/ -cd
     cp Info.plist armsx.app/Contents/Info.plist
+}
+
+prepare_ios_sdl_package() {
+    IOS_SDL_FRAMEWORK="$1"
+    IOS_SDL_PACKAGE_ROOT="$(pwd)/build/fsui/ios-sdl-package/SDL2.framework"
+
+    rm -rf "${IOS_SDL_PACKAGE_ROOT}"
+    mkdir -p "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake"
+    mkdir -p "${IOS_SDL_PACKAGE_ROOT}/Versions/A"
+    ln -s "${IOS_SDL_FRAMEWORK}/Headers" "${IOS_SDL_PACKAGE_ROOT}/Headers"
+    ln -s "${IOS_SDL_FRAMEWORK}/Headers" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Headers"
+    ln -s "${IOS_SDL_FRAMEWORK}/SDL2" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/SDL2"
+    cp "${IOS_SDL_FRAMEWORK}/CMake/sdl2-config.cmake" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake/"
+    cp "${IOS_SDL_FRAMEWORK}/CMake/sdl2-config-version.cmake" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake/"
+
+    printf '%s\n' "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake"
 }
 
 if [ "$MODE" = "ios" ]; then
@@ -47,16 +93,29 @@ if [ "$MODE" = "ios" ]; then
         exit 1
     fi
 
+    IOS_SDL2_DIR="$(prepare_ios_sdl_package "${IOS_SDL_FRAMEWORK}")"
+
     echo "Building iOS dylib with SDK ${IOS_SDK} (${IOS_SDKROOT})"
+    cmake -S third_party/fsui-lib -B build/fsui/ios \
+        -DFSUI_BUILD_SAMPLES=OFF \
+        -DFSUI_PLATFORM_BACKEND=SDL2 \
+        -DFSUI_USE_SYSTEM_SDL2=ON \
+        -DCMAKE_SYSTEM_NAME=iOS \
+        -DCMAKE_OSX_ARCHITECTURES=arm64 \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
+        -DCMAKE_OSX_SYSROOT="${IOS_SDKROOT}" \
+        -DSDL2_DIR="${IOS_SDL2_DIR}"
+    cmake --build build/fsui/ios -j"${BUILD_JOBS}"
     make clean
-    IOS_ENV="IOS_TARGET=1 IOS_SDK=${IOS_SDK} IOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET} SDKROOT=${IOS_SDKROOT} CC=${IOS_CC} CXX=${IOS_CXX} SDL_STATIC=0 IOS_SDL_FRAMEWORK=${IOS_SDL_FRAMEWORK}"
+    IOS_ENV="IOS_TARGET=1 IOS_SDK=${IOS_SDK} IOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET} SDKROOT=${IOS_SDKROOT} CC=${IOS_CC} CXX=${IOS_CXX} SDL_STATIC=0 IOS_SDL_FRAMEWORK=${IOS_SDL_FRAMEWORK} FSUI_BUILD_DIR=$(pwd)/build/fsui/ios"
     eval "make shared ${IOS_ENV}"
     echo "Copying libarmsx.dylib to ios/Frameworks/"
     cp bin/libarmsx.dylib ios/Frameworks/
 
 elif [ "$MODE" = "shared" ]; then
+    build_fsui_native
     make clean
-    SDL_STATIC=0 make shared
+    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" make shared
 
 elif [ "$MODE" = "android" ]; then
     ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-${NDK_HOME:-}}}"
@@ -161,26 +220,44 @@ elif [ "$MODE" = "android" ]; then
     SDL_CFLAGS="-D_REENTRANT -DANDROID -I${SDL_INCLUDE_PATH}"
     SDL_LIBS="-L${SDL_LIB_PATH} -lSDL2 -llog -landroid -lGLESv3 -lEGL -lOpenSLES -lm -lc++_shared"
 
+    FSUI_BUILD_ROOT="build/fsui/android/${ANDROID_ABI}"
+    cmake -S third_party/fsui-lib -B "${FSUI_BUILD_ROOT}" \
+        -DFSUI_BUILD_SAMPLES=OFF \
+        -DFSUI_PLATFORM_BACKEND=SDL2 \
+        -DFSUI_USE_SYSTEM_SDL2=ON \
+        -DANDROID=ON \
+        -DANDROID_ABI="${ANDROID_ABI}" \
+        -DANDROID_PLATFORM="${ANDROID_PLATFORM}" \
+        -DANDROID_STL=c++_shared \
+        -DCMAKE_SYSTEM_NAME=Android \
+        -DCMAKE_ANDROID_NDK="${ANDROID_NDK_ROOT}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="${SDL_INSTALL_DIR}"
+    cmake --build "${FSUI_BUILD_ROOT}" --config Release -j"${BUILD_JOBS}"
+
     make clean
-    SDL_STATIC=0 SDL_CFLAGS="${SDL_CFLAGS}" SDL_LIBS_DYNAMIC="${SDL_LIBS}" make shared
+    SDL_STATIC=0 SDL_CFLAGS="${SDL_CFLAGS}" SDL_LIBS_DYNAMIC="${SDL_LIBS}" FSUI_BUILD_DIR="$(pwd)/${FSUI_BUILD_ROOT}" make shared
 
     cp "${SDL_SHARED_LIB}" "${JNI_LIB_DIR}/"
     cp bin/libarmsx.so "${JNI_LIB_DIR}/"
 
 elif [ "$MODE" = "wasm" ]; then
+    build_fsui_wasm
     make clean
     if command -v emmake >/dev/null 2>&1; then
-        emmake make wasm IMGUI_FRONTEND="${IMGUI_FRONTEND:-1}"
+        emmake make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm"
     else
-        make wasm IMGUI_FRONTEND="${IMGUI_FRONTEND:-1}"
+        make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm"
     fi
 
 elif [ "$MODE" = "macosapp" ]; then
+    build_fsui_native
     make clean
-    make SDL_STATIC="${SDL_STATIC:-1}"
+    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" make
     bundle_macos_app
 
 else
+    build_fsui_native
     make clean
-    make SDL_STATIC="${SDL_STATIC:-1}" IMGUI_FRONTEND="${IMGUI_FRONTEND:-1}"
+    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" make
 fi

@@ -1,6 +1,6 @@
 # iOS host scaffold
 
-This directory contains a minimal UIKit host for the shared `libarmsx` build. It embeds SDL2 as a dynamic framework and passes the host window into `external_main`.
+This directory contains a minimal UIKit host for the shared `libarmsx` build. It embeds SDL2 as a dynamic framework and launches the native FSUI donor shell directly through `external_main`.
 
 ## Layout
 - `Frameworks/` – drop `SDL2.xcframework` (built from commit 385e995790930bc70ce43533f621caedec033895) and the iOS-built `libarmsx.dylib` here.
@@ -20,11 +20,4 @@ cd ios/HostApp
 xcodegen generate
 open PSXEHost.xcodeproj
 ```
-The target embeds both `SDL2.xcframework` and `libarmsx.dylib` into the app bundle and runs `external_main` on launch using the host `UIWindow`.
-
-## React Native brownfield overlay
-- Install JS dependencies at the repo root: `npm install`
-- Regenerate the Xcode project, then install pods: `cd ios/HostApp && xcodegen generate && pod install`
-- Start Metro from the repo root (project root is `mobile/`): `npm run start`
-- Open the workspace created by CocoaPods: `ios/HostApp/ARMSX.xcworkspace`
-- The overlay component is registered as `ARMSXOverlay` with entry `mobile/index.js`; use `npm run bundle:ios` to emit a release bundle into `ios/HostApp/main.jsbundle`.
+The target embeds both `SDL2.xcframework` and `libarmsx.dylib` into the app bundle and runs `external_main` on launch using the host `UIWindow`. There is no React Native, CocoaPods, or JS bundle step in the iOS flow anymore.

@@ -134,22 +134,12 @@
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="EGL.cs" />
-    <Compile Include="Font\Font.cs" />
-    <Compile Include="Font\FontRenderer.cs" />
-    <Compile Include="Font\AsciiArt.cs" />
-    <Compile Include="GL.cs" />
-    <Compile Include="GLES.cs" />
-    <Compile Include="HelloWorldScene.cs" />
-    <Compile Include="HelloWorldSceneANGLE.cs" />
     <Compile Include="Program.cs" />
-    <Compile Include="ProgramANGLE.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SDL2-CS\SDL2.cs" />
     <Compile Include="SDL2-CS\SDL2_image.cs" />
     <Compile Include="SDL2-CS\SDL2_mixer.cs" />
     <Compile Include="SDL2-CS\SDL2_ttf.cs" />
-    <Compile Include="UGL.cs" />
   </ItemGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">
@@ -157,8 +147,6 @@
     </AppxManifest>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="libEGL.dll" />
-    <Content Include="libGLESv2.dll" />
     <Content Include="Properties\Default.rd.xml" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -167,9 +155,13 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
-    <Content Include="$(SolutionDir)\deps\bin\*.dll">
+    <Content Include="$(SolutionDir)\deps\bin\*.dll" Condition="Exists('$(SolutionDir)\deps\bin')">
       <Link>%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\bin\libarmsx.dll" Condition="Exists('..\..\bin\libarmsx.dll')">
+      <Link>libarmsx.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
   <ItemGroup>
@@ -194,4 +186,10 @@
   <Target Name="AfterBuild">
   </Target>
   -->
+  <Target Name="StageNativeArmsxDll" AfterTargets="Build">
+    <Copy SourceFiles="..\..\bin\libarmsx.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('..\..\bin\libarmsx.dll')" />
+  </Target>
 </Project>

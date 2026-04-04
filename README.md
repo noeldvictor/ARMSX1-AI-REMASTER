@@ -22,7 +22,7 @@ Most BIOS versions are confirmed to work.
 Use the `-b` or `--bios` setting to configure the BIOS file.
 
 ## Progress
-All components have been implemented, Memory card support is temporarily disabled.
+All major components have been implemented, including memory card support.
 
 <img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> CPU </br>
 <img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> DMA </br>

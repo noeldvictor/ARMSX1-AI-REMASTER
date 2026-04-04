@@ -13,7 +13,6 @@ const char* disc_cd_extensions[] = {
     "cue",
     "bin",
     "iso",
-    "chd",
     0
 };
 
@@ -183,12 +182,12 @@ int psx_disc_open_as(psx_disc_t* disc, const char* path, int type) {
             }
 
             disc->udata = chd;
-            disc->read_sector = chd_read;
-            disc->query_sector = chd_query;
-            disc->get_track_number = chd_get_track_number;
-            disc->get_track_count = chd_get_track_count;
-            disc->get_track_lba = chd_get_track_lba;
-            disc->destroy = chd_destroy;
+            disc->read_sector = (read_sector_func)chd_read;
+            disc->query_sector = (query_sector_func)chd_query;
+            disc->get_track_number = (get_track_number_func)chd_get_track_number;
+            disc->get_track_count = (get_track_count_func)chd_get_track_count;
+            disc->get_track_lba = (get_track_lba_func)chd_get_track_lba;
+            disc->destroy = (destroy_func)chd_destroy;
         } break;
 
         default:

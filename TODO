@@ -1,10 +1,9 @@
-- restore memory card
 - add WASM target
 - add Android target
-- add full screen ui imgui with IMGUI_TV_FRONTEND optimized for controllers (heavily inspired by PCSX2 Full Screen UI)
-- finish RN/SwiftUI/appkit/xml for mobile devices with on screen controls (Probably RN brownfield at version 0.76 for android and ios)
+- polish the FSUI donor shell controller-first flows across platforms
+- add touch-first FSUI interactions for mobile devices without reintroducing a separate native UI stack
 - add save states
-- finish the imgui frontend on PCs
+- finish the FSUI donor frontend on PCs
 - finish the UWP target 
 - finish the vita target
 - add the switch target
