@@ -7,8 +7,7 @@ usage() {
 Usage: ./build-uwp-native.sh [x64|x86] [Debug|Release]
 
 Builds the UWP/WinRT native DLL with MinGW, then stages:
-  - SDL2.dll into uwp/deps/bin
-  - libarmsx.dll, SDL2.dll, and icons/ into uwp/ARMSX/bin/<platform>/<config>
+  - libarmsx.dll and icons/ into uwp/ARMSX/bin/<platform>/<config>
 
 Environment overrides:
   BUILD_JOBS   Parallel build jobs (default: 4)
@@ -51,7 +50,6 @@ esac
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fsui_build_dir="$repo_root/build/fsui/uwp-$platform"
-native_stage_dir="$repo_root/uwp/deps/bin"
 uwp_output_dir="$repo_root/uwp/ARMSX/bin/$platform/$configuration"
 uwp_icons_dir="$uwp_output_dir/icons"
 sdl_build_root="$repo_root/build/sdl/uwp-$platform"
@@ -184,7 +182,7 @@ if [ -z "${sdl_dll:-}" ]; then
     exit 1
 fi
 
-mkdir -p "$repo_root/bin" "$native_stage_dir" "$uwp_output_dir" "$uwp_icons_dir"
+mkdir -p "$repo_root/bin" "$uwp_output_dir" "$uwp_icons_dir"
 
 cmake -S "$repo_root/third_party/fsui-lib" -B "$fsui_build_dir" -G "MinGW Makefiles" \
     -DFSUI_BUILD_SAMPLES=OFF \
@@ -202,9 +200,7 @@ cmake --build "$fsui_build_dir" -j"$build_jobs"
     SDL_CFLAGS="$sdl_cflags" \
     SDL_LIBS_DYNAMIC="$sdl_libs_dynamic"
 
-cp "$sdl_dll" "$native_stage_dir/"
 cp "$repo_root/bin/libarmsx.dll" "$uwp_output_dir/"
-cp "$sdl_dll" "$uwp_output_dir/"
 cp -R "$repo_root/icons/." "$uwp_icons_dir/"
 
 echo "Staged UWP native runtime to $uwp_output_dir"

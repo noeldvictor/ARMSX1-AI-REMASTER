@@ -155,10 +155,6 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
-    <Content Include="$(SolutionDir)\deps\bin\*.dll" Condition="Exists('$(SolutionDir)\deps\bin')">
-      <Link>%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
     <Content Include="..\..\bin\libarmsx.dll" Condition="Exists('..\..\bin\libarmsx.dll')">
       <Link>libarmsx.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

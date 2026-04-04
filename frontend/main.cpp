@@ -185,6 +185,33 @@ std::filesystem::path DefaultBrowseDirectory() {
     return std::filesystem::current_path();
 }
 
+std::optional<std::filesystem::path> UwpExternalArmsxPath() {
+#if defined(UWP_TARGET)
+    const std::filesystem::path candidate("E:/armsx");
+    std::error_code ec;
+
+    if (std::filesystem::exists(candidate, ec) && std::filesystem::is_directory(candidate, ec)) {
+        return candidate;
+    }
+#endif
+
+    return std::nullopt;
+}
+
+bool PathsMatch(const std::filesystem::path& left, const std::filesystem::path& right) {
+#if defined(_WIN32)
+    return ToLower(left.lexically_normal().generic_string()) == ToLower(right.lexically_normal().generic_string());
+#else
+    return left.lexically_normal() == right.lexically_normal();
+#endif
+}
+
+bool PathListContains(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& candidate) {
+    return std::any_of(paths.begin(), paths.end(), [&](const std::filesystem::path& path) {
+        return PathsMatch(path, candidate);
+    });
+}
+
 bool ReadSdlFileBytes(std::string_view path, std::vector<unsigned char>& bytes) {
     SDL_RWops* handle = SDL_RWFromFile(std::string(path).c_str(), "rb");
     if (!handle) {
@@ -2101,6 +2128,23 @@ class ArmsxApp {
     void refreshGameList(bool full_rescan) {
         (void)full_rescan;
         game_list_.clear();
+        std::vector<std::filesystem::path> seen_game_paths;
+        std::vector<std::pair<std::filesystem::path, bool>> scan_roots;
+
+        auto add_scan_root = [&](const std::filesystem::path& root, bool recursive) {
+            if (root.empty()) {
+                return;
+            }
+
+            for (auto& entry : scan_roots) {
+                if (PathsMatch(entry.first, root)) {
+                    entry.second = entry.second || recursive;
+                    return;
+                }
+            }
+
+            scan_roots.emplace_back(root, recursive);
+        };
 
         auto scan_root = [&](const std::filesystem::path& root, bool recursive) {
             try {
@@ -2117,6 +2161,10 @@ class ArmsxApp {
                     if (!IsDiscPath(path) && !IsExePath(path)) {
                         return;
                     }
+                    if (PathListContains(seen_game_paths, path)) {
+                        return;
+                    }
+                    seen_game_paths.push_back(path);
 
                     fsui::GameEntry entry;
                     entry.path = path;
@@ -2157,11 +2205,22 @@ class ArmsxApp {
         };
 
         for (const auto& root : settings_.ui_state.game_list_paths) {
-            scan_root(root, false);
+            add_scan_root(root, false);
         }
 
         for (const auto& root : settings_.ui_state.game_list_recursive_paths) {
-            scan_root(root, true);
+            add_scan_root(root, true);
+        }
+
+#if defined(UWP_TARGET)
+        add_scan_root(DefaultBrowseDirectory(), true);
+        if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+            add_scan_root(*external, true);
+        }
+#endif
+
+        for (const auto& [root, recursive] : scan_roots) {
+            scan_root(root, recursive);
         }
 
         std::sort(game_list_.begin(), game_list_.end(), [](const fsui::GameEntry& left, const fsui::GameEntry& right) {
@@ -2413,7 +2472,15 @@ class ArmsxApp {
             folder.kind = fsui::SettingsRowKind::Action;
             folder.id = "bios-folder";
             folder.title = ICON_FA_FOLDER " BIOS Folder";
-            folder.summary = settings_.bios_search.empty() ? "Choose a folder that contains BIOS files." : settings_.bios_search;
+            if (settings_.bios_search.empty()) {
+                if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+                    folder.summary = "Choose a folder that contains BIOS files. External UWP path available: " + external->string();
+                } else {
+                    folder.summary = "Choose a folder that contains BIOS files.";
+                }
+            } else {
+                folder.summary = settings_.bios_search;
+            }
             folder.on_activate = [this]() {
                 ImGuiFullscreen::OpenFileSelector(
                     "BIOS Folder",
@@ -2427,6 +2494,20 @@ class ArmsxApp {
                 );
             };
             rows.push_back(std::move(folder));
+
+            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+                fsui::SettingsRowDescriptor external_folder;
+                external_folder.kind = fsui::SettingsRowKind::Action;
+                external_folder.id = "bios-folder-uwp-external";
+                external_folder.title = ICON_FA_FOLDER_OPEN " Use E:/armsx";
+                external_folder.summary = "Use the external UWP path for BIOS scanning if the drive is mounted.";
+                external_folder.enabled = !PathsMatch(std::filesystem::path(settings_.bios_search), *external);
+                external_folder.on_activate = [this, path = external->string()]() {
+                    settings_.bios_search = path;
+                    SaveSettings(settings_);
+                };
+                rows.push_back(std::move(external_folder));
+            }
 
             fsui::SettingsRowDescriptor override;
             override.kind = fsui::SettingsRowKind::Action;
@@ -2544,11 +2625,24 @@ class ArmsxApp {
         folders_page.build_rows = [this]() {
             std::vector<fsui::SettingsRowDescriptor> rows;
 
+            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+                fsui::SettingsRowDescriptor external_notice;
+                external_notice.kind = fsui::SettingsRowKind::Notice;
+                external_notice.id = "uwp-external-path";
+                external_notice.title = ICON_FA_FOLDER_OPEN " External Path";
+                external_notice.summary = external->string() + " is available for BIOS and game scans on UWP.";
+                rows.push_back(std::move(external_notice));
+            }
+
             fsui::SettingsRowDescriptor add_folder;
             add_folder.kind = fsui::SettingsRowKind::Action;
             add_folder.id = "add-folder";
             add_folder.title = ICON_FA_FOLDER_PLUS " Add Library Folder";
-            add_folder.summary = "Scan only the selected directory.";
+            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+                add_folder.summary = "Scan only the selected directory. External UWP path available: " + external->string();
+            } else {
+                add_folder.summary = "Scan only the selected directory.";
+            }
             add_folder.on_activate = [this]() {
                 ImGuiFullscreen::OpenFileSelector(
                     "Add Library Folder",
@@ -2564,11 +2658,31 @@ class ArmsxApp {
             };
             rows.push_back(std::move(add_folder));
 
+            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+                fsui::SettingsRowDescriptor add_external;
+                add_external.kind = fsui::SettingsRowKind::Action;
+                add_external.id = "add-uwp-external-folder";
+                add_external.title = ICON_FA_FOLDER_PLUS " Add E:/armsx";
+                add_external.summary = "Scan the external UWP path and its children.";
+                add_external.enabled = !PathListContains(settings_.ui_state.game_list_recursive_paths, *external)
+                    && !PathListContains(settings_.ui_state.game_list_paths, *external);
+                add_external.on_activate = [this, path = *external]() {
+                    settings_.ui_state.game_list_recursive_paths.emplace_back(path);
+                    refreshGameList(true);
+                    SaveSettings(settings_);
+                };
+                rows.push_back(std::move(add_external));
+            }
+
             fsui::SettingsRowDescriptor add_recursive;
             add_recursive.kind = fsui::SettingsRowKind::Action;
             add_recursive.id = "add-recursive-folder";
             add_recursive.title = ICON_FA_FOLDER_PLUS " Add Recursive Folder";
-            add_recursive.summary = "Scan the selected directory and its children.";
+            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+                add_recursive.summary = "Scan the selected directory and its children. External UWP path available: " + external->string();
+            } else {
+                add_recursive.summary = "Scan the selected directory and its children.";
+            }
             add_recursive.on_activate = [this]() {
                 ImGuiFullscreen::OpenFileSelector(
                     "Add Recursive Library Folder",
@@ -2911,6 +3025,10 @@ class ArmsxApp {
 
         if (!settings_.ui_state.game_list_recursive_paths.empty()) {
             return settings_.ui_state.game_list_recursive_paths.front();
+        }
+
+        if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
+            return *external;
         }
 
         return DefaultBrowseDirectory();
