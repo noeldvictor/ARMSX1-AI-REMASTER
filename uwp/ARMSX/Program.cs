@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using Windows.Storage;
 using SDL2;
 
 namespace ARMSX
@@ -119,15 +120,25 @@ namespace ARMSX
 
         private static string BuildNativeLogPath()
         {
-            string prefPath = SDL.SDL_GetPrefPath("nanodata", "armsx");
-            if (string.IsNullOrEmpty(prefPath))
+            try
             {
+                string localStatePath = ApplicationData.Current?.LocalFolder?.Path;
+                if (string.IsNullOrEmpty(localStatePath))
+                {
+                    return string.Empty;
+                }
+
+                string prefPath = Path.Combine(localStatePath, "nanodata", "armsx");
+                string logDirectory = Path.Combine(prefPath, "logs");
+                Directory.CreateDirectory(logDirectory);
+                return Path.Combine(logDirectory, "armsx-uwp.log");
+            }
+            catch (Exception ex)
+            {
+                OutputDebugStringW($"ARMSX UWP host log path init failed: {ex}{Environment.NewLine}");
+                Debug.WriteLine($"ARMSX UWP host log path init failed: {ex}");
                 return string.Empty;
             }
-
-            string logDirectory = Path.Combine(prefPath, "logs");
-            Directory.CreateDirectory(logDirectory);
-            return Path.Combine(logDirectory, "armsx-uwp.log");
         }
 
         private static void LogManagedException(string source, Exception exception)
@@ -154,7 +165,16 @@ namespace ARMSX
 
             lock (logLock)
             {
-                File.AppendAllText(nativeLogPath, line + Environment.NewLine, Encoding.UTF8);
+                try
+                {
+                    File.AppendAllText(nativeLogPath, line + Environment.NewLine, Encoding.UTF8);
+                }
+                catch (Exception ex)
+                {
+                    OutputDebugStringW($"ARMSX UWP host file logging disabled: {ex}{Environment.NewLine}");
+                    Debug.WriteLine($"ARMSX UWP host file logging disabled: {ex}");
+                    nativeLogPath = string.Empty;
+                }
             }
 
             Debug.WriteLine(line);
