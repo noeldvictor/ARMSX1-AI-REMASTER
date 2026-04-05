@@ -151,6 +151,7 @@ C_SOURCES := $(wildcard psx/*.c) \
              $(wildcard psx/disc/*.c) \
              frontend/argparse.c \
              frontend/config.c \
+             frontend/diagnostics.c \
              frontend/toml.c
 C_SOURCES_SHARED := $(C_SOURCES)
 
@@ -185,6 +186,9 @@ ifeq ($(PLATFORM),Darwin)
 	endif
 else ifeq ($(WINDOWS_TARGET),1)
 	PLATFORM_EXTRA_LIBS += -lsetupapi -limm32 -lversion -lwinmm -lgdi32 -lole32 -loleaut32 -lshell32 -luuid -lopengl32
+ifneq ($(UWP_TARGET),1)
+	PLATFORM_EXTRA_LIBS += -ldbghelp
+endif
 else ifneq ($(WASM_TARGET),wasm)
 	PLATFORM_EXTRA_LIBS += -ldl -lGL
 endif

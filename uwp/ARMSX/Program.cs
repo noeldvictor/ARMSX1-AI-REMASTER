@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
 using SDL2;
 
 namespace ARMSX
@@ -10,14 +13,31 @@ namespace ARMSX
         [DllImport("libarmsx.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "external_main")]
         private static extern int external_main(int argc, IntPtr argv, IntPtr external_window, IntPtr external_renderer);
 
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern void OutputDebugStringW(string message);
+
         private static string[] launchArgs = Array.Empty<string>();
+        private static readonly object logLock = new object();
+        private static string nativeLogPath = string.Empty;
 
         static void Main(string[] args)
         {
             launchArgs = args ?? Array.Empty<string>();
-            SDL.SDL_SetHint("SDL_WINRT_HANDLE_BACK_BUTTON", "1");
-            SDL.SDL_main_func mainFunction = SDLMain;
-            SDL.SDL_WinRTRunApp(mainFunction, IntPtr.Zero);
+            nativeLogPath = BuildNativeLogPath();
+            InstallExceptionHandlers();
+            LogHost($"ARMSX UWP host starting. Native log path: {nativeLogPath}");
+
+            try
+            {
+                SDL.SDL_SetHint("SDL_WINRT_HANDLE_BACK_BUTTON", "1");
+                SDL.SDL_main_func mainFunction = SDLMain;
+                SDL.SDL_WinRTRunApp(mainFunction, IntPtr.Zero);
+            }
+            catch (Exception ex)
+            {
+                LogManagedException("Main", ex);
+                throw;
+            }
         }
 
         private static int SDLMain(int argc, IntPtr argv)
@@ -39,9 +59,18 @@ namespace ARMSX
                     Marshal.WriteIntPtr(nativeArgv, i * IntPtr.Size, argvPtrs[i]);
                 }
 
-                int ret = external_main(nativeArgs.Length, nativeArgv, IntPtr.Zero, IntPtr.Zero);
-                Debug.WriteLine($"external_main returned: {ret}");
-                return ret;
+                LogHost($"Invoking external_main argc={nativeArgs.Length}");
+                try
+                {
+                    int ret = external_main(nativeArgs.Length, nativeArgv, IntPtr.Zero, IntPtr.Zero);
+                    LogHost($"external_main returned: {ret}");
+                    return ret;
+                }
+                catch (Exception ex)
+                {
+                    LogManagedException("SDLMain/external_main", ex);
+                    return -1;
+                }
             }
             finally
             {
@@ -65,6 +94,70 @@ namespace ARMSX
             nativeArgs[0] = "armsx";
             Array.Copy(launchArgs, 0, nativeArgs, 1, launchArgs.Length);
             return nativeArgs;
+        }
+
+        private static void InstallExceptionHandlers()
+        {
+            AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
+            {
+                if (eventArgs.ExceptionObject is Exception exception)
+                {
+                    LogManagedException("AppDomain.CurrentDomain.UnhandledException", exception);
+                }
+                else
+                {
+                    LogHost($"Unhandled exception object: {eventArgs.ExceptionObject}");
+                }
+            };
+
+            TaskScheduler.UnobservedTaskException += (_, eventArgs) =>
+            {
+                LogManagedException("TaskScheduler.UnobservedTaskException", eventArgs.Exception);
+                eventArgs.SetObserved();
+            };
+        }
+
+        private static string BuildNativeLogPath()
+        {
+            string prefPath = SDL.SDL_GetPrefPath("nanodata", "armsx");
+            if (string.IsNullOrEmpty(prefPath))
+            {
+                return string.Empty;
+            }
+
+            string logDirectory = Path.Combine(prefPath, "logs");
+            Directory.CreateDirectory(logDirectory);
+            return Path.Combine(logDirectory, "armsx-uwp.log");
+        }
+
+        private static void LogManagedException(string source, Exception exception)
+        {
+            if (exception == null)
+            {
+                LogHost($"{source}: managed exception unavailable.");
+                return;
+            }
+
+            LogHost($"{source}: {exception}");
+        }
+
+        private static void LogHost(string message)
+        {
+            string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [uwp-host] {message}";
+            OutputDebugStringW(line + Environment.NewLine);
+
+            if (string.IsNullOrEmpty(nativeLogPath))
+            {
+                Debug.WriteLine(line);
+                return;
+            }
+
+            lock (logLock)
+            {
+                File.AppendAllText(nativeLogPath, line + Environment.NewLine, Encoding.UTF8);
+            }
+
+            Debug.WriteLine(line);
         }
 
     }

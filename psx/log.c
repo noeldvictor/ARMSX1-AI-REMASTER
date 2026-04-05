@@ -20,6 +20,7 @@
  * IN THE SOFTWARE.
  */
 
+#define PSXE_DIAG_STDIO_DISABLE
 #include "log.h"
 
 #define MAX_CALLBACKS 32

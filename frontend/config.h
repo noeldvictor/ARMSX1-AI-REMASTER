@@ -15,6 +15,7 @@ typedef struct {
     int quiet;
     int console_source;
     int scale;
+    int vsync_enabled;
     int texture_scale_mode;
     int debug_panel;
     int stretch_mode;

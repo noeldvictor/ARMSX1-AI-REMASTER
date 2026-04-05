@@ -159,6 +159,18 @@ struct psx_gpu_t {
     psx_gpu_event_callback_t event_cb_table[8];
 };
 
+static inline int psx_gpu_is_pal_mode(const psx_gpu_t* gpu) {
+    return gpu && ((gpu->display_mode & 0x8) != 0);
+}
+
+static inline float psx_gpu_clock_frequency(const psx_gpu_t* gpu) {
+    return psx_gpu_is_pal_mode(gpu) ? PSX_GPU_CLOCK_FREQ_PAL : PSX_GPU_CLOCK_FREQ_NTSC;
+}
+
+static inline float psx_gpu_frame_rate(const psx_gpu_t* gpu) {
+    return psx_gpu_is_pal_mode(gpu) ? 49.76f : 59.29f;
+}
+
 psx_gpu_t* psx_gpu_create(void);
 void psx_gpu_init(psx_gpu_t*, psx_ic_t*);
 uint32_t psx_gpu_read32(psx_gpu_t*, uint32_t);

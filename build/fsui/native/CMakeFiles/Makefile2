@@ -253,9 +253,9 @@ CMakeFiles/fsui_imgui.dir/clean:
 # Target rules for target CMakeFiles/fsui-core.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-core.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-core.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-core.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-core.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-core.dir/all: CMakeFiles/fsui_glad.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-core.dir/build.make CMakeFiles/fsui-core.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-core.dir/build.make CMakeFiles/fsui-core.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/mohammed/Documents/ARMSX/build/fsui/native/CMakeFiles --progress-num=1 "Built target fsui-core"
@@ -287,9 +287,9 @@ CMakeFiles/fsui-core.dir/clean:
 # Target rules for target CMakeFiles/fsui-platform-sdl2.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-platform-sdl2.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-platform-sdl2.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-platform-sdl2.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-platform-sdl2.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-platform-sdl2.dir/all: CMakeFiles/fsui_glad.dir/all
 CMakeFiles/fsui-platform-sdl2.dir/all: CMakeFiles/fsui-core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-platform-sdl2.dir/build.make CMakeFiles/fsui-platform-sdl2.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-platform-sdl2.dir/build.make CMakeFiles/fsui-platform-sdl2.dir/build
@@ -322,9 +322,9 @@ CMakeFiles/fsui-platform-sdl2.dir/clean:
 # Target rules for target CMakeFiles/fsui-renderer-opengl.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-renderer-opengl.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-renderer-opengl.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-renderer-opengl.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-renderer-opengl.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-renderer-opengl.dir/all: CMakeFiles/fsui_glad.dir/all
 CMakeFiles/fsui-renderer-opengl.dir/all: CMakeFiles/fsui-core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-opengl.dir/build.make CMakeFiles/fsui-renderer-opengl.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-opengl.dir/build.make CMakeFiles/fsui-renderer-opengl.dir/build
@@ -357,9 +357,9 @@ CMakeFiles/fsui-renderer-opengl.dir/clean:
 # Target rules for target CMakeFiles/fsui-renderer-sdl2.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-renderer-sdl2.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-renderer-sdl2.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-renderer-sdl2.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-renderer-sdl2.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-renderer-sdl2.dir/all: CMakeFiles/fsui_glad.dir/all
 CMakeFiles/fsui-renderer-sdl2.dir/all: CMakeFiles/fsui-core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-sdl2.dir/build.make CMakeFiles/fsui-renderer-sdl2.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-sdl2.dir/build.make CMakeFiles/fsui-renderer-sdl2.dir/build
@@ -392,9 +392,9 @@ CMakeFiles/fsui-renderer-sdl2.dir/clean:
 # Target rules for target CMakeFiles/fsui-renderer-sdl2surface.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-renderer-sdl2surface.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-renderer-sdl2surface.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-renderer-sdl2surface.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-renderer-sdl2surface.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-renderer-sdl2surface.dir/all: CMakeFiles/fsui_glad.dir/all
 CMakeFiles/fsui-renderer-sdl2surface.dir/all: CMakeFiles/fsui-core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-sdl2surface.dir/build.make CMakeFiles/fsui-renderer-sdl2surface.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-sdl2surface.dir/build.make CMakeFiles/fsui-renderer-sdl2surface.dir/build
@@ -427,9 +427,9 @@ CMakeFiles/fsui-renderer-sdl2surface.dir/clean:
 # Target rules for target CMakeFiles/fsui-renderer-metal.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-renderer-metal.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-renderer-metal.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-renderer-metal.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-renderer-metal.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-renderer-metal.dir/all: CMakeFiles/fsui_glad.dir/all
 CMakeFiles/fsui-renderer-metal.dir/all: CMakeFiles/fsui-core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-metal.dir/build.make CMakeFiles/fsui-renderer-metal.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-renderer-metal.dir/build.make CMakeFiles/fsui-renderer-metal.dir/build
@@ -462,9 +462,9 @@ CMakeFiles/fsui-renderer-metal.dir/clean:
 # Target rules for target CMakeFiles/fsui-backend-sdl.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui_glad.dir/all
 CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui-core.dir/all
 CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui-platform-sdl2.dir/all
 CMakeFiles/fsui-backend-sdl.dir/all: CMakeFiles/fsui-renderer-opengl.dir/all
@@ -502,9 +502,9 @@ CMakeFiles/fsui-backend-sdl.dir/clean:
 # Target rules for target CMakeFiles/fsui-donor.dir
 
 # All Build rule for target.
-CMakeFiles/fsui-donor.dir/all: CMakeFiles/fsui_glad.dir/all
-CMakeFiles/fsui-donor.dir/all: CMakeFiles/fsui_resources.dir/all
 CMakeFiles/fsui-donor.dir/all: CMakeFiles/fsui_imgui.dir/all
+CMakeFiles/fsui-donor.dir/all: CMakeFiles/fsui_resources.dir/all
+CMakeFiles/fsui-donor.dir/all: CMakeFiles/fsui_glad.dir/all
 CMakeFiles/fsui-donor.dir/all: CMakeFiles/fsui-core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-donor.dir/build.make CMakeFiles/fsui-donor.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/fsui-donor.dir/build.make CMakeFiles/fsui-donor.dir/build

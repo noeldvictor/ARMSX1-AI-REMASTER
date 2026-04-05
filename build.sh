@@ -43,7 +43,8 @@ build_fsui_wasm() {
 }
 
 bundle_macos_app() {
-	    mkdir -p armsx.app/Contents/MacOS/Libraries
+	    rm -rf armsx.app/Contents/Libraries
+	    mkdir -p armsx.app/Contents/MacOS
 	    mkdir -p armsx.app/Contents/Resources/icons
 	    cp bin/armsx armsx.app/Contents/MacOS
 	    cp -R icons/. armsx.app/Contents/Resources/icons/

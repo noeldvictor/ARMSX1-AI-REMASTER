@@ -1892,11 +1892,16 @@ void psx_gpu_set_udata(psx_gpu_t* gpu, int index, void* udata) {
 #define GPU_CYCLES_PER_SCANL_NTSC 3413.0f
 #define GPU_SCANS_PER_VDRAW_NTSC 240
 #define GPU_SCANS_PER_FRAME_NTSC 263
+#define GPU_CYCLES_PER_HDRAW_PAL 2560.0f
 #define GPU_CYCLES_PER_SCANL_PAL 3406.0f
+#define GPU_SCANS_PER_VDRAW_PAL  288
 #define GPU_SCANS_PER_FRAME_PAL  314
 
 void gpu_hblank_event(psx_gpu_t* gpu) {
-    if (gpu->line < GPU_SCANS_PER_VDRAW_NTSC) {
+    const int scans_per_vdraw = psx_gpu_is_pal_mode(gpu) ? GPU_SCANS_PER_VDRAW_PAL : GPU_SCANS_PER_VDRAW_NTSC;
+    const int scans_per_frame = psx_gpu_is_pal_mode(gpu) ? GPU_SCANS_PER_FRAME_PAL : GPU_SCANS_PER_FRAME_NTSC;
+
+    if (gpu->line < scans_per_vdraw) {
         if (gpu->line & 1) {
             gpu->gpustat |= 1 << 31;
         } else {
@@ -1937,12 +1942,12 @@ void gpu_hblank_event(psx_gpu_t* gpu) {
 
     gpu->line++;
 
-    if (gpu->line == GPU_SCANS_PER_VDRAW_NTSC) {
+    if (gpu->line == scans_per_vdraw) {
         if (gpu->event_cb_table[GPU_EVENT_VBLANK])
             gpu->event_cb_table[GPU_EVENT_VBLANK](gpu);
 
         psx_ic_irq(gpu->ic, IC_VBLANK);
-    } else if (gpu->line == GPU_SCANS_PER_FRAME_NTSC) {
+    } else if (gpu->line == scans_per_frame) {
         if (gpu->event_cb_table[GPU_EVENT_VBLANK_END])
             gpu->event_cb_table[GPU_EVENT_VBLANK_END](gpu);
 
@@ -1951,14 +1956,18 @@ void gpu_hblank_event(psx_gpu_t* gpu) {
 }
 
 void psx_gpu_update(psx_gpu_t* gpu, int cyc) {
-    int prev_hblank = (gpu->cycles >= GPU_CYCLES_PER_HDRAW_NTSC) &&
-                      (gpu->cycles <= GPU_CYCLES_PER_SCANL_NTSC);
+    const float cycles_per_hdraw = psx_gpu_is_pal_mode(gpu) ? GPU_CYCLES_PER_HDRAW_PAL : GPU_CYCLES_PER_HDRAW_NTSC;
+    const float cycles_per_scanline = psx_gpu_is_pal_mode(gpu) ? GPU_CYCLES_PER_SCANL_PAL : GPU_CYCLES_PER_SCANL_NTSC;
+    const float gpu_clock = psx_gpu_clock_frequency(gpu);
+
+    int prev_hblank = (gpu->cycles >= cycles_per_hdraw) &&
+                      (gpu->cycles <= cycles_per_scanline);
 
     // Convert CPU (~33.8 MHz) cycles to GPU (~53.7 MHz) cycles
-    gpu->cycles += (float)cyc * (PSX_GPU_CLOCK_FREQ_NTSC / PSX_CPU_FREQ);
+    gpu->cycles += (float)cyc * (gpu_clock / PSX_CPU_FREQ);
 
-    int curr_hblank = (gpu->cycles >= GPU_CYCLES_PER_HDRAW_NTSC) &&
-                      (gpu->cycles <= GPU_CYCLES_PER_SCANL_NTSC);
+    int curr_hblank = (gpu->cycles >= cycles_per_hdraw) &&
+                      (gpu->cycles <= cycles_per_scanline);
 
     if (curr_hblank && !prev_hblank) {
         if (gpu->event_cb_table[GPU_EVENT_HBLANK])
@@ -1969,7 +1978,7 @@ void psx_gpu_update(psx_gpu_t* gpu, int cyc) {
         if (gpu->event_cb_table[GPU_EVENT_HBLANK_END])
             gpu->event_cb_table[GPU_EVENT_HBLANK_END](gpu);
 
-        gpu->cycles -= (float)GPU_CYCLES_PER_SCANL_NTSC;
+        gpu->cycles -= cycles_per_scanline;
     }
 }
 

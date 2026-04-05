@@ -4,21 +4,42 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <csignal>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#if !defined(UWP_TARGET)
+#include <dbghelp.h>
+#endif
+#elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+#include <dlfcn.h>
+#include <execinfo.h>
+#endif
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/html5.h>
@@ -58,10 +79,89 @@ constexpr bool SupportsManagedWindowSizing() {
 #endif
 }
 
+constexpr bool DefaultVsyncEnabled() {
+#if defined(UWP_TARGET)
+    return false;
+#else
+    return true;
+#endif
+}
+
 class ArmsxApp;
 
 ArmsxApp* g_active_app = nullptr;
 std::optional<std::filesystem::path> g_pending_wasm_path;
+std::atomic_bool g_crash_reporting{false};
+
+constexpr double kUiFrameRate = 60.0;
+
+const char* LogLevelTitle(int level) {
+    switch (level) {
+        case LOG_TRACE: return "trace";
+        case LOG_DEBUG: return "debug";
+        case LOG_INFO: return "info";
+        case LOG_WARN: return "warn";
+        case LOG_ERROR: return "error";
+        case LOG_FATAL: return "fatal";
+        default: return "unknown";
+    }
+}
+
+void StructuredLogCallback(log_Event* ev) {
+    if (!ev) {
+        return;
+    }
+
+    char message[4096] = {};
+    vsnprintf(message, sizeof(message), ev->fmt, ev->ap);
+    psxe_diag_logf("psx", "%s %s:%d %s", LogLevelTitle(ev->level), ev->file, ev->line, message);
+}
+
+void SdlLogOutput(void*, int category, SDL_LogPriority priority, const char* message) {
+    psxe_diag_logf("sdl", "category=%d priority=%d %s", category, static_cast<int>(priority), message ? message : "");
+}
+
+double CounterTicksToMilliseconds(uint64_t ticks) {
+    const uint64_t frequency = SDL_GetPerformanceFrequency();
+    if (frequency == 0) {
+        return 0.0;
+    }
+
+    return (static_cast<double>(ticks) * 1000.0) / static_cast<double>(frequency);
+}
+
+std::string RendererFlagsTitle(Uint32 flags) {
+    std::string title;
+
+    auto append = [&](const char* value) {
+        if (!title.empty()) {
+            title.append("|");
+        }
+        title.append(value);
+    };
+
+    if (flags & SDL_RENDERER_SOFTWARE) {
+        append("software");
+    }
+    if (flags & SDL_RENDERER_ACCELERATED) {
+        append("accelerated");
+    }
+    if (flags & SDL_RENDERER_PRESENTVSYNC) {
+        append("present-vsync");
+    }
+    if (flags & SDL_RENDERER_TARGETTEXTURE) {
+        append("target-texture");
+    }
+
+    if (title.empty()) {
+        title = "none";
+    }
+
+    return title;
+}
+
+[[noreturn]] void ReportNativeCrash(const char* reason);
+void WriteNativeStackTraceImpl();
 
 enum class LaunchKind {
     None,
@@ -69,6 +169,17 @@ enum class LaunchKind {
     Disc,
     Exe,
 };
+
+const char* LaunchKindTitle(LaunchKind kind) {
+    switch (kind) {
+        case LaunchKind::Bios: return "bios";
+        case LaunchKind::Disc: return "disc";
+        case LaunchKind::Exe: return "exe";
+        case LaunchKind::None:
+        default:
+            return "none";
+    }
+}
 
 struct CliFlags {
     bool bios = false;
@@ -102,6 +213,7 @@ struct FrontendSettings {
     int scale = 3;
     int log_level = LOG_FATAL;
     bool quiet = false;
+    bool vsync_enabled = DefaultVsyncEnabled();
     bool texture_scale_mode = false;
     bool debug_panel = false;
     bool stretch_mode = false;
@@ -128,6 +240,16 @@ struct PendingChordButton {
     bool pending = false;
     bool forwarded = false;
     Uint32 pending_since = 0;
+};
+
+enum class FsuiWindowState {
+    None,
+    Landing,
+    StartGame,
+    Exit,
+    GameList,
+    Settings,
+    PauseMenu,
 };
 
 std::string ToLower(std::string_view value) {
@@ -794,6 +916,11 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
     }
 
     if (toml_table_t* video = toml_table_in(root, "video")) {
+        toml_datum_t vsync = toml_bool_in(video, "vsync");
+        if (vsync.ok) {
+            settings.vsync_enabled = vsync.u.b != 0;
+        }
+
         toml_datum_t texture_scale_mode = toml_bool_in(video, "texture_scale_mode");
         if (texture_scale_mode.ok) {
             settings.texture_scale_mode = texture_scale_mode.u.b != 0;
@@ -871,6 +998,7 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
     settings.scale = cfg ? cfg->scale : 3;
     settings.log_level = cfg ? cfg->log_level : LOG_FATAL;
     settings.quiet = cfg ? (cfg->quiet != 0) : false;
+    settings.vsync_enabled = cfg ? (cfg->vsync_enabled != 0) : DefaultVsyncEnabled();
     settings.texture_scale_mode = cfg ? (cfg->texture_scale_mode != 0) : false;
     settings.debug_panel = cfg ? (cfg->debug_panel != 0) : false;
     settings.stretch_mode = cfg ? (cfg->stretch_mode != 0) : false;
@@ -945,6 +1073,7 @@ bool SaveSettings(const FrontendSettings& settings) {
         << "    expansion_rom = \"" << EscapeTomlString(settings.exp_path) << "\"\n"
         << "    default_psx_exe = \"" << EscapeTomlString(settings.default_exe_path) << "\"\n\n"
         << "[video]\n"
+        << "    vsync = " << (settings.vsync_enabled ? "true" : "false") << "\n"
         << "    texture_scale_mode = " << (settings.texture_scale_mode ? "true" : "false") << "\n"
         << "    debug_panel = " << (settings.debug_panel ? "true" : "false") << "\n"
         << "    stretch_mode = " << (settings.stretch_mode ? "true" : "false") << "\n"
@@ -1002,6 +1131,7 @@ class ArmsxSession {
         }
 
         renderer_ = renderer;
+        vblank_counter_ = 0;
 
         psxe_config_t cfg{};
         cfg.bios = settings.bios_override.empty() ? nullptr : settings.bios_override.c_str();
@@ -1033,10 +1163,11 @@ class ArmsxSession {
 
         psx_gpu_t* gpu = psx_get_gpu(psx_);
         psx_gpu_set_event_callback(gpu, GPU_EVENT_DMODE, nullptr);
-        psx_gpu_set_event_callback(gpu, GPU_EVENT_VBLANK, psxe_gpu_vblank_timer_event_cb);
+        psx_gpu_set_event_callback(gpu, GPU_EVENT_VBLANK, SessionVblankEvent);
         psx_gpu_set_event_callback(gpu, GPU_EVENT_HBLANK, psxe_gpu_hblank_event_cb);
         psx_gpu_set_event_callback(gpu, GPU_EVENT_VBLANK_END, psxe_gpu_vblank_end_event_cb);
         psx_gpu_set_event_callback(gpu, GPU_EVENT_HBLANK_END, psxe_gpu_hblank_end_event_cb);
+        psx_gpu_set_udata(gpu, 0, this);
         psx_gpu_set_udata(gpu, 1, psx_->timer);
 
         psx_cdrom_set_region(psx_get_cdrom(psx_), RegionFromSettings(settings));
@@ -1099,6 +1230,15 @@ class ArmsxSession {
         }
 
         launch_kind_ = request.kind;
+        psxe_diag_breadcrumbf(
+            "Session created kind=%s title=%s path=%s bios=%s model=%s region=%s",
+            LaunchKindTitle(request.kind),
+            title_.c_str(),
+            request.path.empty() ? "(none)" : request.path.string().c_str(),
+            bios_path,
+            settings.model.c_str(),
+            settings.region.c_str()
+        );
 
         SDL_AudioSpec desired{};
         SDL_AudioSpec obtained{};
@@ -1128,6 +1268,15 @@ class ArmsxSession {
     }
 
     void destroy() {
+        if (psx_) {
+            psxe_diag_breadcrumbf(
+                "Session destroyed kind=%s title=%s path=%s",
+                LaunchKindTitle(launch_kind_),
+                title_.empty() ? "(none)" : title_.c_str(),
+                disc_path_.empty() ? (exe_path_.empty() ? "(none)" : exe_path_.string().c_str()) : disc_path_.string().c_str()
+            );
+        }
+
         if (audio_dev_) {
             SDL_LockAudioDevice(audio_dev_);
             resetAudioQueueLocked();
@@ -1166,6 +1315,7 @@ class ArmsxSession {
         launch_kind_ = LaunchKind::None;
         paused_ = false;
         debug_view_ = false;
+        vblank_counter_ = 0;
     }
 
     bool valid() const {
@@ -1178,6 +1328,18 @@ class ArmsxSession {
 
     psx_pad_t* pad() const {
         return psx_ ? psx_->pad : nullptr;
+    }
+
+    void rebindRenderer(SDL_Renderer* renderer, const FrontendSettings& settings) {
+        renderer_ = renderer;
+        if (texture_) {
+            SDL_DestroyTexture(texture_);
+            texture_ = nullptr;
+        }
+        texture_width_ = 0;
+        texture_height_ = 0;
+        texture_format_ = SDL_PIXELFORMAT_UNKNOWN;
+        updateTexture(settings);
     }
 
     void setPaused(bool paused) {
@@ -1201,7 +1363,19 @@ class ArmsxSession {
             return;
         }
 
-        psx_run_frame(psx_);
+        const std::uint64_t start_vblank = vblank_counter_;
+        std::uint32_t steps = 0;
+
+        while (vblank_counter_ == start_vblank) {
+            psx_update(psx_);
+            steps++;
+
+            if (steps >= kMaxFrameSteps) {
+                psxe_diag_logf("timing", "Session frame advance exceeded vblank step budget title=%s", title_.empty() ? "(none)" : title_.c_str());
+                return;
+            }
+        }
+
         queueAudioForFrame();
     }
 
@@ -1218,6 +1392,7 @@ class ArmsxSession {
             return false;
         }
 
+        psxe_diag_breadcrumbf("Soft reset requested title=%s", title_.empty() ? "(none)" : title_.c_str());
         clearQueuedAudio();
         psx_soft_reset(psx_);
         return true;
@@ -1236,6 +1411,7 @@ class ArmsxSession {
         disc_path_ = path;
         launch_kind_ = LaunchKind::Disc;
         title_ = StemToTitle(path);
+        psxe_diag_breadcrumbf("Disc swapped path=%s", path.string().c_str());
         psx_soft_reset(psx_);
         return true;
     }
@@ -1259,6 +1435,7 @@ class ArmsxSession {
         std::vector<fsui::OverlayTextLine> lines;
         lines.push_back(fsui::OverlayTextLine{.text = std::string("Aspect: ") + AspectTitle(settings.display_aspect)});
         lines.push_back(fsui::OverlayTextLine{.text = std::string("Video: ") + RendererValueTitle(settings)});
+        lines.push_back(fsui::OverlayTextLine{.text = std::string("VSync: ") + BoolTitle(settings.vsync_enabled)});
         lines.push_back(fsui::OverlayTextLine{.text = std::string("Debug View: ") + BoolTitle(debug_view_)});
         return lines;
     }
@@ -1404,10 +1581,28 @@ class ArmsxSession {
             return 59.29;
         }
 
-        return (psx_->gpu->display_mode & 0x8) ? 59.29 : 49.76;
+        return static_cast<double>(psx_gpu_frame_rate(psx_->gpu));
+    }
+
+    const char* timingModeTitle() const {
+        if (!psx_ || !psx_->gpu) {
+            return "NTSC-like";
+        }
+
+        return psx_gpu_is_pal_mode(psx_->gpu) ? "PAL-like" : "NTSC-like";
     }
 
   private:
+    static void SessionVblankEvent(psx_gpu_t* gpu) {
+        if (gpu) {
+            if (auto* session = static_cast<ArmsxSession*>(gpu->udata[0])) {
+                session->vblank_counter_++;
+            }
+
+            psxe_gpu_vblank_timer_event_cb(gpu);
+        }
+    }
+
     static void AudioUpdate(void* userdata, uint8_t* buffer, int size) {
         if (!buffer || size <= 0) {
             return;
@@ -1503,6 +1698,7 @@ class ArmsxSession {
     static constexpr int kAudioMixRate = 44100;
     static constexpr size_t kMaxQueuedAudioBytes = static_cast<size_t>(kAudioMixRate * sizeof(int16_t) * 2 / 2);
     static constexpr size_t kAudioQueueCompactThreshold = 4096;
+    static constexpr std::uint32_t kMaxFrameSteps = PSX_CPU_CPS / 8u;
 
     SDL_Renderer* renderer_ = nullptr;
     psx_t* psx_ = nullptr;
@@ -1519,6 +1715,7 @@ class ArmsxSession {
     LaunchKind launch_kind_ = LaunchKind::None;
     bool paused_ = false;
     bool debug_view_ = false;
+    std::uint64_t vblank_counter_ = 0;
     int texture_width_ = 0;
     int texture_height_ = 0;
     Uint32 texture_format_ = SDL_PIXELFORMAT_UNKNOWN;
@@ -1917,6 +2114,17 @@ class ArmsxApp {
           external_renderer_(static_cast<SDL_Renderer*>(external_renderer)), cli_(ScanCliFlags(argc, argv)) {}
 
     int run() {
+        psxe_diag_initialize(psxe_cfg_get_pref_path());
+        psxe_diag_breadcrumbf("ARMSX startup argc=%d", argc_);
+        psxe_diag_logf("diag", "Pref path: %s", psxe_cfg_get_pref_path() ? psxe_cfg_get_pref_path() : "(none)");
+
+        static bool log_callback_installed = false;
+        if (!log_callback_installed) {
+            log_add_callback(StructuredLogCallback, nullptr, LOG_TRACE);
+            SDL_LogSetOutputFunction(SdlLogOutput, nullptr);
+            log_callback_installed = true;
+        }
+
         psxe_config_t* cfg = psxe_cfg_create();
         if (!cfg) {
             return 1;
@@ -1930,12 +2138,20 @@ class ArmsxApp {
 
         log_set_quiet(settings_.quiet ? 1 : 0);
         log_set_level(settings_.log_level);
+        psxe_diag_breadcrumbf("Settings loaded model=%s region=%s quiet=%s log_level=%d",
+            settings_.model.c_str(),
+            settings_.region.c_str(),
+            settings_.quiet ? "true" : "false",
+            settings_.log_level);
+
+        installCrashHandlers();
 
         if (!initializeSdl() || !initializeWindowAndRenderer() || !initializeFsui()) {
             shutdown();
             return 1;
         }
 
+        logRendererBootstrap("frontend-init", kUiFrameRate);
         refreshGameList(true);
 
         g_active_app = this;
@@ -1961,7 +2177,7 @@ class ArmsxApp {
         }
 
         if (!session_.valid()) {
-            fsui::ShowLandingWindow();
+            showLandingWindow();
         }
 
         fsui::SdlMainLoopCallbacks loop;
@@ -1975,6 +2191,22 @@ class ArmsxApp {
         return 0;
     }
 
+    void writeCrashContext(const char* reason) const {
+        const fsui::CurrentGameInfo info = session_.currentGameInfo();
+        psxe_diag_logf("crash", "Crash reason: %s", reason ? reason : "(unknown)");
+        psxe_diag_logf("crash", "Running game: %s", info.has_game ? info.title.c_str() : "(none)");
+        psxe_diag_logf("crash", "Game path: %s", info.path.empty() ? "(none)" : info.path.string().c_str());
+        psxe_diag_logf("crash", "BIOS override: %s", settings_.bios_override.empty() ? "(none)" : settings_.bios_override.c_str());
+        psxe_diag_logf("crash", "BIOS folder: %s", settings_.bios_search.c_str());
+        psxe_diag_logf("crash", "Model=%s Region=%s Expansion=%s",
+            settings_.model.c_str(),
+            settings_.region.c_str(),
+            settings_.exp_path.empty() ? "(none)" : settings_.exp_path.c_str());
+        logRendererBootstrap("crash", currentTargetFrameRate());
+        logCpuState();
+        psxe_diag_dump_breadcrumbs();
+    }
+
     void onWasmFile(const std::filesystem::path& path) {
         if (path.empty()) {
             return;
@@ -1984,7 +2216,7 @@ class ArmsxApp {
         if (request.kind == LaunchKind::None) {
             pending_error_dialog_ = "Unsupported file type for browser launch.";
             if (!session_.valid()) {
-                fsui::ShowLandingWindow();
+                showLandingWindow();
             }
             return;
         }
@@ -1994,15 +2226,407 @@ class ArmsxApp {
     }
 
   private:
+    Uint32 managedRendererFlags(bool vsync_enabled) const {
+        Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
+#if !defined(__EMSCRIPTEN__)
+        if (vsync_enabled) {
+            renderer_flags |= SDL_RENDERER_PRESENTVSYNC;
+        }
+#endif
+        return renderer_flags;
+    }
+
+    bool createManagedRenderer(bool vsync_enabled) {
+        renderer_ = SDL_CreateRenderer(window_, -1, managedRendererFlags(vsync_enabled));
+        owns_renderer_ = renderer_ != nullptr;
+
+        if (!renderer_) {
+            psxe_diag_logf(
+                "renderer",
+                "Renderer initialization failed requested_vsync=%s error=%s",
+                vsync_enabled ? "true" : "false",
+                SDL_GetError()
+            );
+            return false;
+        }
+
+        managed_renderer_vsync_ = vsync_enabled;
+        return true;
+    }
+
+    void shutdownFsuiFrontend() {
+        if (fsui_initialized_) {
+            fsui::Shutdown(true);
+            fsui_initialized_ = false;
+        }
+
+        imgui_backend_.shutdown();
+
+        if (ImGui::GetCurrentContext()) {
+            ImGui::DestroyContext();
+        }
+    }
+
+    void showLandingWindow() {
+        ui_window_state_ = FsuiWindowState::Landing;
+        fsui::ShowLandingWindow();
+    }
+
+    void showStartGameWindow() {
+        ui_window_state_ = FsuiWindowState::StartGame;
+        fsui::ShowStartGameWindow();
+    }
+
+    void showExitWindow() {
+        ui_window_state_ = FsuiWindowState::Exit;
+        fsui::ShowExitWindow();
+    }
+
+    void showGameListWindow() {
+        ui_window_state_ = FsuiWindowState::GameList;
+        fsui::ShowGameListWindow();
+    }
+
+    void switchToSettingsWindow() {
+        ui_window_state_ = FsuiWindowState::Settings;
+        fsui::SwitchToSettings();
+    }
+
+    void returnToMainWindow() {
+        ui_window_state_ = session_.valid() ? FsuiWindowState::None : FsuiWindowState::Landing;
+        fsui::ReturnToMainWindow();
+    }
+
+    void showPauseMenuWindow() {
+        ui_window_state_ = FsuiWindowState::PauseMenu;
+        fsui::OpenPauseMenu();
+    }
+
+    void restoreUiWindow() {
+        switch (ui_window_state_) {
+            case FsuiWindowState::Landing:
+                showLandingWindow();
+                break;
+            case FsuiWindowState::StartGame:
+                showStartGameWindow();
+                break;
+            case FsuiWindowState::Exit:
+                showExitWindow();
+                break;
+            case FsuiWindowState::GameList:
+                showGameListWindow();
+                break;
+            case FsuiWindowState::Settings:
+                switchToSettingsWindow();
+                break;
+            case FsuiWindowState::PauseMenu:
+                showPauseMenuWindow();
+                break;
+            case FsuiWindowState::None:
+            default:
+                break;
+        }
+    }
+
+    bool recreateManagedRenderer(bool desired_vsync) {
+        if (!owns_renderer_ || external_renderer_ || !window_) {
+            return false;
+        }
+
+        const bool had_session = session_.valid();
+        const bool was_paused = had_session ? session_.paused() : false;
+        const FsuiWindowState restore_window = ui_window_state_;
+        const bool previous_vsync = managed_renderer_vsync_;
+        const bool should_be_paused_after_restore = had_session && (was_paused || restore_window != FsuiWindowState::None);
+
+        auto restore_previous_renderer = [&](const char* phase, const char* message) {
+            settings_.vsync_enabled = previous_vsync;
+            SaveSettings(settings_);
+
+            if (renderer_) {
+                SDL_DestroyRenderer(renderer_);
+                renderer_ = nullptr;
+            }
+            owns_renderer_ = false;
+
+            if (!createManagedRenderer(previous_vsync) || !initializeFsui()) {
+                psxe_diag_logf("renderer", "Renderer recovery failed phase=%s error=%s", phase ? phase : "(none)", SDL_GetError());
+                running_ = false;
+                return false;
+            }
+
+            if (had_session) {
+                session_.rebindRenderer(renderer_, settings_);
+                session_.setPaused(should_be_paused_after_restore);
+            }
+
+            ui_window_state_ = restore_window;
+            restoreUiWindow();
+            resetFramePacing("renderer-recovery");
+            logRendererBootstrap(phase, currentTargetFrameRate());
+            pending_error_dialog_ = message;
+            return false;
+        };
+
+        if (had_session) {
+            session_.setPaused(true);
+        }
+
+        shutdownFsuiFrontend();
+
+        if (renderer_) {
+            SDL_DestroyRenderer(renderer_);
+            renderer_ = nullptr;
+        }
+        owns_renderer_ = false;
+
+        if (!createManagedRenderer(desired_vsync)) {
+            return restore_previous_renderer("renderer-recreate-recover", "Failed to apply the requested VSync mode; restored the previous renderer.");
+        }
+
+        if (!initializeFsui()) {
+            return restore_previous_renderer("renderer-recreate-recover", "Failed to rebuild the UI after changing VSync; restored the previous renderer.");
+        }
+
+        if (had_session) {
+            session_.rebindRenderer(renderer_, settings_);
+            session_.setPaused(should_be_paused_after_restore);
+        }
+
+        ui_window_state_ = restore_window;
+        restoreUiWindow();
+        resetFramePacing("renderer-recreate");
+        logRendererBootstrap("renderer-recreate", currentTargetFrameRate());
+        return true;
+    }
+
+    void installCrashHandlers() {
+        static bool installed = false;
+        if (installed) {
+            return;
+        }
+
+        installed = true;
+
+        std::set_terminate([]() {
+            ReportNativeCrash("std::terminate");
+        });
+
+        auto signal_handler = [](int signal_value) {
+            switch (signal_value) {
+                case SIGABRT:
+                    ReportNativeCrash("SIGABRT");
+                    break;
+                case SIGSEGV:
+                    ReportNativeCrash("SIGSEGV");
+                    break;
+                case SIGILL:
+                    ReportNativeCrash("SIGILL");
+                    break;
+                case SIGFPE:
+                    ReportNativeCrash("SIGFPE");
+                    break;
+                default:
+                    ReportNativeCrash("signal");
+                    break;
+            }
+        };
+
+        std::signal(SIGABRT, signal_handler);
+        std::signal(SIGSEGV, signal_handler);
+        std::signal(SIGILL, signal_handler);
+        std::signal(SIGFPE, signal_handler);
+
+#if defined(_WIN32) && !defined(UWP_TARGET)
+        SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* exception_info) -> LONG {
+            const DWORD code = exception_info && exception_info->ExceptionRecord
+                ? exception_info->ExceptionRecord->ExceptionCode
+                : 0u;
+            char reason[64] = {};
+            SDL_snprintf(reason, sizeof(reason), "SEH 0x%08lx", static_cast<unsigned long>(code));
+            ReportNativeCrash(reason);
+            return EXCEPTION_EXECUTE_HANDLER;
+        });
+#endif
+    }
+
+    double currentTargetFrameRate() const {
+        if (session_.valid() && !session_.paused()) {
+            return session_.frameRate();
+        }
+
+        return kUiFrameRate;
+    }
+
+    void updateFramePeriod(double frame_rate) {
+#if !defined(__EMSCRIPTEN__)
+        const double safe_rate = std::max(frame_rate, 1.0);
+        const uint64_t frequency = SDL_GetPerformanceFrequency();
+        const uint64_t ticks = std::max<uint64_t>(
+            1,
+            static_cast<uint64_t>(std::llround(static_cast<double>(frequency) / safe_rate))
+        );
+
+        if (frame_period_ticks_ != ticks) {
+            frame_period_ticks_ = ticks;
+            next_frame_deadline_ = 0;
+            psxe_diag_breadcrumbf(
+                "Frame pacing target updated fps=%.2f period_ms=%.3f",
+                safe_rate,
+                CounterTicksToMilliseconds(frame_period_ticks_)
+            );
+        }
+#else
+        (void)frame_rate;
+#endif
+    }
+
+    void waitForFrameDeadline(double frame_rate) {
+#if !defined(__EMSCRIPTEN__)
+        updateFramePeriod(frame_rate);
+
+        const uint64_t frequency = SDL_GetPerformanceFrequency();
+        const uint64_t slack_ticks = std::max<uint64_t>(1, frequency / 2000u);
+        uint64_t now = SDL_GetPerformanceCounter();
+
+        if (next_frame_deadline_ == 0) {
+            next_frame_deadline_ = now;
+            return;
+        }
+
+        if (frame_period_ticks_ != 0 && now > (next_frame_deadline_ + (frame_period_ticks_ * 2u))) {
+            psxe_diag_breadcrumbf(
+                "Frame pacing resync lateness_ms=%.3f",
+                CounterTicksToMilliseconds(now - next_frame_deadline_)
+            );
+            next_frame_deadline_ = now;
+            return;
+        }
+
+        while (now + slack_ticks < next_frame_deadline_) {
+            const double wait_ms = CounterTicksToMilliseconds(next_frame_deadline_ - now);
+            if (wait_ms > 1.5) {
+                SDL_Delay(static_cast<Uint32>(wait_ms - 1.0));
+            } else {
+                std::this_thread::yield();
+            }
+            now = SDL_GetPerformanceCounter();
+        }
+
+        while (now < next_frame_deadline_) {
+            std::this_thread::yield();
+            now = SDL_GetPerformanceCounter();
+        }
+#else
+        (void)frame_rate;
+#endif
+    }
+
+    void advanceFrameDeadline() {
+#if !defined(__EMSCRIPTEN__)
+        if (frame_period_ticks_ == 0) {
+            return;
+        }
+
+        if (next_frame_deadline_ == 0) {
+            next_frame_deadline_ = SDL_GetPerformanceCounter();
+        }
+
+        next_frame_deadline_ += frame_period_ticks_;
+#endif
+    }
+
+    void resetFramePacing(const char* reason) {
+#if !defined(__EMSCRIPTEN__)
+        next_frame_deadline_ = 0;
+        frame_period_ticks_ = 0;
+        if (reason && reason[0]) {
+            psxe_diag_breadcrumbf("Frame pacing reset reason=%s", reason);
+        }
+#else
+        (void)reason;
+#endif
+    }
+
+    void logRendererBootstrap(const char* phase, double frame_rate) const {
+        if (!renderer_) {
+            return;
+        }
+
+        SDL_RendererInfo info{};
+        SDL_GetRendererInfo(renderer_, &info);
+
+        int output_width = 0;
+        int output_height = 0;
+        SDL_GetRendererOutputSize(renderer_, &output_width, &output_height);
+
+        int refresh_rate = 0;
+        SDL_DisplayMode display_mode{};
+        if (window_) {
+            const int display_index = SDL_GetWindowDisplayIndex(window_);
+            if (display_index >= 0 && SDL_GetCurrentDisplayMode(display_index, &display_mode) == 0) {
+                refresh_rate = display_mode.refresh_rate;
+            }
+        }
+
+        const char* timing_title = session_.valid() ? session_.timingModeTitle() : "UI";
+        psxe_diag_logf(
+            "renderer",
+            "phase=%s source=%s driver=%s flags=%s output=%dx%d refresh_hz=%d timing=%s target_fps=%.2f frame_period_ms=%.3f requested_vsync=%s",
+            phase ? phase : "(none)",
+            external_renderer_ ? "external" : "internal",
+            info.name ? info.name : "(unknown)",
+            RendererFlagsTitle(info.flags).c_str(),
+            output_width,
+            output_height,
+            refresh_rate,
+            timing_title,
+            frame_rate,
+            frame_rate > 0.0 ? (1000.0 / frame_rate) : 0.0,
+            (owns_renderer_ && !external_renderer_) ? (managed_renderer_vsync_ ? "true" : "false") : "host-controlled"
+        );
+    }
+
+    void logCpuState() const {
+        if (!session_.valid() || !session_.psx() || !session_.psx()->cpu) {
+            psxe_diag_logf("crash", "CPU state unavailable.");
+            return;
+        }
+
+        const psx_cpu_t* cpu = session_.psx()->cpu;
+        psxe_diag_logf("crash", "r0=%08x at=%08x v0=%08x v1=%08x", cpu->r[0], cpu->r[1], cpu->r[2], cpu->r[3]);
+        psxe_diag_logf("crash", "a0=%08x a1=%08x a2=%08x a3=%08x", cpu->r[4], cpu->r[5], cpu->r[6], cpu->r[7]);
+        psxe_diag_logf("crash", "t0=%08x t1=%08x t2=%08x t3=%08x", cpu->r[8], cpu->r[9], cpu->r[10], cpu->r[11]);
+        psxe_diag_logf("crash", "t4=%08x t5=%08x t6=%08x t7=%08x", cpu->r[12], cpu->r[13], cpu->r[14], cpu->r[15]);
+        psxe_diag_logf("crash", "s0=%08x s1=%08x s2=%08x s3=%08x", cpu->r[16], cpu->r[17], cpu->r[18], cpu->r[19]);
+        psxe_diag_logf("crash", "s4=%08x s5=%08x s6=%08x s7=%08x", cpu->r[20], cpu->r[21], cpu->r[22], cpu->r[23]);
+        psxe_diag_logf("crash", "t8=%08x t9=%08x k0=%08x k1=%08x", cpu->r[24], cpu->r[25], cpu->r[26], cpu->r[27]);
+        psxe_diag_logf("crash", "gp=%08x sp=%08x fp=%08x ra=%08x", cpu->r[28], cpu->r[29], cpu->r[30], cpu->r[31]);
+        psxe_diag_logf(
+            "crash",
+            "pc=%08x next=%08x saved=%08x hi=%08x lo=%08x epc=%08x opcode=%08x",
+            cpu->pc,
+            cpu->next_pc,
+            cpu->saved_pc,
+            cpu->hi,
+            cpu->lo,
+            cpu->cop0_r[COP0_EPC],
+            cpu->opcode
+        );
+    }
+
     bool initializeSdl() {
         const Uint32 required = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER;
+        psxe_diag_breadcrumbf("Initializing SDL subsystems flags=0x%x", required);
 
         if (SDL_WasInit(0) == 0) {
             owns_sdl_ = true;
             if (SDL_Init(required) != 0) {
+                psxe_diag_logf("sdl", "SDL_Init failed: %s", SDL_GetError());
                 return false;
             }
         } else if (SDL_InitSubSystem(required) != 0) {
+            psxe_diag_logf("sdl", "SDL_InitSubSystem failed: %s", SDL_GetError());
             return false;
         }
 
@@ -2057,19 +2681,22 @@ class ArmsxApp {
         }
 
         if (!window_) {
+            psxe_diag_logf("renderer", "Window initialization failed: %s", SDL_GetError());
             return false;
         }
 
         if (external_renderer_) {
             renderer_ = external_renderer_;
+            owns_renderer_ = false;
         } else {
-            Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
-#if defined(__EMSCRIPTEN__)
-            // Browser presentation is already frame-paced by the main loop.
-            renderer_flags = SDL_RENDERER_ACCELERATED;
-#endif
-            renderer_ = SDL_CreateRenderer(window_, -1, renderer_flags);
-            owns_renderer_ = renderer_ != nullptr;
+            renderer_ = nullptr;
+            if (!createManagedRenderer(settings_.vsync_enabled)) {
+                return false;
+            }
+        }
+
+        if (!renderer_) {
+            psxe_diag_logf("renderer", "Renderer initialization failed: %s", SDL_GetError());
         }
 
         return renderer_ != nullptr;
@@ -2131,6 +2758,7 @@ class ArmsxApp {
                 return;
             }
             session_.setPaused(paused);
+            resetFramePacing(paused ? "fsui-pause" : "fsui-unpause");
             if (paused) {
                 input_router_.onFsuiOpened();
             }
@@ -2138,11 +2766,13 @@ class ArmsxApp {
         host.resume_game = [this]() {
             if (session_.valid()) {
                 session_.setPaused(false);
+                resetFramePacing("fsui-resume");
             }
         };
         host.reset_system = [this]() {
             if (session_.valid()) {
                 session_.reset();
+                resetFramePacing("fsui-reset");
             }
         };
         host.exit_to_library = [this]() { exitToLibrary(); };
@@ -2177,16 +2807,11 @@ class ArmsxApp {
     }
 
     void shutdown() {
+        psxe_diag_breadcrumbf("Frontend shutdown");
         input_router_.detach();
         session_.destroy();
 
-        if (fsui_initialized_) {
-            fsui::Shutdown(true);
-            fsui_initialized_ = false;
-        }
-
-        imgui_backend_.shutdown();
-        ImGui::DestroyContext();
+        shutdownFsuiFrontend();
 
         if (owns_renderer_ && renderer_) {
             SDL_DestroyRenderer(renderer_);
@@ -2201,6 +2826,8 @@ class ArmsxApp {
         if (owns_sdl_) {
             SDL_Quit();
         }
+
+        psxe_diag_shutdown();
     }
 
     void handleEvent(const SDL_Event& event) {
@@ -2225,29 +2852,25 @@ class ArmsxApp {
 
     void runFrame() {
         const bool fsui_was_active = fsui::HasActiveWindow();
-        const uint64_t now = SDL_GetPerformanceCounter();
-
         input_router_.tick(fsui_was_active);
 
-        if (last_frame_counter_ == 0) {
-            last_frame_counter_ = now;
+        if (deferred_vsync_.has_value()) {
+            const bool desired_vsync = *deferred_vsync_;
+            deferred_vsync_.reset();
+
+            if (owns_renderer_ && !external_renderer_ && desired_vsync != managed_renderer_vsync_) {
+                recreateManagedRenderer(desired_vsync);
+                if (!running_) {
+                    return;
+                }
+            }
         }
 
+        waitForFrameDeadline(currentTargetFrameRate());
+
         if (session_.valid() && !session_.paused()) {
-            const double elapsed = static_cast<double>(now - last_frame_counter_) / static_cast<double>(SDL_GetPerformanceFrequency());
-            last_frame_counter_ = now;
-            frame_accumulator_ += std::clamp(elapsed, 0.0, 0.25) * session_.frameRate();
-            frame_accumulator_ = std::min(frame_accumulator_, 3.0);
-
-            while (frame_accumulator_ >= 1.0) {
-                session_.runFrame();
-                frame_accumulator_ -= 1.0;
-            }
-
+            session_.runFrame();
             session_.updateTexture(settings_);
-        } else {
-            last_frame_counter_ = now;
-            frame_accumulator_ = 0.0;
         }
 
         imgui_backend_.newFrame();
@@ -2275,14 +2898,21 @@ class ArmsxApp {
 
         const bool fsui_is_active = fsui::HasActiveWindow();
 
-        if (fsui_was_active && !fsui_is_active && session_.valid()) {
-            input_router_.onFsuiClosed();
+        if (fsui_was_active && !fsui_is_active) {
+            ui_window_state_ = FsuiWindowState::None;
+            if (session_.valid()) {
+                input_router_.onFsuiClosed();
+            }
         } else if (!fsui_was_active && fsui_is_active && session_.valid()) {
             input_router_.onFsuiOpened();
         }
+
+        advanceFrameDeadline();
     }
 
     void applyCommand(const fsui::Command& command) {
+        psxe_diag_breadcrumbf("FSUI command type=%d", static_cast<int>(command.type));
+
         switch (command.type) {
             case fsui::CommandType::LaunchPath:
                 deferred_launch_ = LaunchForPath(command.path);
@@ -2299,7 +2929,9 @@ class ArmsxApp {
 
             case fsui::CommandType::Resume:
                 if (session_.valid()) {
+                    ui_window_state_ = FsuiWindowState::None;
                     session_.setPaused(false);
+                    resetFramePacing("command-resume");
                 }
                 break;
 
@@ -2307,6 +2939,7 @@ class ArmsxApp {
                 if (session_.valid()) {
                     session_.reset();
                     session_.setPaused(false);
+                    resetFramePacing("command-reset");
                 }
                 break;
 
@@ -2327,6 +2960,9 @@ class ArmsxApp {
         if (deferred_launch_.has_value()) {
             const LaunchRequest request = *deferred_launch_;
             deferred_launch_.reset();
+            psxe_diag_breadcrumbf("Deferred launch kind=%s path=%s",
+                LaunchKindTitle(request.kind),
+                request.path.empty() ? "(none)" : request.path.string().c_str());
             launchSession(request, close_ui_after_launch_);
             close_ui_after_launch_ = false;
         }
@@ -2341,6 +2977,7 @@ class ArmsxApp {
             if (session_.valid()) {
                 session_.reset();
                 session_.setPaused(false);
+                resetFramePacing("deferred-reset");
             }
         }
 
@@ -2352,8 +2989,9 @@ class ArmsxApp {
                 pending_error_dialog_ = "Failed to swap to the selected disc image.";
             } else {
                 session_.setPaused(false);
+                resetFramePacing("change-disc");
                 refreshGameList(false);
-                fsui::ReturnToMainWindow();
+                returnToMainWindow();
             }
         }
 
@@ -2377,34 +3015,41 @@ class ArmsxApp {
 
     bool launchSession(const LaunchRequest& request, bool close_ui) {
         std::string error;
+        psxe_diag_breadcrumbf("Launching session kind=%s path=%s close_ui=%s",
+            LaunchKindTitle(request.kind),
+            request.path.empty() ? "(none)" : request.path.string().c_str(),
+            close_ui ? "true" : "false");
 
         if (!session_.create(renderer_, settings_, request, error)) {
             pending_error_dialog_ = error;
+            psxe_diag_logf("launch", "Session launch failed kind=%s error=%s", LaunchKindTitle(request.kind), error.c_str());
             if (request.kind == LaunchKind::Bios) {
-                fsui::ShowLandingWindow();
+                showLandingWindow();
             } else {
-                fsui::ShowGameListWindow();
+                showGameListWindow();
             }
             return false;
         }
 
         input_router_.attach(session_.pad());
-        resetEmulationTiming();
+        resetFramePacing("launch-session");
         applyWindowMetrics();
+        logRendererBootstrap("session-launch", session_.frameRate());
         refreshGameList(false);
 
         if (close_ui) {
-            fsui::ReturnToMainWindow();
+            returnToMainWindow();
         }
 
         return true;
     }
 
     void exitToLibrary() {
+        psxe_diag_breadcrumbf("Exit to library requested");
         input_router_.detach();
         session_.destroy();
-        resetEmulationTiming();
-        fsui::ShowLandingWindow();
+        resetFramePacing("exit-to-library");
+        showLandingWindow();
     }
 
     void openPauseMenu() {
@@ -2413,8 +3058,9 @@ class ArmsxApp {
         }
 
         session_.setPaused(true);
+        resetFramePacing("open-pause-menu");
         input_router_.onFsuiOpened();
-        fsui::OpenPauseMenu();
+        showPauseMenuWindow();
     }
 
     void refreshGameList(bool full_rescan) {
@@ -2537,7 +3183,7 @@ class ArmsxApp {
         game_list.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::GameList);
         game_list.title = "Game List";
         game_list.summary = "Browse library folders and boot a title through the native SDL shell.";
-        game_list.on_activate = []() { fsui::ShowGameListWindow(); };
+        game_list.on_activate = [this]() { showGameListWindow(); };
         items.push_back(std::move(game_list));
 
         fsui::MenuItemDescriptor start;
@@ -2545,7 +3191,7 @@ class ArmsxApp {
         start.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::StartGame);
         start.title = "Start Game";
         start.summary = "Boot a disc, PS-X EXE, or the BIOS directly.";
-        start.on_activate = []() { fsui::ShowStartGameWindow(); };
+        start.on_activate = [this]() { showStartGameWindow(); };
         items.push_back(std::move(start));
 
         fsui::MenuItemDescriptor settings;
@@ -2553,7 +3199,7 @@ class ArmsxApp {
         settings.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::Settings);
         settings.title = "Settings";
         settings.summary = "Edit the real ARMSX runtime, BIOS, video, and library settings.";
-        settings.on_activate = []() { fsui::SwitchToSettings(); };
+        settings.on_activate = [this]() { switchToSettingsWindow(); };
         items.push_back(std::move(settings));
 
         fsui::MenuItemDescriptor exit;
@@ -2561,7 +3207,7 @@ class ArmsxApp {
         exit.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::Exit);
         exit.title = "Exit";
         exit.summary = "Quit ARMSX.";
-        exit.on_activate = []() { fsui::ShowExitWindow(); };
+        exit.on_activate = [this]() { showExitWindow(); };
         items.push_back(std::move(exit));
 
         return items;
@@ -2643,7 +3289,7 @@ class ArmsxApp {
         back.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::Back);
         back.title = "Back";
         back.summary = "Return to the landing screen.";
-        back.on_activate = []() { fsui::ShowLandingWindow(); };
+        back.on_activate = [this]() { showLandingWindow(); };
         items.push_back(std::move(back));
 
         return items;
@@ -2665,7 +3311,7 @@ class ArmsxApp {
         back.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::Back);
         back.title = "Back";
         back.summary = "Return to the landing screen.";
-        back.on_activate = []() { fsui::ShowLandingWindow(); };
+        back.on_activate = [this]() { showLandingWindow(); };
         items.push_back(std::move(back));
 
         return items;
@@ -2714,7 +3360,7 @@ class ArmsxApp {
         settings.id = "settings";
         settings.title = ICON_FA_SLIDERS_H " Settings";
         settings.summary = "Open the in-game settings pages.";
-        settings.on_activate = []() { fsui::SwitchToSettings(); };
+        settings.on_activate = [this]() { switchToSettingsWindow(); };
         items.push_back(std::move(settings));
 
         fsui::MenuItemDescriptor quit;
@@ -2732,11 +3378,28 @@ class ArmsxApp {
     }
 
     std::vector<fsui::SettingsPageDescriptor> buildSettingsPages(fsui::SettingsScope scope) {
+        std::vector<fsui::SettingsPageDescriptor> pages;
+
         if (scope == fsui::SettingsScope::PerGame) {
-            return buildPerGameSettingsPages();
+            pages = buildPerGameSettingsPages();
+        } else {
+            pages = buildGlobalSettingsPages();
         }
 
-        return buildGlobalSettingsPages();
+        if (pending_settings_page_restore_.has_value()) {
+            const std::string restore_id = *pending_settings_page_restore_;
+            const auto match = std::find_if(pages.begin(), pages.end(), [&](const fsui::SettingsPageDescriptor& page) {
+                return page.id == restore_id;
+            });
+
+            if (match != pages.end()) {
+                std::rotate(pages.begin(), match, match + 1);
+            }
+
+            pending_settings_page_restore_.reset();
+        }
+
+        return pages;
     }
 
     std::vector<fsui::SettingsPageDescriptor> buildGlobalSettingsPages() {
@@ -3167,6 +3830,11 @@ class ArmsxApp {
 
     std::vector<fsui::SettingsRowDescriptor> buildGraphicsRows(bool include_scale) {
         std::vector<fsui::SettingsRowDescriptor> rows;
+#if defined(__EMSCRIPTEN__)
+        const bool can_control_vsync = false;
+#else
+        const bool can_control_vsync = owns_renderer_ && !external_renderer_;
+#endif
 
         if (include_scale) {
             fsui::SettingsRowDescriptor scale;
@@ -3187,6 +3855,27 @@ class ArmsxApp {
             };
             rows.push_back(std::move(scale));
         }
+
+        fsui::SettingsRowDescriptor vsync;
+        vsync.kind = fsui::SettingsRowKind::Toggle;
+        vsync.id = "vsync";
+        vsync.title = ICON_FA_SYNC " VSync";
+#if defined(__EMSCRIPTEN__)
+        vsync.summary = "Synchronize presentation to the display refresh rate. The browser controls this on web builds.";
+#else
+        vsync.summary = can_control_vsync
+            ? "Synchronize presentation to the display refresh rate to reduce tearing. This applies immediately."
+            : "Synchronize presentation to the display refresh rate. This renderer is host-controlled here.";
+#endif
+        vsync.toggle_value = settings_.vsync_enabled;
+        vsync.enabled = can_control_vsync;
+        vsync.on_toggle = [this](bool value) {
+            settings_.vsync_enabled = value;
+            pending_settings_page_restore_ = "Graphics";
+            SaveSettings(settings_);
+            deferred_vsync_ = value;
+        };
+        rows.push_back(std::move(vsync));
 
         fsui::SettingsRowDescriptor filter;
         filter.kind = fsui::SettingsRowKind::Toggle;
@@ -3365,11 +4054,6 @@ class ArmsxApp {
         return initialBrowseDirectory();
     }
 
-    void resetEmulationTiming() {
-        last_frame_counter_ = SDL_GetPerformanceCounter();
-        frame_accumulator_ = 0.0;
-    }
-
     int argc_ = 0;
     const char* const* argv_ = nullptr;
     SDL_Window* external_window_ = nullptr;
@@ -3389,17 +4073,142 @@ class ArmsxApp {
     std::optional<std::string> pending_error_dialog_{};
     std::optional<LaunchRequest> deferred_launch_{};
     std::optional<std::filesystem::path> deferred_change_disc_{};
+    std::optional<bool> deferred_vsync_{};
+    std::optional<std::string> pending_settings_page_restore_{};
     std::string pending_cli_path_;
     bool close_ui_after_launch_ = false;
     bool deferred_exit_to_library_ = false;
     bool deferred_reset_ = false;
     bool deferred_screenshot_ = false;
     bool fsui_initialized_ = false;
-    uint64_t last_frame_counter_ = 0;
-    double frame_accumulator_ = 0.0;
+    FsuiWindowState ui_window_state_ = FsuiWindowState::None;
+    bool managed_renderer_vsync_ = DefaultVsyncEnabled();
+    uint64_t next_frame_deadline_ = 0;
+    uint64_t frame_period_ticks_ = 0;
 };
 
+std::string ModuleNameFromPath(const char* path) {
+    if (!path || !path[0]) {
+        return "(unknown)";
+    }
+
+    return std::filesystem::path(path).filename().string();
+}
+
+void WriteNativeStackTraceImpl() {
+#if defined(_WIN32)
+    void* frames[64] = {};
+    const USHORT frame_count = CaptureStackBackTrace(0, static_cast<DWORD>(std::size(frames)), frames, nullptr);
+    psxe_diag_logf("crash", "Native stack trace (%u frames):", static_cast<unsigned int>(frame_count));
+
+#if !defined(UWP_TARGET)
+    HANDLE process = GetCurrentProcess();
+    SymInitialize(process, nullptr, TRUE);
+
+    char symbol_buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME] = {};
+    auto* symbol = reinterpret_cast<SYMBOL_INFO*>(symbol_buffer);
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    symbol->MaxNameLen = MAX_SYM_NAME;
+#endif
+
+    for (USHORT index = 0; index < frame_count; index++) {
+        const DWORD64 address = static_cast<DWORD64>(reinterpret_cast<uintptr_t>(frames[index]));
+        HMODULE module = nullptr;
+        char module_path[MAX_PATH] = {};
+        DWORD64 module_offset = 0;
+
+        if (GetModuleHandleExA(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCSTR>(frames[index]),
+                &module) != 0) {
+            GetModuleFileNameA(module, module_path, static_cast<DWORD>(std::size(module_path)));
+            module_offset = address - static_cast<DWORD64>(reinterpret_cast<uintptr_t>(module));
+        }
+
+#if !defined(UWP_TARGET)
+        DWORD64 displacement = 0;
+        if (SymFromAddr(process, address, &displacement, symbol) != 0) {
+            psxe_diag_logf(
+                "crash",
+                "  #%u %p %s!%s+0x%llx module+0x%llx",
+                static_cast<unsigned int>(index),
+                frames[index],
+                module_path[0] ? ModuleNameFromPath(module_path).c_str() : "(unknown)",
+                symbol->Name,
+                static_cast<unsigned long long>(displacement),
+                static_cast<unsigned long long>(module_offset)
+            );
+            continue;
+        }
+#endif
+
+        psxe_diag_logf(
+            "crash",
+            "  #%u %p %s+0x%llx",
+            static_cast<unsigned int>(index),
+            frames[index],
+            module_path[0] ? ModuleNameFromPath(module_path).c_str() : "(unknown)",
+            static_cast<unsigned long long>(module_offset)
+        );
+    }
+
+#if !defined(UWP_TARGET)
+    SymCleanup(process);
+#endif
+#elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+    void* frames[64] = {};
+    const int frame_count = backtrace(frames, static_cast<int>(std::size(frames)));
+    psxe_diag_logf("crash", "Native stack trace (%d frames):", frame_count);
+
+    for (int index = 0; index < frame_count; index++) {
+        Dl_info info{};
+        if (dladdr(frames[index], &info) != 0 && info.dli_fname) {
+            const uintptr_t symbol_offset =
+                info.dli_saddr
+                    ? (reinterpret_cast<uintptr_t>(frames[index]) - reinterpret_cast<uintptr_t>(info.dli_saddr))
+                    : 0u;
+            psxe_diag_logf(
+                "crash",
+                "  #%d %p %s %s+0x%zx",
+                index,
+                frames[index],
+                ModuleNameFromPath(info.dli_fname).c_str(),
+                info.dli_sname ? info.dli_sname : "(unknown)",
+                symbol_offset
+            );
+        } else {
+            psxe_diag_logf("crash", "  #%d %p", index, frames[index]);
+        }
+    }
+#else
+    psxe_diag_logf("crash", "Native stack trace unavailable on this platform build.");
+#endif
+}
+
+[[noreturn]] void ReportNativeCrash(const char* reason) {
+    if (g_crash_reporting.exchange(true)) {
+        std::_Exit(1);
+    }
+
+    psxe_diag_logf("crash", "Native crash captured: %s", reason ? reason : "(unknown)");
+
+    if (g_active_app) {
+        g_active_app->writeCrashContext(reason);
+    } else {
+        psxe_diag_logf("crash", "No active app context available.");
+        psxe_diag_dump_breadcrumbs();
+    }
+
+    WriteNativeStackTraceImpl();
+    psxe_diag_shutdown();
+    std::_Exit(1);
+}
+
 } // namespace
+
+extern "C" void psxe_diag_write_native_stacktrace(void) {
+    WriteNativeStackTraceImpl();
+}
 
 extern "C" int psxe_run(int argc, const char* argv[], void* external_window, void* external_renderer) {
     ArmsxApp app(argc, argv, external_window, external_renderer);

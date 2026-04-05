@@ -1,6 +1,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include "diagnostics.h"
+
 #ifndef OS_INFO
 #define OS_INFO unknown
 #endif

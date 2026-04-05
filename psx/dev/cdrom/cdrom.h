@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "frontend/diagnostics.h"
+
 #include "queue.h"
 #include "disc.h"
 #include "../ic.h"

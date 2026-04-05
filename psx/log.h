@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <time.h>
 
+#include "frontend/diagnostics.h"
+
 #define LOG_VERSION "0.1.0"
 
 typedef struct {

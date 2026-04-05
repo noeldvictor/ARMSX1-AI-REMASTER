@@ -6,7 +6,5 @@ C_DEFINES = -DIMGUI_FRONTEND
 
 C_INCLUDES = -I/Users/mohammed/Documents/ARMSX/build/fsui/native/gladsources/fsui_glad/include
 
-C_FLAGSarm64 =  -arch arm64 -mmacosx-version-min=10.15 -fPIC
-
-C_FLAGS =  -arch arm64 -mmacosx-version-min=10.15 -fPIC
+C_FLAGS =  -mmacosx-version-min=10.15 -fPIC
 

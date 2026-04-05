@@ -6,7 +6,5 @@ CXX_DEFINES = -DIMGUI_FRONTEND
 
 CXX_INCLUDES = -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/include -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/third_party/imgui -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/third_party/imgui/backends -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/third_party/stb
 
-CXX_FLAGSarm64 = -std=gnu++20 -arch arm64 -mmacosx-version-min=10.15 -fPIC -O2
-
-CXX_FLAGS = -std=gnu++20 -arch arm64 -mmacosx-version-min=10.15 -fPIC -O2
+CXX_FLAGS = -std=gnu++20 -mmacosx-version-min=10.15 -fPIC -O2
 

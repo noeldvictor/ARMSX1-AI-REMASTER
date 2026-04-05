@@ -6,7 +6,5 @@ OBJCXX_DEFINES = -DFSUI_HAS_METAL_RENDERER -DFSUI_HAS_SDL2RENDERER_RENDERER -DFS
 
 OBJCXX_INCLUDES = -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/include -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/third_party/imgui -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/third_party/imgui/backends -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/third_party/stb -I/Users/mohammed/Documents/ARMSX/build/fsui/native -I/Users/mohammed/Documents/ARMSX/third_party/fsui-lib/third_party/glad/include -I/Users/mohammed/Documents/ARMSX/build/fsui/native/_cmrc/include -F/Volumes/FastDrive/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks -isystem /opt/homebrew/Cellar/sdl2/2.32.10/include/SDL2
 
-OBJCXX_FLAGSarm64 = -std=gnu++2a -arch arm64 -mmacosx-version-min=10.15 -fPIC -O2
-
-OBJCXX_FLAGS = -std=gnu++2a -arch arm64 -mmacosx-version-min=10.15 -fPIC -O2
+OBJCXX_FLAGS = -std=gnu++2a -mmacosx-version-min=10.15 -fPIC -O2
 

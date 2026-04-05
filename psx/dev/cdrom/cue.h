@@ -1,6 +1,8 @@
 #ifndef CUE_H
 #define CUE_H
 
+#include "frontend/diagnostics.h"
+
 #include "list.h"
 #include "disc.h"
 

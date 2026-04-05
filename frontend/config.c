@@ -63,6 +63,13 @@ static const char g_default_settings[] =
     "\n"
     "# Video settings\n"
     "[video]\n"
+    "    vsync = "
+#if defined(UWP_TARGET)
+    "false"
+#else
+    "true"
+#endif
+    "\n"
     "    texture_scale_mode = false\n"
     "    debug_panel = false\n"
     "    stretch_mode = false\n"
@@ -360,6 +367,11 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
     cfg->quiet = 0;
     cfg->cd_path = NULL;
     cfg->exp_path = NULL;
+#if defined(UWP_TARGET)
+    cfg->vsync_enabled = 0;
+#else
+    cfg->vsync_enabled = 1;
+#endif
     cfg->texture_scale_mode = 0;
     cfg->debug_panel = 0;
     cfg->stretch_mode = 0;
@@ -389,6 +401,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int quiet = 0;
     int console_source = 0;
     int scale = 0;
+    int vsync_enabled = cfg->vsync_enabled;
     int texture_scale_mode = 0;
     int debug_panel = 0;
     int stretch_mode = 0;
@@ -543,6 +556,11 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
         toml_table_t* s_video_table = toml_table_in(conf, "video");
 
         if (s_video_table) {
+            toml_datum_t s_vsync = toml_bool_in(s_video_table, "vsync");
+
+            if (s_vsync.ok)
+                vsync_enabled = s_vsync.u.b;
+
             toml_datum_t s_texture_scale_mode = toml_bool_in(s_video_table, "texture_scale_mode");
 
             if (s_texture_scale_mode.ok)
@@ -654,6 +672,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     if (scale)
         cfg->scale = scale;
 
+    cfg->vsync_enabled = vsync_enabled;
     cfg->texture_scale_mode = texture_scale_mode;
     cfg->debug_panel = debug_panel;
     cfg->stretch_mode = stretch_mode;
