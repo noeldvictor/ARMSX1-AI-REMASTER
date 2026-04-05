@@ -7,8 +7,55 @@
 
 #define CLAMP(v, l, h) (((v) <= (l)) ? (l) : (((v) >= (h)) ? (h) : (v)))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define SPU_RAM_ADDR_MASK (SPU_RAM_SIZE - 1)
+#define SPU_RAM_WORD_ADDR_MASK (SPU_RAM_ADDR_MASK & ~1u)
 
 #define VOICE_COUNT 24
+
+static inline uint32_t spu_wrap_addr(uint32_t addr) {
+    return addr & SPU_RAM_ADDR_MASK;
+}
+
+static inline uint32_t spu_wrap_word_addr(uint32_t addr) {
+    return addr & SPU_RAM_WORD_ADDR_MASK;
+}
+
+static inline uint8_t spu_ram_read8(const psx_spu_t* spu, uint32_t addr) {
+    return spu->ram[spu_wrap_addr(addr)];
+}
+
+static inline uint16_t spu_ram_read16(const psx_spu_t* spu, uint32_t addr) {
+    const uint32_t wrapped = spu_wrap_word_addr(addr);
+    const uint32_t next = spu_wrap_addr(wrapped + 1);
+    return (uint16_t)(spu->ram[wrapped] | (((uint16_t)spu->ram[next]) << 8));
+}
+
+static inline void spu_ram_write16(psx_spu_t* spu, uint32_t addr, uint16_t value) {
+    const uint32_t wrapped = spu_wrap_word_addr(addr);
+    const uint32_t next = spu_wrap_addr(wrapped + 1);
+    spu->ram[wrapped] = value & 0xff;
+    spu->ram[next] = value >> 8;
+}
+
+static inline uint16_t spu_reg_read16(const uint8_t* ptr, uint32_t offset) {
+    uint16_t value;
+    memcpy(&value, ptr + offset, sizeof(value));
+    return value;
+}
+
+static inline uint32_t spu_reg_read32(const uint8_t* ptr, uint32_t offset) {
+    uint32_t value;
+    memcpy(&value, ptr + offset, sizeof(value));
+    return value;
+}
+
+static inline void spu_reg_write16(uint8_t* ptr, uint32_t offset, uint16_t value) {
+    memcpy(ptr + offset, &value, sizeof(value));
+}
+
+static inline void spu_reg_write32(uint8_t* ptr, uint32_t offset, uint32_t value) {
+    memcpy(ptr + offset, &value, sizeof(value));
+}
 
 // static float interpolate_hermite(float a, float b, float c, float d, float t) {
 //     float x = -a/2.0f + (3.0f*b)/2.0f - (3.0f*c)/2.0f + d/2.0f;
@@ -117,21 +164,20 @@ void psx_spu_init(psx_spu_t* spu, psx_ic_t* ic) {
 uint32_t psx_spu_read32(psx_spu_t* spu, uint32_t offset) {
     const uint8_t* ptr = (uint8_t*)&spu->voice[0].volumel;
 
-    return *((uint32_t*)(ptr + offset));
+    return spu_reg_read32(ptr, offset);
 }
 
 uint16_t psx_spu_read16(psx_spu_t* spu, uint32_t offset) {
     if (offset == SPUR_TFIFO) {
-        uint16_t data = *(uint16_t*)(&spu->ram[spu->taddr]);
-
-        spu->taddr += 2;
+        uint16_t data = spu_ram_read16(spu, spu->taddr);
+        spu->taddr = spu_wrap_word_addr(spu->taddr + 2);
 
         return data;
     }
 
     const uint8_t* ptr = (uint8_t*)&spu->voice[0].volumel;
 
-    return *((uint16_t*)(ptr + offset));
+    return spu_reg_read16(ptr, offset);
 }
 
 uint8_t psx_spu_read8(psx_spu_t* spu, uint32_t offset) {
@@ -141,10 +187,10 @@ uint8_t psx_spu_read8(psx_spu_t* spu, uint32_t offset) {
 }
 
 void spu_read_block(psx_spu_t* spu, int v) {
-    uint32_t addr = spu->data[v].current_addr;
-    uint8_t hdr = spu->ram[addr];
+    uint32_t addr = spu_wrap_addr(spu->data[v].current_addr);
+    uint8_t hdr = spu_ram_read8(spu, addr);
 
-    spu->data[v].block_flags = spu->ram[addr + 1];
+    spu->data[v].block_flags = spu_ram_read8(spu, addr + 1);
 
     unsigned hdr_shift = hdr & 0x0f;
 
@@ -158,7 +204,7 @@ void spu_read_block(psx_spu_t* spu, int v) {
     int32_t f1 = g_spu_neg_adpcm_table[filter];
 
     for (int j = 0; j < 28; j++) {
-        uint16_t n = (spu->ram[addr + 2 + (j >> 1)] >> ((j & 1) * 4)) & 0xf;
+        uint16_t n = (spu_ram_read8(spu, addr + 2 + (j >> 1)) >> ((j & 1) * 4)) & 0xf;
 
         // Sign extend t
         int16_t t = (int16_t)(n << 12) >> 12; 
@@ -337,8 +383,8 @@ void spu_kon(psx_spu_t* spu, uint32_t value) {
     for (int i = 0; i < VOICE_COUNT; i++) {
         if ((value & (1 << i))) {
             spu->data[i].playing = 1;
-            spu->data[i].current_addr = spu->voice[i].adsaddr << 3;
-            spu->data[i].repeat_addr = spu->voice[i].adraddr << 3;
+            spu->data[i].current_addr = spu_wrap_addr((uint32_t)spu->voice[i].adsaddr << 3);
+            spu->data[i].repeat_addr = spu_wrap_addr((uint32_t)spu->voice[i].adraddr << 3);
             spu->data[i].lvol = ((float)(spu->voice[i].volumel) / 32767.0f) * 2.0f;
             spu->data[i].rvol = ((float)(spu->voice[i].volumer) / 32767.0f) * 2.0f;
             spu->data[i].adsr_sustain_level = ((spu->voice[i].envctl1 & 0xf) + 1) * 0x800;
@@ -387,7 +433,7 @@ int spu_handle_write(psx_spu_t* spu, uint32_t offset, uint32_t value) {
 
         case SPUR_TADDR: {
             spu->ramdta = value;
-            spu->taddr = value << 3;
+            spu->taddr = spu_wrap_word_addr((uint32_t)value << 3);
         } return 1;
 
         case SPUR_TFIFO: {
@@ -397,8 +443,8 @@ int spu_handle_write(psx_spu_t* spu, uint32_t offset, uint32_t value) {
             if (spu->tfifo_index == 32) {
                 if (((spu->spucnt >> 4) & 3) == 2) {
                     for (int i = 0; i < spu->tfifo_index; i++) {
-                        spu->ram[spu->taddr++] = spu->tfifo[i] & 0xff;
-                        spu->ram[spu->taddr++] = spu->tfifo[i] >> 8;
+                        spu_ram_write16(spu, spu->taddr, spu->tfifo[i]);
+                        spu->taddr = spu_wrap_word_addr(spu->taddr + 2);
                     }
 
                     spu->tfifo_index = 0;
@@ -413,8 +459,8 @@ int spu_handle_write(psx_spu_t* spu, uint32_t offset, uint32_t value) {
 
             if ((value >> 4) & 3) {
                 for (int i = 0; i < spu->tfifo_index; i++) {
-                    spu->ram[spu->taddr++] = spu->tfifo[i] & 0xff;
-                    spu->ram[spu->taddr++] = spu->tfifo[i] >> 8;
+                    spu_ram_write16(spu, spu->taddr, spu->tfifo[i]);
+                    spu->taddr = spu_wrap_word_addr(spu->taddr + 2);
                 }
 
                 spu->tfifo_index = 0;
@@ -423,7 +469,7 @@ int spu_handle_write(psx_spu_t* spu, uint32_t offset, uint32_t value) {
 
         case SPUR_MBASE: {
             spu->mbase = value;
-            spu->revbaddr = spu->mbase << 3;
+            spu->revbaddr = spu_wrap_word_addr((uint32_t)spu->mbase << 3);
         } return 1;
     }
 
@@ -435,9 +481,9 @@ void psx_spu_write32(psx_spu_t* spu, uint32_t offset, uint32_t value) {
     if (spu_handle_write(spu, offset, value))
         return;
 
-    const uint8_t* ptr = (uint8_t*)&spu->voice[0];
+    uint8_t* ptr = (uint8_t*)&spu->voice[0];
 
-    *((uint32_t*)(ptr + offset)) = value;
+    spu_reg_write32(ptr, offset, value);
 }
 
 void psx_spu_write16(psx_spu_t* spu, uint32_t offset, uint16_t value) {
@@ -445,10 +491,10 @@ void psx_spu_write16(psx_spu_t* spu, uint32_t offset, uint16_t value) {
     if (spu_handle_write(spu, offset, value))
         return;
 
-    const uint8_t* ptr = (uint8_t*)&spu->voice[0].volumel;
+    uint8_t* ptr = (uint8_t*)&spu->voice[0].volumel;
 
     if (offset != 0x0c) 
-        *((uint16_t*)(ptr + offset)) = value;
+        spu_reg_write16(ptr, offset, value);
 }
 
 void psx_spu_write8(psx_spu_t* spu, uint32_t offset, uint8_t value) {
@@ -468,7 +514,7 @@ int16_t spu_read_reverb(psx_spu_t* spu, uint32_t addr) {
     uint32_t relative = (addr + spu->revbaddr - mbase) % (0x80000 - mbase);
     uint32_t wrapped = (mbase + relative) & 0x7fffe;
 
-    return *(int16_t*)(spu->ram + wrapped);
+    return (int16_t)spu_ram_read16(spu, wrapped);
 }
 
 void spu_write_reverb(psx_spu_t* spu, uint32_t addr, int16_t value) {
@@ -477,7 +523,7 @@ void spu_write_reverb(psx_spu_t* spu, uint32_t addr, int16_t value) {
     uint32_t relative = (addr + spu->revbaddr - mbase) % (0x80000 - mbase);
     uint32_t wrapped = (mbase + relative) & 0x7fffe;
 
-    *(int16_t*)(spu->ram + wrapped) = value;
+    spu_ram_write16(spu, wrapped, (uint16_t)value);
 }
 
 #define R16(addr) (spu_read_reverb(spu, addr))
@@ -602,13 +648,15 @@ uint32_t psx_spu_get_sample(psx_spu_t* spu) {
 
             switch (spu->data[v].block_flags & 3) {
                 case 0: case 2: {
-                    if (((spu->irq9addr << 3) == spu->data[v].current_addr) && (spu->spucnt & 0x40)) {
+                    const uint32_t irq_addr = spu_wrap_addr((uint32_t)spu->irq9addr << 3);
+
+                    if ((irq_addr == spu_wrap_addr(spu->data[v].current_addr)) && (spu->spucnt & 0x40)) {
                         psx_ic_irq(spu->ic, IC_SPU);
                     }
 
-                    spu->data[v].current_addr += 0x10;
+                    spu->data[v].current_addr = spu_wrap_addr(spu->data[v].current_addr + 0x10);
 
-                    if (((spu->irq9addr << 3) == spu->data[v].current_addr) && (spu->spucnt & 0x40)) {
+                    if ((irq_addr == spu_wrap_addr(spu->data[v].current_addr)) && (spu->spucnt & 0x40)) {
                         psx_ic_irq(spu->ic, IC_SPU);
                     }
                 } break;

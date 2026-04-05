@@ -6,5 +6,7 @@ CXX_DEFINES = -DIMGUI_FRONTEND
 
 CXX_INCLUDES = -I/Users/mohammed/Documents/ARMSX/build/fsui/native/_cmrc/include
 
-CXX_FLAGS = -std=gnu++20 -mmacosx-version-min=10.15 -fPIC
+CXX_FLAGSarm64 = -std=gnu++20 -arch arm64 -mmacosx-version-min=10.15 -fPIC
+
+CXX_FLAGS = -std=gnu++20 -arch arm64 -mmacosx-version-min=10.15 -fPIC
 
