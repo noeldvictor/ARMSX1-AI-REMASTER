@@ -10,7 +10,11 @@ if(NOT DEFINED VITASDK)
     endif()
 endif()
 
-include_directories(BEFORE "${CMAKE_CURRENT_LIST_DIR}/include")
+include_directories(BEFORE
+    "${CMAKE_CURRENT_LIST_DIR}/include"
+    "${VITASDK}/arm-vita-eabi/include"
+    "${VITASDK}/arm-vita-eabi/include/SDL2"
+)
 
 add_library(SDL2::SDL2 INTERFACE IMPORTED GLOBAL)
 target_include_directories(SDL2::SDL2 INTERFACE
@@ -37,6 +41,9 @@ target_link_libraries(SDL2::SDL2 INTERFACE
     SceProcessmgr_stub
     m
 )
+
+add_compile_definitions(IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS)
+add_compile_options(-marm)
 
 set(FSUI_BUILD_SAMPLES OFF CACHE BOOL "Build the fsui sample applications" FORCE)
 set(FSUI_ENABLE_INSTALL OFF CACHE BOOL "Enable install/export rules for the fsui package" FORCE)

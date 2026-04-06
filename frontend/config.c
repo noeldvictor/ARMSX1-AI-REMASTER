@@ -282,9 +282,21 @@ static void psxe_ensure_parent_dir(const char* path) {
     if (!path)
         return;
 
+#ifdef PSVITA_TARGET
+    const size_t path_len = strlen(path);
+    if (path_len == 0)
+        return;
+
+    char* tmp = malloc(path_len + 1);
+    if (!tmp)
+        return;
+
+    memcpy(tmp, path, path_len + 1);
+#else
     char tmp[PATH_MAX];
     strncpy(tmp, path, sizeof(tmp) - 1);
     tmp[sizeof(tmp) - 1] = '\0';
+#endif
 
     char* slash = strrchr(tmp, '/');
 #ifdef _WIN32
@@ -297,12 +309,23 @@ static void psxe_ensure_parent_dir(const char* path) {
         *slash = '\0';
         psxe_ensure_dir(tmp);
     }
+
+#ifdef PSVITA_TARGET
+    free(tmp);
+#endif
 }
 
 static const char* psxe_pref_path(void) {
     if (g_pref_path)
         return g_pref_path;
 
+#ifdef PSVITA_TARGET
+    const char* pref_base = "ux0:data/armsx/";
+    size_t len = strlen(pref_base) + 1;
+    g_pref_path = (char*)malloc(len);
+    if (g_pref_path)
+        memcpy(g_pref_path, pref_base, len);
+#else
     char* pref_base = SDL_GetPrefPath("nanodata", "armsx");
 
     if (pref_base) {
@@ -314,6 +337,7 @@ static const char* psxe_pref_path(void) {
 
         SDL_free(pref_base);
     }
+#endif
 
     return g_pref_path;
 }

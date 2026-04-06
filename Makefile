@@ -98,8 +98,8 @@ ifeq ($(UWP_TARGET),1)
 endif
 
 ifeq ($(PSVITA_TARGET),1)
-	BASE_CFLAGS += -DPSVITA_TARGET -D__DLL_BUILD
-	BASE_CXXFLAGS += -DPSVITA_TARGET -D__DLL_BUILD
+	BASE_CFLAGS += -DPSVITA_TARGET -D__DLL_BUILD -I$(VITASDK)/arm-vita-eabi/include -I$(VITASDK)/arm-vita-eabi/include/SDL2 -marm
+	BASE_CXXFLAGS += -DPSVITA_TARGET -D__DLL_BUILD -I$(VITASDK)/arm-vita-eabi/include -I$(VITASDK)/arm-vita-eabi/include/SDL2 -marm
 endif
 
 ifeq ($(WASM_TARGET),wasm)

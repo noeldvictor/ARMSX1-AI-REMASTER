@@ -531,7 +531,13 @@ std::string ResolveFsuiAppIconPath() {
         return {};
     };
 
+#ifdef PSVITA_TARGET
+    const char* vita_base = "app0:/";
+    struct VitaBaseDeleter { void operator()(const char*) const {} };
+    std::unique_ptr<const char, VitaBaseDeleter> base_path(vita_base);
+#else
     std::unique_ptr<char, decltype(&SDL_free)> base_path(SDL_GetBasePath(), &SDL_free);
+#endif
     if (base_path) {
         const std::filesystem::path base(base_path.get());
 

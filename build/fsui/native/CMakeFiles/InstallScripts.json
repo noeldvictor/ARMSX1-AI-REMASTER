@@ -1,9 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/Users/mohammed/Documents/ARMSX/build/fsui/native/cmake_install.cmake",
-		"/Users/mohammed/Documents/ARMSX/build/fsui/native/third_party/cmrc/cmake_install.cmake",
-		"/Users/mohammed/Documents/ARMSX/build/fsui/native/third_party/glad/cmake/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
