@@ -40,3 +40,4 @@ ios/HostApp/ARMSX.xcworkspace/
 build/
 .vs/
 obj/
+uwp/ARMSX/AppPackages/*
