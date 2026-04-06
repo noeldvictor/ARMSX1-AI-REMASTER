@@ -13,9 +13,21 @@ static void psx_mcd_ensure_parent(const char* path) {
     if (!path)
         return;
 
+#ifdef PSVITA_TARGET
+    const size_t path_len = strlen(path);
+    if (path_len == 0)
+        return;
+
+    char* tmp = malloc(path_len + 1);
+    if (!tmp)
+        return;
+
+    memcpy(tmp, path, path_len + 1);
+#else
     char tmp[PATH_MAX];
     strncpy(tmp, path, sizeof(tmp) - 1);
     tmp[sizeof(tmp) - 1] = '\0';
+#endif
 
     char* slash = strrchr(tmp, '/');
 #ifdef _WIN32
@@ -23,19 +35,31 @@ static void psx_mcd_ensure_parent(const char* path) {
     if (!slash || (bslash && bslash > slash))
         slash = bslash;
 #endif
-    if (!slash || slash == tmp)
+    if (!slash || slash == tmp) {
+#ifdef PSVITA_TARGET
+        free(tmp);
+#endif
         return;
+    }
 
     *slash = '\0';
 
     struct stat st;
-    if (stat(tmp, &st) == 0)
+    if (stat(tmp, &st) == 0) {
+#ifdef PSVITA_TARGET
+        free(tmp);
+#endif
         return;
+    }
 
 #ifdef _WIN32
     _mkdir(tmp);
 #else
     mkdir(tmp, 0755);
+#endif
+
+#ifdef PSVITA_TARGET
+    free(tmp);
 #endif
 }
 

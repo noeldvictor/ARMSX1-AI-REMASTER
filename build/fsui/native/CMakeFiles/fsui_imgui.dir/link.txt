@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfsui_imgui.a CMakeFiles/fsui_imgui.dir/third_party/imgui/imgui.cpp.o CMakeFiles/fsui_imgui.dir/third_party/imgui/imgui_draw.cpp.o CMakeFiles/fsui_imgui.dir/third_party/imgui/imgui_tables.cpp.o CMakeFiles/fsui_imgui.dir/third_party/imgui/imgui_widgets.cpp.o
-/usr/bin/ranlib libfsui_imgui.a

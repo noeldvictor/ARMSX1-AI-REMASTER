@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfsui-renderer-sdl2surface.a "CMakeFiles/fsui-renderer-sdl2surface.dir/src/renderer_sdl2surface.cpp.o" "CMakeFiles/fsui-renderer-sdl2surface.dir/third_party/imgui/backends/imgui_impl_sdlsurface2.cpp.o"
-/usr/bin/ranlib libfsui-renderer-sdl2surface.a

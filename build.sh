@@ -9,6 +9,7 @@ set -e
 #   ./build.sh macosapp    -> build desktop exe and bundle armsx.app
 #   ./build.sh wasm        -> build WebAssembly target to bin/wasm using emscripten
 #   ./build.sh android     -> build SDL2/libarmsx for Android and stage under android/app/src/main/jniLibs
+#   ./build.sh psvita      -> build Vita native archive + Rust SDL host and package ARMSX.vpk
 
 MODE="$1"
 BUILD_JOBS="${BUILD_JOBS:-4}"
@@ -42,15 +43,33 @@ build_fsui_wasm() {
     cmake --build build/fsui/wasm -j"${BUILD_JOBS}"
 }
 
+build_fsui_psvita() {
+    if [ -z "${VITASDK:-}" ]; then
+        echo "VITASDK must be set for PSVita builds."
+        exit 1
+    fi
+
+    cmake -S cmake/psvita-fsui -B build/fsui/psvita \
+        -DCMAKE_TOOLCHAIN_FILE="${VITASDK}/share/vita.toolchain.cmake" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DVITASDK="${VITASDK}" \
+        -DFSUI_BUILD_SAMPLES=OFF \
+        -DFSUI_ENABLE_INSTALL=OFF \
+        -DFSUI_PLATFORM_BACKEND=SDL2 \
+        -DFSUI_IMGUI_OPENGL_ES3=ON
+    cmake --build build/fsui/psvita -j"${BUILD_JOBS}"
+}
+
 bundle_macos_app() {
-	    rm -rf armsx.app/Contents/Libraries
-	    mkdir -p armsx.app/Contents/MacOS
-	    mkdir -p armsx.app/Contents/Resources/icons
-	    cp bin/armsx armsx.app/Contents/MacOS
-	    cp -R icons/. armsx.app/Contents/Resources/icons/
-	    chmod 777 armsx.app/Contents/MacOS/armsx
-	    dylibbundler -b -x ./armsx.app/Contents/MacOS/armsx -d ./armsx.app/Contents/Libraries/ -p @executable_path/../Libraries/ -cd
-	    cp Info.plist armsx.app/Contents/Info.plist
+		    rm -rf armsx.app/Contents/Libraries
+		    mkdir -p armsx.app/Contents/MacOS
+		    mkdir -p armsx.app/Contents/Resources/icons
+		    cp bin/armsx armsx.app/Contents/MacOS
+		    cp icons/ArmsxDesktop.icns armsx.app/Contents/Resources/armsx.icns
+		    cp -R icons/. armsx.app/Contents/Resources/icons/
+		    chmod 777 armsx.app/Contents/MacOS/armsx
+		    dylibbundler -b -x ./armsx.app/Contents/MacOS/armsx -d ./armsx.app/Contents/Libraries/ -p @executable_path/../Libraries/ -cd
+		    cp Info.plist armsx.app/Contents/Info.plist
 }
 
 stage_android_runtime_icons() {
@@ -249,6 +268,64 @@ elif [ "$MODE" = "android" ]; then
 
     cp "${SDL_SHARED_LIB}" "${JNI_LIB_DIR}/"
     cp bin/libarmsx.so "${JNI_LIB_DIR}/"
+
+elif [ "$MODE" = "psvita" ]; then
+    if [ -z "${VITASDK:-}" ]; then
+        echo "VITASDK must be set for PSVita builds."
+        exit 1
+    fi
+
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "cargo is required for the PSVita Rust host build."
+        exit 1
+    fi
+
+    export PATH="${VITASDK}/bin:${PATH}"
+    build_fsui_psvita
+
+    make clean
+    VITASDK="${VITASDK}" PSVITA_TARGET=1 FSUI_BUILD_DIR="$(pwd)/build/fsui/psvita" make psvita-lib
+
+    export PKG_CONFIG_ALLOW_CROSS=1
+    export PKG_CONFIG="${VITASDK}/bin/arm-vita-eabi-pkg-config"
+    export CARGO_TARGET_ARMV7_SONY_VITA_NEWLIBEABIHF_LINKER=arm-vita-eabi-g++
+    export ARMSX_VITA_NATIVE_DIR="$(pwd)/bin/psvita"
+    export ARMSX_VITA_FSUI_DIR="$(pwd)/build/fsui/psvita"
+
+    cargo build \
+        --manifest-path psvita/Cargo.toml \
+        --release \
+        --target armv7-sony-vita-newlibeabihf \
+        -Z build-std=std,panic_abort
+
+    VITA_PACKAGE_DIR="$(pwd)/build/psvita/package"
+    VITA_TARGET_DIR="$(pwd)/psvita/target/armv7-sony-vita-newlibeabihf/release"
+    VITA_ELF="${VITA_TARGET_DIR}/ARMSX_vita"
+    VITA_VELF="${VITA_PACKAGE_DIR}/eboot.velf"
+    VITA_EBOOT="${VITA_PACKAGE_DIR}/eboot.bin"
+    VITA_PARAM="${VITA_PACKAGE_DIR}/param.sfo"
+    VITA_VPK="${VITA_PACKAGE_DIR}/ARMSX.vpk"
+
+    if [ ! -f "${VITA_ELF}" ]; then
+        echo "Expected Vita host ELF not found at ${VITA_ELF}"
+        exit 1
+    fi
+
+    rm -rf "${VITA_PACKAGE_DIR}"
+    mkdir -p "${VITA_PACKAGE_DIR}/sce_sys"
+    cp icons/FsuiAppIcon.png "${VITA_PACKAGE_DIR}/sce_sys/icon0.png"
+
+    vita-mksfoex -s TITLE_ID=ARMSX001 "ARMSX PSVita" "${VITA_PARAM}"
+    vita-elf-create -s "${VITA_ELF}" "${VITA_VELF}"
+    vita-make-fself -s "${VITA_VELF}" "${VITA_EBOOT}"
+    vita-pack-vpk "${VITA_VPK}" \
+        -s "${VITA_PARAM}" \
+        -b "${VITA_EBOOT}" \
+        -a "$(pwd)/icons=icons" \
+        -a "${VITA_PACKAGE_DIR}/sce_sys=sce_sys"
+
+    cp "${VITA_VPK}" bin/psvita/
+    echo "Packaged Vita build at bin/psvita/ARMSX.vpk"
 
 elif [ "$MODE" = "wasm" ]; then
     build_fsui_wasm

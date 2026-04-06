@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfsui-platform-sdl2.a "CMakeFiles/fsui-platform-sdl2.dir/src/platform_sdl2.cpp.o" "CMakeFiles/fsui-platform-sdl2.dir/third_party/imgui/backends/imgui_impl_sdl2.cpp.o"
-/usr/bin/ranlib libfsui-platform-sdl2.a

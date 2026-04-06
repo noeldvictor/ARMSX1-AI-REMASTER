@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfsui-renderer-metal.a "CMakeFiles/fsui-renderer-metal.dir/src/renderer_metal.mm.o" "CMakeFiles/fsui-renderer-metal.dir/third_party/imgui/backends/imgui_impl_metal.mm.o"
-/usr/bin/ranlib libfsui-renderer-metal.a
