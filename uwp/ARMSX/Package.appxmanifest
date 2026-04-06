@@ -9,7 +9,7 @@
   <Identity
     Name="f8ecf976-ea51-2ba6-bb12-7ed7d9620c45"
     Publisher="CN=Naalf"
-    Version="1.0.0.0" />
+    Version="1.0.3.0" />
 
   <mp:PhoneIdentity PhoneProductId="f8ecf976-ea51-2ba6-bb12-7ed7d9620c45" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
