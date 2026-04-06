@@ -312,7 +312,7 @@ std::string AppendBrowseRootHint(std::string summary) {
     if (!summary.empty() && summary.back() != ' ') {
         summary.push_back(' ');
     }
-    summary += "Use Parent Directory at a drive root to switch drives.";
+    summary += "Use Filesystem Roots or Parent Directory to switch drives.";
 #endif
     return summary;
 }
@@ -3835,7 +3835,7 @@ class ArmsxApp {
             browse_notice.kind = fsui::SettingsRowKind::Notice;
             browse_notice.id = "uwp-filesystem-roots";
             browse_notice.title = ICON_FA_FOLDER_OPEN " Mounted Drives";
-            browse_notice.summary = "Mounted drives are available from the file selector. Use Parent Directory at a drive root to switch drives.";
+            browse_notice.summary = "Mounted drives are available from the file selector. Use Filesystem Roots or Parent Directory to switch drives.";
             rows.push_back(std::move(browse_notice));
 #endif
 
