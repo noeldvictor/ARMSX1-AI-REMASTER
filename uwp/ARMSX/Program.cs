@@ -4,6 +4,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using Windows.ApplicationModel;
+using Windows.ApplicationModel.Activation;
 using Windows.Storage;
 using SDL2;
 
@@ -23,7 +25,7 @@ namespace ARMSX
 
         static void Main(string[] args)
         {
-            launchArgs = args ?? Array.Empty<string>();
+            launchArgs = ResolveLaunchArgs(args ?? Array.Empty<string>());
             nativeLogPath = BuildNativeLogPath();
             InstallExceptionHandlers();
             LogHost($"ARMSX UWP host starting. Native log path: {nativeLogPath}");
@@ -95,6 +97,29 @@ namespace ARMSX
             nativeArgs[0] = "armsx";
             Array.Copy(launchArgs, 0, nativeArgs, 1, launchArgs.Length);
             return nativeArgs;
+        }
+
+        private static string[] ResolveLaunchArgs(string[] args)
+        {
+            try
+            {
+                IActivatedEventArgs activatedArgs = AppInstance.GetActivatedEventArgs();
+                if (activatedArgs is ProtocolActivatedEventArgs protocolArgs && protocolArgs.Uri != null)
+                {
+                    string protocolUri = protocolArgs.Uri.OriginalString;
+                    if (!string.IsNullOrWhiteSpace(protocolUri))
+                    {
+                        LogHost($"Protocol activation URI: {protocolUri}");
+                        return new[] { protocolUri };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogManagedException("ResolveLaunchArgs", ex);
+            }
+
+            return args ?? Array.Empty<string>();
         }
 
         private static void InstallExceptionHandlers()

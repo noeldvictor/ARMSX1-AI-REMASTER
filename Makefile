@@ -33,6 +33,8 @@ IOS_DEPLOYMENT_TARGET ?= 14.0
 MACOS_DEPLOYMENT_TARGET ?= 10.15
 WINDOWS_TARGET ?= 0
 UWP_TARGET ?= 0
+PSVITA_TARGET ?= 0
+VITASDK ?=
 IOS_SDL_FRAMEWORK ?= $(CURDIR)/ios/Frameworks/SDL2.xcframework/ios-arm64/SDL2.framework
 IOS_SDL_FRAMEWORK_PARENT := $(dir $(IOS_SDL_FRAMEWORK))
 SDKROOT ?=
@@ -40,6 +42,19 @@ CONTROLLER_GENERIC ?= 0
 FSUI_DIR := third_party/fsui-lib
 FSUI_BUILD_DIR ?= build/fsui/native
 WASM_HTML_POSTPROCESS := $(FSUI_DIR)/cmake/postprocess_web_html.cmake
+
+ifeq ($(PSVITA_TARGET),1)
+	ifeq ($(strip $(VITASDK)),)
+$(error VITASDK must be set when PSVITA_TARGET=1)
+	endif
+	SDL_CONFIG := $(VITASDK)/bin/arm-vita-eabi-pkg-config
+	CC := $(VITASDK)/bin/arm-vita-eabi-gcc
+	CXX := $(VITASDK)/bin/arm-vita-eabi-g++
+	AR ?= $(VITASDK)/bin/arm-vita-eabi-ar
+	RANLIB ?= $(VITASDK)/bin/arm-vita-eabi-ranlib
+	PLATFORM := Vita
+	SDL_STATIC := 1
+endif
 
 ifeq ($(IOS_TARGET),1)
 	SDKROOT ?= $(shell xcrun --sdk $(IOS_SDK) --show-sdk-path)
@@ -78,11 +93,21 @@ ifeq ($(CONTROLLER_GENERIC),1)
 endif
 
 ifeq ($(UWP_TARGET),1)
-	BASE_CFLAGS += -DUWP_TARGET
-	BASE_CXXFLAGS += -DUWP_TARGET
+		BASE_CFLAGS += -DUWP_TARGET
+		BASE_CXXFLAGS += -DUWP_TARGET
+endif
+
+ifeq ($(PSVITA_TARGET),1)
+	BASE_CFLAGS += -DPSVITA_TARGET -D__DLL_BUILD
+	BASE_CXXFLAGS += -DPSVITA_TARGET -D__DLL_BUILD
 endif
 
 ifeq ($(WASM_TARGET),wasm)
+		BASE_CFLAGS := $(filter-out -flto,$(BASE_CFLAGS))
+		BASE_CXXFLAGS := $(filter-out -flto,$(BASE_CXXFLAGS))
+endif
+
+ifeq ($(PSVITA_TARGET),1)
 	BASE_CFLAGS := $(filter-out -flto,$(BASE_CFLAGS))
 	BASE_CXXFLAGS := $(filter-out -flto,$(BASE_CXXFLAGS))
 endif
@@ -94,6 +119,8 @@ endif
 
 ifeq ($(WASM_TARGET),wasm)
 OS_INFO := Emscripten
+else ifeq ($(PSVITA_TARGET),1)
+OS_INFO := PS Vita
 else ifneq ($(IOS_TARGET),1)
 OS_INFO := $(shell uname -rmo)
 else
@@ -131,6 +158,8 @@ COMMIT_HASH := $(shell git rev-parse --short HEAD)
 BIN_DIR := bin
 ifeq ($(WASM_TARGET),wasm)
 BIN_DIR := bin/wasm
+else ifeq ($(PSVITA_TARGET),1)
+BIN_DIR := bin/psvita
 endif
 OBJ_DIR := $(BIN_DIR)/obj
 
@@ -141,8 +170,10 @@ else ifeq ($(WINDOWS_TARGET),1)
 BIN      := $(BIN_DIR)/armsx.exe
 endif
 SHARED_BIN := $(BIN_DIR)/libarmsx$(SHARED_EXT)
-RUNTIME_ICON_SRC := icons/AppIconLarge.png
-RUNTIME_ICON_DEST := $(BIN_DIR)/icons/AppIconLarge.png
+VITA_NATIVE_LIB := $(BIN_DIR)/libarmsx_vita.a
+RUNTIME_ICON_SRC := icons/FsuiAppIcon.png
+RUNTIME_ICON_DEST := $(BIN_DIR)/icons/FsuiAppIcon.png
+WINDRES ?= windres
 
 C_SOURCES := $(wildcard psx/*.c) \
              $(wildcard psx/dev/*.c) \
@@ -163,14 +194,21 @@ FSUI_LIBS := \
 	$(FSUI_BUILD_DIR)/libfsui-platform-sdl2.a \
 	$(FSUI_BUILD_DIR)/libfsui-renderer-sdl2.a \
 	$(FSUI_BUILD_DIR)/libfsui-renderer-sdl2surface.a \
-	$(FSUI_BUILD_DIR)/libfsui-renderer-opengl.a \
 	$(FSUI_BUILD_DIR)/libfsui-core.a \
 	$(FSUI_BUILD_DIR)/libfsui_imgui.a \
 	$(FSUI_BUILD_DIR)/libfsui_resources.a
 
+ifeq ($(PSVITA_TARGET),1)
+FSUI_LIBS += \
+	$(FSUI_BUILD_DIR)/libfsui-renderer-opengl.a \
+	$(FSUI_BUILD_DIR)/libfsui_glad.a
+else
+
 ifneq ($(WASM_TARGET),wasm)
 FSUI_LIBS += \
+	$(FSUI_BUILD_DIR)/libfsui-renderer-opengl.a \
 	$(FSUI_BUILD_DIR)/libfsui_glad.a
+endif
 endif
 
 PLATFORM_EXTRA_LDFLAGS :=
@@ -196,7 +234,12 @@ endif
 C_OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(C_SOURCES))
 C_OBJS_SHARED := $(patsubst %.c,$(OBJ_DIR)/%.o,$(C_SOURCES_SHARED))
 CPP_OBJS := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(CPP_SOURCES))
-ALL_OBJS := $(C_OBJS) $(CPP_OBJS)
+RC_SOURCES :=
+ifeq ($(WINDOWS_TARGET),1)
+RC_SOURCES += resources/windows/armsx.rc
+endif
+RC_OBJS := $(patsubst %.rc,$(OBJ_DIR)/%.o,$(RC_SOURCES))
+ALL_OBJS := $(C_OBJS) $(CPP_OBJS) $(RC_OBJS)
 ALL_OBJS_SHARED := $(C_OBJS_SHARED) $(CPP_OBJS)
 
 # Force dynamic SDL when building the shared library
@@ -214,13 +257,15 @@ endif
 SDL_LIBS := $(if $(filter 1,$(SDL_STATIC)),$(SDL_LIBS_STATIC),$(SDL_LIBS_DYNAMIC))
 SDL_LIBS_SHARED := $(SDL_LIBS_DYNAMIC)
 
-.PHONY: all clean shared wasm
+.PHONY: all clean shared wasm psvita-lib
 
 all: $(BIN)
 
 shared: $(SHARED_BIN)
 
 wasm: $(BIN)
+
+psvita-lib: $(VITA_NATIVE_LIB)
 
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
@@ -242,6 +287,10 @@ $(OBJ_DIR)/%.o: %.cpp | $(OBJ_DIR)
 		-DREP_VERSION="$(VERSION_TAG)" \
 		-DREP_COMMIT_HASH="$(COMMIT_HASH)"
 
+$(OBJ_DIR)/%.o: %.rc | $(OBJ_DIR)
+	mkdir -p $(dir $@)
+	$(WINDRES) -I. $< $@
+
 $(RUNTIME_ICON_DEST): $(RUNTIME_ICON_SRC) | $(BIN_DIR)
 	mkdir -p $(dir $@)
 	cp $< $@
@@ -251,6 +300,10 @@ $(BIN): $(ALL_OBJS) $(RUNTIME_ICON_DEST) | $(BIN_DIR)
 ifeq ($(WASM_TARGET),wasm)
 	cmake -DINPUT_FILE="$(BIN)" -P "$(WASM_HTML_POSTPROCESS)"
 endif
+
+$(VITA_NATIVE_LIB): $(ALL_OBJS) $(RUNTIME_ICON_DEST) | $(BIN_DIR)
+	$(AR) rcs $@ $(ALL_OBJS)
+	$(RANLIB) $@
 
 $(SHARED_BIN): $(ALL_OBJS_SHARED) | $(BIN_DIR)
 	$(CXX) $(SHARED_LDFLAGS) $(ALL_OBJS_SHARED) $(FSUI_LIBS) -o $(SHARED_BIN) $(SDL_LIBS_SHARED) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS)

@@ -36,7 +36,7 @@
 #if !defined(UWP_TARGET)
 #include <dbghelp.h>
 #endif
-#elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+#elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(PSVITA_TARGET)
 #include <dlfcn.h>
 #include <execinfo.h>
 #endif
@@ -69,10 +69,10 @@ extern "C" {
 namespace {
 
 constexpr Uint32 kPauseChordGraceMs = 120;
-constexpr std::string_view kCustomFsuiAppIconPath = "icons/AppIconLarge.png";
+constexpr std::string_view kCustomFsuiAppIconPath = "icons/FsuiAppIcon.png";
 
 constexpr bool SupportsManagedWindowSizing() {
-#if defined(__ANDROID__) || defined(IOS_TARGET) || defined(__EMSCRIPTEN__) || defined(UWP_TARGET)
+#if defined(__ANDROID__) || defined(IOS_TARGET) || defined(__EMSCRIPTEN__) || defined(UWP_TARGET) || defined(PSVITA_TARGET)
     return false;
 #else
     return true;
@@ -307,17 +307,14 @@ std::filesystem::path DefaultBrowseDirectory() {
     return std::filesystem::current_path();
 }
 
-std::optional<std::filesystem::path> UwpExternalArmsxPath() {
-#if defined(UWP_TARGET)
-    const std::filesystem::path candidate("E:/armsx");
-    std::error_code ec;
-
-    if (std::filesystem::exists(candidate, ec) && std::filesystem::is_directory(candidate, ec)) {
-        return candidate;
+std::string AppendBrowseRootHint(std::string summary) {
+#if defined(_WIN32)
+    if (!summary.empty() && summary.back() != ' ') {
+        summary.push_back(' ');
     }
+    summary += "Use Parent Directory at a drive root to switch drives.";
 #endif
-
-    return std::nullopt;
+    return summary;
 }
 
 bool PathsMatch(const std::filesystem::path& left, const std::filesystem::path& right) {
@@ -399,6 +396,66 @@ std::string NormalizePathString(std::string value) {
     }
 #endif
     return value;
+}
+
+bool StartsWithCaseInsensitive(std::string_view value, std::string_view prefix) {
+    if (value.size() < prefix.size()) {
+        return false;
+    }
+
+    for (size_t index = 0; index < prefix.size(); index++) {
+        const unsigned char lhs = static_cast<unsigned char>(value[index]);
+        const unsigned char rhs = static_cast<unsigned char>(prefix[index]);
+        if (std::tolower(lhs) != std::tolower(rhs)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+int HexValue(unsigned char ch) {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return 10 + (ch - 'a');
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return 10 + (ch - 'A');
+    }
+    return -1;
+}
+
+std::string PercentDecode(std::string_view value) {
+    std::string decoded;
+    decoded.reserve(value.size());
+
+    for (size_t index = 0; index < value.size(); index++) {
+        const unsigned char ch = static_cast<unsigned char>(value[index]);
+        if ((ch == '%') && ((index + 2) < value.size())) {
+            const int hi = HexValue(static_cast<unsigned char>(value[index + 1]));
+            const int lo = HexValue(static_cast<unsigned char>(value[index + 2]));
+            if (hi >= 0 && lo >= 0) {
+                decoded.push_back(static_cast<char>((hi << 4) | lo));
+                index += 2;
+                continue;
+            }
+        }
+
+        decoded.push_back(ch == '+' ? ' ' : static_cast<char>(ch));
+    }
+
+    return decoded;
+}
+
+std::optional<std::string> NormalizedPickerSelection(const std::string& path) {
+    const std::string trimmed = Trim(path);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+
+    return NormalizePathString(trimmed);
 }
 
 std::string WithHiddenId(std::string_view label, std::string_view id) {
@@ -643,9 +700,166 @@ int RegionFromSettings(const FrontendSettings& settings) {
 
 LaunchRequest LaunchForPath(const std::filesystem::path& path) {
     LaunchRequest request;
-    request.path = path;
-    request.label = StemToTitle(path);
-    request.kind = IsExePath(path) ? LaunchKind::Exe : LaunchKind::Disc;
+    if (path.empty()) {
+        return request;
+    }
+
+    request.path = std::filesystem::path(NormalizePathString(path.string()));
+    request.label = StemToTitle(request.path);
+
+    if (IsExePath(request.path)) {
+        request.kind = LaunchKind::Exe;
+    } else if (IsDiscPath(request.path)) {
+        request.kind = LaunchKind::Disc;
+    }
+
+    return request;
+}
+
+std::optional<LaunchKind> ParseUriLaunchKind(std::string_view value) {
+    const std::string lower = ToLower(Trim(value));
+
+    if (lower == "bios") {
+        return LaunchKind::Bios;
+    }
+    if (lower == "disc" || lower == "cdrom") {
+        return LaunchKind::Disc;
+    }
+    if (lower == "exe") {
+        return LaunchKind::Exe;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::string> QueryValue(std::string_view query, std::string_view key) {
+    size_t begin = 0;
+
+    while (begin <= query.size()) {
+        const size_t end = query.find('&', begin);
+        const std::string_view pair = query.substr(begin, end == std::string_view::npos ? query.size() - begin : end - begin);
+        const size_t sep = pair.find('=');
+        const std::string_view pair_key = pair.substr(0, sep);
+
+        if (ToLower(PercentDecode(pair_key)) == ToLower(key)) {
+            if (sep == std::string_view::npos) {
+                return std::string();
+            }
+            return PercentDecode(pair.substr(sep + 1));
+        }
+
+        if (end == std::string_view::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+
+    return std::nullopt;
+}
+
+std::string DecodeLaunchUriPathPayload(std::string_view payload) {
+    std::string decoded = PercentDecode(payload);
+
+    if (decoded.rfind("///", 0) == 0) {
+        decoded.erase(0, 2);
+    } else if (decoded.rfind("//", 0) == 0) {
+        decoded.erase(0, 2);
+    }
+
+#if defined(_WIN32)
+    if (decoded.size() >= 3 &&
+        decoded[0] == '/' &&
+        std::isalpha(static_cast<unsigned char>(decoded[1])) &&
+        decoded[2] == ':') {
+        decoded.erase(decoded.begin());
+    }
+#endif
+
+    return NormalizePathString(decoded);
+}
+
+LaunchRequest LaunchForUri(std::string_view uri) {
+    LaunchRequest request;
+
+    if (!StartsWithCaseInsensitive(uri, "armsx:")) {
+        return request;
+    }
+
+    std::string_view remainder = uri.substr(6);
+    const size_t fragment_pos = remainder.find('#');
+    if (fragment_pos != std::string_view::npos) {
+        remainder = remainder.substr(0, fragment_pos);
+    }
+
+    std::string_view query;
+    const size_t query_pos = remainder.find('?');
+    if (query_pos != std::string_view::npos) {
+        query = remainder.substr(query_pos + 1);
+        remainder = remainder.substr(0, query_pos);
+    }
+
+    std::optional<LaunchKind> kind = std::nullopt;
+    if (const std::optional<std::string> kind_value = QueryValue(query, "kind")) {
+        kind = ParseUriLaunchKind(*kind_value);
+    }
+
+    if (kind == LaunchKind::Bios) {
+        request.kind = LaunchKind::Bios;
+        request.label = "PlayStation BIOS";
+        return request;
+    }
+
+    std::string launch_path;
+    if (const std::optional<std::string> query_path = QueryValue(query, "path")) {
+        launch_path = NormalizePathString(*query_path);
+    } else {
+        launch_path = DecodeLaunchUriPathPayload(remainder);
+    }
+
+    const std::string launch_path_lower = ToLower(Trim(launch_path));
+    if (launch_path_lower == "bios" || launch_path_lower == "/bios") {
+        request.kind = LaunchKind::Bios;
+        request.label = "PlayStation BIOS";
+        return request;
+    }
+
+    request = LaunchForPath(std::filesystem::path(launch_path));
+    if (request.kind == LaunchKind::None) {
+        return request;
+    }
+
+    if (kind == LaunchKind::Disc || kind == LaunchKind::Exe) {
+        request.kind = *kind;
+    }
+
+    return request;
+}
+
+LaunchRequest LaunchForArgument(std::string_view argument, std::optional<LaunchKind> forced_kind = std::nullopt) {
+    LaunchRequest request;
+    const std::string trimmed = Trim(argument);
+    if (trimmed.empty()) {
+        return request;
+    }
+
+    if (StartsWithCaseInsensitive(trimmed, "armsx:")) {
+        request = LaunchForUri(trimmed);
+    } else {
+        request = LaunchForPath(std::filesystem::path(trimmed));
+    }
+
+    if (request.kind == LaunchKind::None) {
+        return request;
+    }
+
+    if (forced_kind == LaunchKind::Bios) {
+        return LaunchRequest{.kind = LaunchKind::Bios, .path = {}, .label = "PlayStation BIOS"};
+    }
+
+    if ((forced_kind == LaunchKind::Disc || forced_kind == LaunchKind::Exe) && !request.path.empty()) {
+        request.kind = *forced_kind;
+    }
+
     return request;
 }
 
@@ -2160,19 +2374,10 @@ class ArmsxApp {
             onWasmFile(*g_pending_wasm_path);
             g_pending_wasm_path.reset();
         } else if (cli_.has_boot_request) {
-            LaunchRequest request;
-            if (cli_.exe && !pending_cli_path_.empty()) {
-                request.kind = LaunchKind::Exe;
-                request.path = pending_cli_path_;
-                request.label = StemToTitle(request.path);
-            } else if ((cli_.cdrom || !pending_cli_path_.empty()) && !pending_cli_path_.empty()) {
-                request.kind = IsExePath(pending_cli_path_) ? LaunchKind::Exe : LaunchKind::Disc;
-                request.path = pending_cli_path_;
-                request.label = StemToTitle(request.path);
-            }
-
-            if (request.kind != LaunchKind::None) {
-                launchSession(request, false);
+            if (pending_cli_launch_.has_value()) {
+                launchSession(*pending_cli_launch_, false);
+            } else if (!pending_cli_argument_.empty()) {
+                pending_error_dialog_ = "Unsupported launch path or URI.";
             }
         }
 
@@ -2226,6 +2431,36 @@ class ArmsxApp {
     }
 
   private:
+    void queueLaunchRequest(const LaunchRequest& request, bool close_ui) {
+        if (request.kind == LaunchKind::None) {
+            return;
+        }
+
+        deferred_launch_ = request;
+        close_ui_after_launch_ = close_ui;
+    }
+
+    void queueLaunchSelection(const std::string& path, std::optional<LaunchKind> forced_kind = std::nullopt) {
+        const std::optional<std::string> selection = NormalizedPickerSelection(path);
+        if (!selection.has_value()) {
+            return;
+        }
+
+        const LaunchRequest request = LaunchForArgument(*selection, forced_kind);
+        if (request.kind != LaunchKind::None) {
+            queueLaunchRequest(request, true);
+        }
+    }
+
+    void queueDiscSwapSelection(const std::string& path) {
+        const std::optional<std::string> selection = NormalizedPickerSelection(path);
+        if (!selection.has_value()) {
+            return;
+        }
+
+        deferred_change_disc_ = std::filesystem::path(*selection);
+    }
+
     Uint32 managedRendererFlags(bool vsync_enabled) const {
         Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
 #if !defined(__EMSCRIPTEN__)
@@ -2633,16 +2868,28 @@ class ArmsxApp {
         if (argc_ > 1) {
             for (int index = 1; index < argc_; index++) {
                 const std::string_view arg(argv_[index] ? argv_[index] : "");
-                if (arg == "--cdrom" || arg == "-x" || arg == "--exe") {
+
+                auto set_boot_argument = [&](std::string_view value, std::optional<LaunchKind> forced_kind = std::nullopt) {
+                    pending_cli_argument_ = std::string(value);
+                    pending_cli_launch_ = LaunchForArgument(value, forced_kind);
+                };
+
+                if (arg == "--cdrom") {
                     if ((index + 1) < argc_) {
-                        pending_cli_path_ = argv_[index + 1];
+                        set_boot_argument(argv_[index + 1] ? argv_[index + 1] : "", LaunchKind::Disc);
+                        index++;
+                    }
+                } else if (arg == "-x" || arg == "--exe") {
+                    if ((index + 1) < argc_) {
+                        set_boot_argument(argv_[index + 1] ? argv_[index + 1] : "", LaunchKind::Exe);
+                        index++;
                     }
                 } else if (arg.starts_with("--cdrom=")) {
-                    pending_cli_path_ = std::string(arg.substr(8));
+                    set_boot_argument(arg.substr(8), LaunchKind::Disc);
                 } else if (arg.starts_with("--exe=")) {
-                    pending_cli_path_ = std::string(arg.substr(6));
+                    set_boot_argument(arg.substr(6), LaunchKind::Exe);
                 } else if (!arg.empty() && arg[0] != '-') {
-                    pending_cli_path_ = argv_[index];
+                    set_boot_argument(arg);
                 }
             }
         }
@@ -2915,8 +3162,7 @@ class ArmsxApp {
 
         switch (command.type) {
             case fsui::CommandType::LaunchPath:
-                deferred_launch_ = LaunchForPath(command.path);
-                close_ui_after_launch_ = true;
+                queueLaunchRequest(LaunchForPath(command.path), true);
                 break;
 
             case fsui::CommandType::RequestQuit:
@@ -2963,7 +3209,9 @@ class ArmsxApp {
             psxe_diag_breadcrumbf("Deferred launch kind=%s path=%s",
                 LaunchKindTitle(request.kind),
                 request.path.empty() ? "(none)" : request.path.string().c_str());
-            launchSession(request, close_ui_after_launch_);
+            if (request.kind != LaunchKind::None) {
+                launchSession(request, close_ui_after_launch_);
+            }
             close_ui_after_launch_ = false;
         }
 
@@ -2984,6 +3232,11 @@ class ArmsxApp {
         if (deferred_change_disc_.has_value()) {
             const std::filesystem::path path = *deferred_change_disc_;
             deferred_change_disc_.reset();
+
+            if (path.empty()) {
+                returnToMainWindow();
+                return;
+            }
 
             if (!session_.swapDisc(path)) {
                 pending_error_dialog_ = "Failed to swap to the selected disc image.";
@@ -3158,9 +3411,6 @@ class ArmsxApp {
 
 #if defined(UWP_TARGET)
         add_scan_root(DefaultBrowseDirectory(), true);
-        if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-            add_scan_root(*external, true);
-        }
 #endif
 
         for (const auto& [root, recursive] : scan_roots) {
@@ -3228,8 +3478,7 @@ class ArmsxApp {
                 "Start File",
                 false,
                 [this](const std::string& path) {
-                    deferred_launch_ = LaunchForPath(path);
-                    close_ui_after_launch_ = true;
+                    queueLaunchSelection(path);
                 },
                 {".cue", ".bin", ".iso", ".img", ".exe", ".ps-exe", ".psexe"},
                 default_dir.string()
@@ -3264,8 +3513,7 @@ class ArmsxApp {
                 "Start Disc",
                 false,
                 [this](const std::string& path) {
-                    deferred_launch_ = LaunchForPath(path);
-                    close_ui_after_launch_ = true;
+                    queueLaunchSelection(path, LaunchKind::Disc);
                 },
                 {".cue", ".bin", ".iso", ".img"},
                 default_dir.string()
@@ -3342,7 +3590,7 @@ class ArmsxApp {
             ImGuiFullscreen::OpenFileSelector(
                 "Change Disc",
                 false,
-                [this](const std::string& path) { deferred_change_disc_ = std::filesystem::path(path); },
+                [this](const std::string& path) { queueDiscSwapSelection(path); },
                 {".cue", ".bin", ".iso", ".img"},
                 initialBrowseDirectory().string()
             );
@@ -3434,11 +3682,7 @@ class ArmsxApp {
             folder.id = "bios-folder";
             folder.title = ICON_FA_FOLDER " BIOS Folder";
             if (settings_.bios_search.empty()) {
-                if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-                    folder.summary = "Choose a folder that contains BIOS files. External UWP path available: " + external->string();
-                } else {
-                    folder.summary = "Choose a folder that contains BIOS files.";
-                }
+                folder.summary = AppendBrowseRootHint("Choose a folder that contains BIOS files.");
             } else {
                 folder.summary = settings_.bios_search;
             }
@@ -3447,28 +3691,16 @@ class ArmsxApp {
                     "BIOS Folder",
                     true,
                     [this](const std::string& path) {
-                        settings_.bios_search = NormalizePathString(path);
-                        SaveSettings(settings_);
+                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
+                            settings_.bios_search = *selection;
+                            SaveSettings(settings_);
+                        }
                     },
                     {},
                     browseDirectoryForPath(settings_.bios_search, true).string()
                 );
             };
             rows.push_back(std::move(folder));
-
-            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-                fsui::SettingsRowDescriptor external_folder;
-                external_folder.kind = fsui::SettingsRowKind::Action;
-                external_folder.id = "bios-folder-uwp-external";
-                external_folder.title = ICON_FA_FOLDER_OPEN " Use E:/armsx";
-                external_folder.summary = "Use the external UWP path for BIOS scanning if the drive is mounted.";
-                external_folder.enabled = !PathsMatch(std::filesystem::path(settings_.bios_search), *external);
-                external_folder.on_activate = [this, path = external->string()]() {
-                    settings_.bios_search = NormalizePathString(path);
-                    SaveSettings(settings_);
-                };
-                rows.push_back(std::move(external_folder));
-            }
 
             fsui::SettingsRowDescriptor override;
             override.kind = fsui::SettingsRowKind::Action;
@@ -3481,8 +3713,10 @@ class ArmsxApp {
                     "BIOS Override",
                     false,
                     [this](const std::string& path) {
-                        settings_.bios_override = NormalizePathString(path);
-                        SaveSettings(settings_);
+                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
+                            settings_.bios_override = *selection;
+                            SaveSettings(settings_);
+                        }
                     },
                     {".bin", ".rom"},
                     browseDirectoryForPath(browse_seed, false).string()
@@ -3540,8 +3774,10 @@ class ArmsxApp {
                     "Expansion ROM",
                     false,
                     [this](const std::string& path) {
-                        settings_.exp_path = NormalizePathString(path);
-                        SaveSettings(settings_);
+                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
+                            settings_.exp_path = *selection;
+                            SaveSettings(settings_);
+                        }
                     },
                     {".bin", ".rom"},
                     initialBrowseDirectory().string()
@@ -3559,8 +3795,10 @@ class ArmsxApp {
                     "Default PS-X EXE",
                     false,
                     [this](const std::string& path) {
-                        settings_.default_exe_path = NormalizePathString(path);
-                        SaveSettings(settings_);
+                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
+                            settings_.default_exe_path = *selection;
+                            SaveSettings(settings_);
+                        }
                     },
                     {".exe", ".ps-exe", ".psexe"},
                     initialBrowseDirectory().string()
@@ -3586,32 +3824,30 @@ class ArmsxApp {
         folders_page.build_rows = [this]() {
             std::vector<fsui::SettingsRowDescriptor> rows;
 
-            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-                fsui::SettingsRowDescriptor external_notice;
-                external_notice.kind = fsui::SettingsRowKind::Notice;
-                external_notice.id = "uwp-external-path";
-                external_notice.title = ICON_FA_FOLDER_OPEN " External Path";
-                external_notice.summary = external->string() + " is available for BIOS and game scans on UWP.";
-                rows.push_back(std::move(external_notice));
-            }
+#if defined(UWP_TARGET)
+            fsui::SettingsRowDescriptor browse_notice;
+            browse_notice.kind = fsui::SettingsRowKind::Notice;
+            browse_notice.id = "uwp-filesystem-roots";
+            browse_notice.title = ICON_FA_FOLDER_OPEN " Mounted Drives";
+            browse_notice.summary = "Mounted drives are available from the file selector. Use Parent Directory at a drive root to switch drives.";
+            rows.push_back(std::move(browse_notice));
+#endif
 
             fsui::SettingsRowDescriptor add_folder;
             add_folder.kind = fsui::SettingsRowKind::Action;
             add_folder.id = "add-folder";
             add_folder.title = ICON_FA_FOLDER_PLUS " Add Library Folder";
-            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-                add_folder.summary = "Scan only the selected directory. External UWP path available: " + external->string();
-            } else {
-                add_folder.summary = "Scan only the selected directory.";
-            }
+            add_folder.summary = AppendBrowseRootHint("Scan only the selected directory.");
             add_folder.on_activate = [this]() {
                 ImGuiFullscreen::OpenFileSelector(
                     "Add Library Folder",
                     true,
                     [this](const std::string& path) {
-                        settings_.ui_state.game_list_paths.emplace_back(NormalizePathString(path));
-                        refreshGameList(true);
-                        SaveSettings(settings_);
+                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
+                            settings_.ui_state.game_list_paths.emplace_back(*selection);
+                            refreshGameList(true);
+                            SaveSettings(settings_);
+                        }
                     },
                     {},
                     initialBrowseDirectory().string()
@@ -3619,39 +3855,21 @@ class ArmsxApp {
             };
             rows.push_back(std::move(add_folder));
 
-            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-                fsui::SettingsRowDescriptor add_external;
-                add_external.kind = fsui::SettingsRowKind::Action;
-                add_external.id = "add-uwp-external-folder";
-                add_external.title = ICON_FA_FOLDER_PLUS " Add E:/armsx";
-                add_external.summary = "Scan the external UWP path and its children.";
-                add_external.enabled = !PathListContains(settings_.ui_state.game_list_recursive_paths, *external)
-                    && !PathListContains(settings_.ui_state.game_list_paths, *external);
-                add_external.on_activate = [this, path = *external]() {
-                    settings_.ui_state.game_list_recursive_paths.emplace_back(path);
-                    refreshGameList(true);
-                    SaveSettings(settings_);
-                };
-                rows.push_back(std::move(add_external));
-            }
-
             fsui::SettingsRowDescriptor add_recursive;
             add_recursive.kind = fsui::SettingsRowKind::Action;
             add_recursive.id = "add-recursive-folder";
             add_recursive.title = ICON_FA_FOLDER_PLUS " Add Recursive Folder";
-            if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-                add_recursive.summary = "Scan the selected directory and its children. External UWP path available: " + external->string();
-            } else {
-                add_recursive.summary = "Scan the selected directory and its children.";
-            }
+            add_recursive.summary = AppendBrowseRootHint("Scan the selected directory and its children.");
             add_recursive.on_activate = [this]() {
                 ImGuiFullscreen::OpenFileSelector(
                     "Add Recursive Library Folder",
                     true,
                     [this](const std::string& path) {
-                        settings_.ui_state.game_list_recursive_paths.emplace_back(NormalizePathString(path));
-                        refreshGameList(true);
-                        SaveSettings(settings_);
+                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
+                            settings_.ui_state.game_list_recursive_paths.emplace_back(*selection);
+                            refreshGameList(true);
+                            SaveSettings(settings_);
+                        }
                     },
                     {},
                     initialBrowseDirectory().string()
@@ -3798,7 +4016,7 @@ class ArmsxApp {
                 ImGuiFullscreen::OpenFileSelector(
                     "Change Disc",
                     false,
-                    [this](const std::string& path) { deferred_change_disc_ = std::filesystem::path(path); },
+                    [this](const std::string& path) { queueDiscSwapSelection(path); },
                     {".cue", ".bin", ".iso", ".img"},
                     initialBrowseDirectory().string()
                 );
@@ -4017,10 +4235,6 @@ class ArmsxApp {
             return settings_.ui_state.game_list_recursive_paths.front();
         }
 
-        if (const auto external = UwpExternalArmsxPath(); external.has_value()) {
-            return *external;
-        }
-
         return DefaultBrowseDirectory();
     }
 
@@ -4075,7 +4289,8 @@ class ArmsxApp {
     std::optional<std::filesystem::path> deferred_change_disc_{};
     std::optional<bool> deferred_vsync_{};
     std::optional<std::string> pending_settings_page_restore_{};
-    std::string pending_cli_path_;
+    std::optional<LaunchRequest> pending_cli_launch_{};
+    std::string pending_cli_argument_;
     bool close_ui_after_launch_ = false;
     bool deferred_exit_to_library_ = false;
     bool deferred_reset_ = false;
@@ -4155,7 +4370,7 @@ void WriteNativeStackTraceImpl() {
 #if !defined(UWP_TARGET)
     SymCleanup(process);
 #endif
-#elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+#elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(PSVITA_TARGET)
     void* frames[64] = {};
     const int frame_count = backtrace(frames, static_cast<int>(std::size(frames)));
     psxe_diag_logf("crash", "Native stack trace (%d frames):", frame_count);
