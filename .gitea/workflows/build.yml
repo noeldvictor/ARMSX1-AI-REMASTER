@@ -62,6 +62,12 @@ jobs:
           set -euo pipefail
           if [ -n "${{ matrix.extra_arch }}" ]; then
             dpkg --add-architecture "${{ matrix.extra_arch }}"
+            printf '%s\n' \
+              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse" \
+              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse" \
+              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse" \
+              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble-backports main restricted universe multiverse" \
+              > "/etc/apt/sources.list.d/ubuntu-ports-${{ matrix.extra_arch }}.list"
           fi
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y ${{ matrix.packages }}

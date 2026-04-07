@@ -127,6 +127,18 @@ void SdlLogOutput(void*, int category, SDL_LogPriority priority, const char* mes
     psxe_diag_logf("sdl", "category=%d priority=%d %s", category, static_cast<int>(priority), message ? message : "");
 }
 
+#if defined(_WIN32) && !defined(UWP_TARGET)
+LONG WINAPI WindowsUnhandledExceptionFilter(EXCEPTION_POINTERS* exception_info) {
+    const DWORD code = exception_info && exception_info->ExceptionRecord
+        ? exception_info->ExceptionRecord->ExceptionCode
+        : 0u;
+    char reason[64] = {};
+    SDL_snprintf(reason, sizeof(reason), "SEH 0x%08lx", static_cast<unsigned long>(code));
+    ReportNativeCrash(reason);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
+
 double CounterTicksToMilliseconds(uint64_t ticks) {
     const uint64_t frequency = SDL_GetPerformanceFrequency();
     if (frequency == 0) {
@@ -2810,15 +2822,7 @@ class ArmsxApp {
         std::signal(SIGFPE, signal_handler);
 
 #if defined(_WIN32) && !defined(UWP_TARGET)
-        SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* exception_info) -> LONG {
-            const DWORD code = exception_info && exception_info->ExceptionRecord
-                ? exception_info->ExceptionRecord->ExceptionCode
-                : 0u;
-            char reason[64] = {};
-            SDL_snprintf(reason, sizeof(reason), "SEH 0x%08lx", static_cast<unsigned long>(code));
-            ReportNativeCrash(reason);
-            return EXCEPTION_EXECUTE_HANDLER;
-        });
+        SetUnhandledExceptionFilter(&WindowsUnhandledExceptionFilter);
 #endif
     }
 
