@@ -185,6 +185,9 @@ C_SOURCES := $(wildcard psx/*.c) \
              frontend/config.c \
              frontend/diagnostics.c \
              frontend/toml.c
+ifeq ($(PSVITA_TARGET),1)
+C_SOURCES += frontend/vita_sdl_stubs.c
+endif
 C_SOURCES_SHARED := $(C_SOURCES)
 
 CPP_SOURCES := frontend/main.cpp

@@ -52,3 +52,28 @@ set(FSUI_IMGUI_OPENGL_ES3 ON CACHE BOOL "Build the fsui OpenGL backend in OpenGL
 set(FSUI_USE_SYSTEM_SDL2 OFF CACHE BOOL "Prefer a system SDL2 package when an SDL target is not already available" FORCE)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../third_party/fsui-lib" "${CMAKE_BINARY_DIR}/fsui-lib")
+
+if(DEFINED VITASDK AND VITASDK)
+    # Vita packaging tools reject PIC-style ARM relocations such as R_ARM_BASE_PREL.
+    # Keep the upstream fsui source tree untouched, but force the Vita-facing targets
+    # to build as plain static libraries.
+    set(_FSUI_VITA_TARGETS
+        fsui_imgui
+        fsui-core
+        fsui-platform-sdl2
+        fsui-renderer-opengl
+        fsui-renderer-sdl2
+        fsui-renderer-sdl2surface
+        fsui-backend-sdl
+        fsui-donor
+        fsui_resources
+        fsui_glad
+        glad
+    )
+
+    foreach(_FSUI_VITA_TARGET IN LISTS _FSUI_VITA_TARGETS)
+        if(TARGET ${_FSUI_VITA_TARGET})
+            set_target_properties(${_FSUI_VITA_TARGET} PROPERTIES POSITION_INDEPENDENT_CODE OFF)
+        endif()
+    endforeach()
+endif()

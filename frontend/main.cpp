@@ -127,6 +127,8 @@ void SdlLogOutput(void*, int category, SDL_LogPriority priority, const char* mes
     psxe_diag_logf("sdl", "category=%d priority=%d %s", category, static_cast<int>(priority), message ? message : "");
 }
 
+[[noreturn]] void ReportNativeCrash(const char* reason);
+
 #if defined(_WIN32) && !defined(UWP_TARGET)
 LONG WINAPI WindowsUnhandledExceptionFilter(EXCEPTION_POINTERS* exception_info) {
     const DWORD code = exception_info && exception_info->ExceptionRecord

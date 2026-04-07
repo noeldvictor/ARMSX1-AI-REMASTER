@@ -32,8 +32,34 @@ build_fsui_native() {
 }
 
 build_fsui_wasm() {
-    if ! command -v emcmake >/dev/null 2>&1; then
-        echo "emcmake is required for the wasm FSUI build."
+    if ! command -v emcmake >/dev/null 2>&1 || ! command -v emcc >/dev/null 2>&1; then
+        for candidate in "${EMSCRIPTEN_ROOT:-}" "${EMSDK:-}" "/Volumes/FastDrive/linkertools/emsdk"; do
+            if [ -z "${candidate}" ] || [ ! -d "${candidate}" ]; then
+                continue
+            fi
+
+            if [ -x "${candidate}/upstream/emscripten/emcmake" ] && [ -x "${candidate}/upstream/emscripten/emcc" ]; then
+                export EMSDK="${candidate}"
+                export EMSCRIPTEN="${candidate}/upstream/emscripten"
+                PATH="${candidate}/upstream/emscripten:${PATH}"
+                node_bin="$(find "${candidate}/node" -type f -name node 2>/dev/null | head -n 1)"
+                if [ -n "${node_bin}" ]; then
+                    PATH="$(dirname "${node_bin}"):${PATH}"
+                fi
+                export PATH
+                break
+            fi
+
+            if [ -x "${candidate}/emcmake" ] && [ -x "${candidate}/emcc" ]; then
+                PATH="${candidate}:${PATH}"
+                export PATH
+                break
+            fi
+        done
+    fi
+
+    if ! command -v emcmake >/dev/null 2>&1 || ! command -v emcc >/dev/null 2>&1; then
+        echo "emcmake/emcc are required for the wasm FSUI build. Set EMSCRIPTEN_ROOT or install Emscripten."
         exit 1
     fi
 
@@ -52,12 +78,17 @@ build_fsui_psvita() {
     cmake -S cmake/psvita-fsui -B build/fsui/psvita \
         -DCMAKE_TOOLCHAIN_FILE="${VITASDK}/share/vita.toolchain.cmake" \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=OFF \
         -DVITASDK="${VITASDK}" \
         -DFSUI_BUILD_SAMPLES=OFF \
         -DFSUI_ENABLE_INSTALL=OFF \
         -DFSUI_PLATFORM_BACKEND=SDL2 \
         -DFSUI_IMGUI_OPENGL_ES3=ON
     cmake --build build/fsui/psvita -j"${BUILD_JOBS}"
+
+    # The Vita Rust wrapper expects the FSUI archives in the CMake root output
+    # directory, so stage the real archives out of the nested fsui-lib build.
+    cp build/fsui/psvita/fsui-lib/libfsui*.a build/fsui/psvita/
 }
 
 bundle_macos_app() {
@@ -219,8 +250,9 @@ elif [ "$MODE" = "android" ]; then
 
     REPO_ROOT="$(pwd)"
 
-    SDL_BUILD_ROOT="${REPO_ROOT}/build/android/sdl"
+    SDL_BUILD_ROOT="${REPO_ROOT}/build/android/sdl/${ANDROID_ABI}"
     SDL_INSTALL_DIR="${SDL_BUILD_ROOT}/install"
+    rm -rf "${SDL_BUILD_ROOT}"
     mkdir -p "${SDL_BUILD_ROOT}"
 
     cmake -S third_party/SDL -B "${SDL_BUILD_ROOT}" \
@@ -327,7 +359,10 @@ elif [ "$MODE" = "psvita" ]; then
 
     VITA_PACKAGE_DIR="$(pwd)/build/psvita/package"
     VITA_TARGET_DIR="$(pwd)/psvita/target/armv7-sony-vita-newlibeabihf/release"
-    VITA_ELF="${VITA_TARGET_DIR}/ARMSX_vita"
+    VITA_ELF="${VITA_TARGET_DIR}/ARMSX_vita.elf"
+    if [ ! -f "${VITA_ELF}" ] && [ -f "${VITA_TARGET_DIR}/ARMSX_vita" ]; then
+        VITA_ELF="${VITA_TARGET_DIR}/ARMSX_vita"
+    fi
     VITA_VELF="${VITA_PACKAGE_DIR}/eboot.velf"
     VITA_EBOOT="${VITA_PACKAGE_DIR}/eboot.bin"
     VITA_PARAM="${VITA_PACKAGE_DIR}/param.sfo"
@@ -340,7 +375,7 @@ elif [ "$MODE" = "psvita" ]; then
 
     rm -rf "${VITA_PACKAGE_DIR}"
     mkdir -p "${VITA_PACKAGE_DIR}/sce_sys"
-    cp icons/FsuiAppIcon.png "${VITA_PACKAGE_DIR}/sce_sys/icon0.png"
+    cp icons/ArmsxDesktop.png "${VITA_PACKAGE_DIR}/sce_sys/icon0.png"
 
     vita-mksfoex -s TITLE_ID=ARMSX001 "ARMSX PSVita" "${VITA_PARAM}"
     vita-elf-create -s "${VITA_ELF}" "${VITA_VELF}"

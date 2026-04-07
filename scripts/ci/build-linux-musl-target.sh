@@ -118,6 +118,11 @@ configure_target
 
 toolchain_dir="$(download_toolchain "$toolchain_name")"
 apk_static="$(download_apk_static)"
+python3_bin="$(command -v python3 || true)"
+if [ -z "$python3_bin" ]; then
+    echo "python3 is required for the musl fsui build." >&2
+    exit 1
+fi
 
 sysroot_dir="$sysroot_root/$target"
 repo_file="$sysroot_dir/etc/apk/repositories"
@@ -178,6 +183,8 @@ cmake -S "$repo_root/third_party/fsui-lib" -B "$fsui_build_dir" \
     -DFSUI_BUILD_SAMPLES=OFF \
     -DFSUI_PLATFORM_BACKEND=SDL2 \
     -DFSUI_USE_SYSTEM_SDL2=ON \
+    -DPython_EXECUTABLE="$python3_bin" \
+    -DPython3_EXECUTABLE="$python3_bin" \
     -DCMAKE_PREFIX_PATH="$sysroot_dir/usr" \
     -DSDL2_DIR="$sdl2_config_dir"
 cmake --build "$fsui_build_dir" -j"$build_jobs"

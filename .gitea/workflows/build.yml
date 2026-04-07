@@ -27,7 +27,7 @@ jobs:
             packages: "build-essential binutils cmake file git libgl1-mesa-dev libsdl2-dev make pkg-config python3 python3-jinja2 zip"
           - target: x32
             extra_arch: "i386"
-            apt_source_arch: ""
+            apt_source_arch: "x32"
             packages: "binutils cmake file gcc-multilib g++-multilib git libc6-dev-i386 libgl1-mesa-dev:i386 libsdl2-dev:i386 make pkg-config python3 python3-jinja2 zip"
           - target: arm64
             extra_arch: "arm64"
@@ -160,6 +160,58 @@ jobs:
         with:
           name: armsx-macos-ventura-x64
           path: artifacts/macos/ventura/armsx-macos-ventura-x64.zip
+
+  psvita:
+    name: PSVita VPK
+    runs-on: psvita
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch submodules with private repo token
+        shell: bash
+        env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            exit 1
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
+          git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
+
+      - name: Validate Vita runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${VITASDK:-}" ]; then
+            echo "VITASDK must be set on the Vita runner." >&2
+            exit 1
+          fi
+          for tool in cargo vita-mksfoex vita-elf-create vita-make-fself vita-pack-vpk; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "$tool is required on the Vita runner." >&2
+              exit 1
+            fi
+          done
+
+      - name: Build PSVita package
+        shell: bash
+        env:
+          RUSTUP_TOOLCHAIN: nightly
+        run: ./build.sh psvita
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: armsx-psvita-vpk
+          path: bin/psvita/ARMSX.vpk
 
   linux-musl:
     name: Linux musl ${{ matrix.target }}
