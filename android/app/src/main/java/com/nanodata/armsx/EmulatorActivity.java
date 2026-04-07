@@ -20,10 +20,24 @@ public class EmulatorActivity extends SDLActivity {
     static final String EXTRA_NATIVE_ARGS = "com.nanodata.armsx.EXTRA_NATIVE_ARGS";
     private static final String TAG = "EmulatorActivity";
 
+    private static native void nativeEnqueueLaunchArgument(String argument);
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+
+        String launchArgument = launchArgumentFromIntent(intent);
+        if (launchArgument != null && !launchArgument.isEmpty()) {
+            Log.i(TAG, "Runtime protocol launch: " + launchArgument);
+            nativeEnqueueLaunchArgument(launchArgument);
+        }
     }
 
     @Override
@@ -57,7 +71,25 @@ public class EmulatorActivity extends SDLActivity {
             }
         }
 
+        String launchArgument = launchArgumentFromIntent(intent);
+        if (launchArgument != null && !launchArgument.isEmpty()) {
+            args.add(launchArgument);
+        }
+
         return args.toArray(new String[0]);
+    }
+
+    private @Nullable String launchArgumentFromIntent(@Nullable Intent intent) {
+        if (intent == null) {
+            return null;
+        }
+
+        String dataString = intent.getDataString();
+        if (dataString != null && !dataString.isEmpty()) {
+            return dataString;
+        }
+
+        return null;
     }
 
     private @Nullable String copyBundledBios() {

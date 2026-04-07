@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, readonly, getter=isRunning) BOOL running;
 
 - (void)startWithArgs:(NSArray<NSString *> *)args;
+- (void)enqueueLaunchArgument:(NSString *)argument;
 
 @end
 

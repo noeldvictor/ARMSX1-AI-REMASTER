@@ -15,6 +15,9 @@
 
 - (void)startWithArgs:(NSArray<NSString *> *)args {
     if (self.running) {
+        for (NSString *argument in args) {
+            [self enqueueLaunchArgument:argument];
+        }
         return;
     }
 
@@ -123,6 +126,14 @@
             external_main((int)argvStorage.size(), argv.data(), NULL, NULL);
         }
     });
+}
+
+- (void)enqueueLaunchArgument:(NSString *)argument {
+    if (argument.length == 0) {
+        return;
+    }
+
+    psxe_enqueue_launch_argument(argument.UTF8String);
 }
 
 @end

@@ -30,6 +30,7 @@ typedef struct {
 
 static FILE* g_diag_file = NULL;
 static char g_diag_log_path[1024] = {0};
+static int g_diag_enabled = 0;
 static char g_diag_breadcrumbs[PSXE_DIAG_BREADCRUMB_CAPACITY][PSXE_DIAG_LINE_CAPACITY];
 static size_t g_diag_breadcrumb_count = 0;
 static size_t g_diag_breadcrumb_head = 0;
@@ -81,6 +82,26 @@ static void psxe_diag_make_directory(const char* path) {
 #endif
 }
 
+static void psxe_diag_close_file(void) {
+    if (!g_diag_file) {
+        return;
+    }
+
+    fflush(g_diag_file);
+    fclose(g_diag_file);
+    g_diag_file = NULL;
+}
+
+static void psxe_diag_update_file_handle(void) {
+    psxe_diag_close_file();
+
+    if (!g_diag_enabled || !g_diag_log_path[0]) {
+        return;
+    }
+
+    g_diag_file = fopen(g_diag_log_path, "a");
+}
+
 static void psxe_diag_timestamp(char* buffer, size_t capacity) {
     if (!buffer || capacity == 0) {
         return;
@@ -99,7 +120,7 @@ static void psxe_diag_timestamp(char* buffer, size_t capacity) {
 }
 
 static void psxe_diag_emit_line(const char* source, const char* line) {
-    if (!line || !line[0]) {
+    if (!g_diag_enabled || !line || !line[0]) {
         return;
     }
 
@@ -144,7 +165,7 @@ static char* psxe_diag_vformat(const char* fmt, va_list args) {
 }
 
 static void psxe_diag_write_text(const char* source, const char* text) {
-    if (!text || !text[0]) {
+    if (!g_diag_enabled || !text || !text[0]) {
         return;
     }
 
@@ -185,7 +206,7 @@ static void psxe_diag_stream_buffer_flush(psxe_diag_stream_buffer_t* buffer, con
 }
 
 static void psxe_diag_stream_buffer_append(psxe_diag_stream_buffer_t* buffer, const char* source, int ch) {
-    if (!buffer) {
+    if (!g_diag_enabled || !buffer) {
         return;
     }
 
@@ -202,11 +223,7 @@ static void psxe_diag_stream_buffer_append(psxe_diag_stream_buffer_t* buffer, co
 }
 
 void psxe_diag_initialize(const char* pref_path) {
-    if (g_diag_file) {
-        fflush(g_diag_file);
-        fclose(g_diag_file);
-        g_diag_file = NULL;
-    }
+    psxe_diag_close_file();
 
     g_diag_log_path[0] = '\0';
 
@@ -220,28 +237,45 @@ void psxe_diag_initialize(const char* pref_path) {
 #else
         SDL_snprintf(g_diag_log_path, sizeof(g_diag_log_path), "%s/armsx.log", log_directory);
 #endif
-
-        g_diag_file = fopen(g_diag_log_path, "a");
     }
 
-    psxe_diag_logf("diag", "Diagnostics initialized%s%s",
-        g_diag_log_path[0] ? " at " : "",
-        g_diag_log_path[0] ? g_diag_log_path : "");
+    psxe_diag_update_file_handle();
+
+    if (g_diag_enabled) {
+        psxe_diag_logf("diag", "Diagnostics initialized%s%s",
+            g_diag_log_path[0] ? " at " : "",
+            g_diag_log_path[0] ? g_diag_log_path : "");
+    }
 }
 
 void psxe_diag_shutdown(void) {
     psxe_diag_stream_buffer_flush(&g_stdout_buffer, "stdout");
     psxe_diag_stream_buffer_flush(&g_stderr_buffer, "stderr");
 
-    if (g_diag_file) {
-        fflush(g_diag_file);
-        fclose(g_diag_file);
-        g_diag_file = NULL;
-    }
+    psxe_diag_close_file();
 }
 
 const char* psxe_diag_log_path(void) {
     return g_diag_log_path;
+}
+
+void psxe_diag_set_enabled(int enabled) {
+    const int normalized = enabled ? 1 : 0;
+    if (g_diag_enabled == normalized) {
+        return;
+    }
+
+    if (!normalized) {
+        psxe_diag_stream_buffer_flush(&g_stdout_buffer, "stdout");
+        psxe_diag_stream_buffer_flush(&g_stderr_buffer, "stderr");
+    }
+
+    g_diag_enabled = normalized;
+    psxe_diag_update_file_handle();
+}
+
+int psxe_diag_is_enabled(void) {
+    return g_diag_enabled;
 }
 
 void psxe_diag_log_line(const char* source, const char* line) {

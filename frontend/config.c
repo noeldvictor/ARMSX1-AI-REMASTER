@@ -53,8 +53,9 @@ static const char g_default_settings[] =
     "# Runtime settings\n"
     "[runtime]\n"
     "    display_scale = 3\n"
-    "    log_level = 5\n"
-    "    quiet = false\n"
+    "    logging_enabled = false\n"
+    "    log_level = 2\n"
+    "    quiet = true\n"
     "\n"
     "# Launch path defaults\n"
     "[paths]\n"
@@ -387,8 +388,8 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
     cfg->settings_path = NULL;
     cfg->use_args = 0;
     cfg->version = 0;
-    cfg->log_level = LOG_FATAL;
-    cfg->quiet = 0;
+    cfg->log_level = LOG_INFO;
+    cfg->quiet = 1;
     cfg->cd_path = NULL;
     cfg->exp_path = NULL;
 #if defined(UWP_TARGET)
@@ -422,7 +423,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int help_model = 0;
     int help_region = 0;
     int log_level = 0;
-    int quiet = 0;
+    int quiet = cfg->quiet;
     int console_source = 0;
     int scale = 0;
     int vsync_enabled = cfg->vsync_enabled;

@@ -9,7 +9,7 @@ ifeq ($(WASM_TARGET),wasm)
 	SDL_CFLAGS := -sUSE_SDL=2
 	SDL_LIBS_DYNAMIC :=
 	SDL_LIBS_STATIC :=
-	WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sFULL_ES3=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sNO_EXIT_RUNTIME=0 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main","_psxe_wasm_on_file"]' --preload-file icons@/icons
+	WASM_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=1 -sFORCE_FILESYSTEM=1 -sFULL_ES3=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sNO_EXIT_RUNTIME=0 -sEXPORTED_RUNTIME_METHODS='["FS","ccall","cwrap"]' -sEXPORTED_FUNCTIONS='["_main","_psxe_run","_external_main","_psxe_wasm_on_file","_psxe_enqueue_launch_argument"]' --preload-file icons@/icons
 endif
 
 SDL_CONFIG ?= sdl2-config

@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -43,6 +44,10 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/html5.h>
+#endif
+
+#if defined(__ANDROID__)
+#include <jni.h>
 #endif
 
 extern "C" {
@@ -90,8 +95,9 @@ constexpr bool DefaultVsyncEnabled() {
 class ArmsxApp;
 
 ArmsxApp* g_active_app = nullptr;
-std::optional<std::filesystem::path> g_pending_wasm_path;
 std::atomic_bool g_crash_reporting{false};
+std::mutex g_pending_launch_lock;
+std::vector<std::string> g_pending_launch_arguments;
 
 constexpr double kUiFrameRate = 60.0;
 
@@ -202,6 +208,22 @@ struct LaunchRequest {
     std::string label;
 };
 
+void EnqueuePendingLaunchArgument(std::string argument) {
+    if (argument.empty()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_pending_launch_lock);
+    g_pending_launch_arguments.push_back(std::move(argument));
+}
+
+std::vector<std::string> DrainPendingLaunchArguments() {
+    std::lock_guard<std::mutex> lock(g_pending_launch_lock);
+    std::vector<std::string> pending;
+    pending.swap(g_pending_launch_arguments);
+    return pending;
+}
+
 struct FrontendSettings {
     std::string settings_path;
     std::string bios_override;
@@ -211,8 +233,9 @@ struct FrontendSettings {
     std::string exp_path;
     std::string default_exe_path;
     int scale = 3;
-    int log_level = LOG_FATAL;
-    bool quiet = false;
+    int log_level = LOG_INFO;
+    bool quiet = true;
+    bool logging_enabled = false;
     bool vsync_enabled = DefaultVsyncEnabled();
     bool texture_scale_mode = false;
     bool debug_panel = false;
@@ -305,6 +328,16 @@ std::filesystem::path DefaultBrowseDirectory() {
     }
 
     return std::filesystem::current_path();
+}
+
+std::filesystem::path DefaultDiagnosticsLogPath() {
+    std::filesystem::path path = DefaultBrowseDirectory() / "logs";
+#if defined(UWP_TARGET)
+    path /= "armsx-uwp.log";
+#else
+    path /= "armsx.log";
+#endif
+    return path;
 }
 
 std::string AppendBrowseRootHint(std::string summary) {
@@ -787,11 +820,14 @@ std::string DecodeLaunchUriPathPayload(std::string_view payload) {
 LaunchRequest LaunchForUri(std::string_view uri) {
     LaunchRequest request;
 
-    if (!StartsWithCaseInsensitive(uri, "armsx:")) {
+    std::string_view remainder = uri;
+    if (StartsWithCaseInsensitive(uri, "armsx:")) {
+        remainder = uri.substr(6);
+    } else if (StartsWithCaseInsensitive(uri, "web+armsx:")) {
+        remainder = uri.substr(10);
+    } else {
         return request;
     }
-
-    std::string_view remainder = uri.substr(6);
     const size_t fragment_pos = remainder.find('#');
     if (fragment_pos != std::string_view::npos) {
         remainder = remainder.substr(0, fragment_pos);
@@ -1118,9 +1154,18 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
         }
 
         if (!cli.quiet) {
+            bool resolved_logging_enabled = false;
+            toml_datum_t logging_enabled = toml_bool_in(runtime, "logging_enabled");
+            if (logging_enabled.ok) {
+                settings.logging_enabled = logging_enabled.u.b != 0;
+                settings.quiet = !settings.logging_enabled;
+                resolved_logging_enabled = true;
+            }
+
             toml_datum_t value = toml_bool_in(runtime, "quiet");
-            if (value.ok) {
+            if (!resolved_logging_enabled && value.ok) {
                 settings.quiet = value.u.b != 0;
+                settings.logging_enabled = !settings.quiet;
             }
         }
     }
@@ -1216,8 +1261,9 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
     settings.exp_path = (cfg && cfg->exp_path && cfg->exp_path[0]) ? cfg->exp_path : "";
     settings.default_exe_path = (cfg && cfg->exe && cfg->exe[0]) ? cfg->exe : "";
     settings.scale = cfg ? cfg->scale : 3;
-    settings.log_level = cfg ? cfg->log_level : LOG_FATAL;
-    settings.quiet = cfg ? (cfg->quiet != 0) : false;
+    settings.log_level = cfg ? cfg->log_level : LOG_INFO;
+    settings.quiet = cfg ? (cfg->quiet != 0) : true;
+    settings.logging_enabled = !settings.quiet;
     settings.vsync_enabled = cfg ? (cfg->vsync_enabled != 0) : DefaultVsyncEnabled();
     settings.texture_scale_mode = cfg ? (cfg->texture_scale_mode != 0) : false;
     settings.debug_panel = cfg ? (cfg->debug_panel != 0) : false;
@@ -1238,6 +1284,7 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
 
     settings.scale = std::max(1, settings.scale);
     settings.log_level = std::clamp(settings.log_level, static_cast<int>(LOG_TRACE), static_cast<int>(LOG_FATAL));
+    settings.logging_enabled = !settings.quiet;
     settings.ui_state.show_settings_overlay = settings.debug_panel;
     settings.ui_state.show_performance_overlay = settings.debug_panel;
 
@@ -1287,8 +1334,9 @@ bool SaveSettings(const FrontendSettings& settings) {
         << "    region          = \"" << EscapeTomlString(settings.region) << "\"\n\n"
         << "[runtime]\n"
         << "    display_scale = " << settings.scale << "\n"
+        << "    logging_enabled = " << (settings.logging_enabled ? "true" : "false") << "\n"
         << "    log_level = " << settings.log_level << "\n"
-        << "    quiet = " << (settings.quiet ? "true" : "false") << "\n\n"
+        << "    quiet = " << (settings.logging_enabled ? "false" : "true") << "\n\n"
         << "[paths]\n"
         << "    expansion_rom = \"" << EscapeTomlString(settings.exp_path) << "\"\n"
         << "    default_psx_exe = \"" << EscapeTomlString(settings.default_exe_path) << "\"\n\n"
@@ -1470,18 +1518,18 @@ class ArmsxSession {
         desired.userdata = this;
 
         audio_dev_ = SDL_OpenAudioDevice(nullptr, 0, &desired, &obtained, 0);
-        if (audio_dev_) {
-            audio_sample_accumulator_ = 0.0;
-            audio_queue_.clear();
-            audio_queue_read_offset_ = 0;
-            SDL_PauseAudioDevice(audio_dev_, 0);
-        }
-
         paused_ = false;
+        fast_forward_enabled_ = false;
         debug_view_ = false;
         texture_width_ = 0;
         texture_height_ = 0;
         texture_format_ = SDL_PIXELFORMAT_UNKNOWN;
+        if (audio_dev_) {
+            audio_sample_accumulator_ = 0.0;
+            audio_queue_.clear();
+            audio_queue_read_offset_ = 0;
+            updateAudioPlaybackState();
+        }
         updateTexture(settings);
 
         return true;
@@ -1534,6 +1582,7 @@ class ArmsxSession {
         title_.clear();
         launch_kind_ = LaunchKind::None;
         paused_ = false;
+        fast_forward_enabled_ = false;
         debug_view_ = false;
         vblank_counter_ = 0;
     }
@@ -1565,17 +1614,34 @@ class ArmsxSession {
     void setPaused(bool paused) {
         paused_ = paused;
         if (audio_dev_) {
-            if (paused) {
+            if (paused || fast_forward_enabled_) {
                 SDL_LockAudioDevice(audio_dev_);
                 resetAudioQueueLocked();
                 SDL_UnlockAudioDevice(audio_dev_);
             }
-            SDL_PauseAudioDevice(audio_dev_, paused ? 1 : 0);
+            updateAudioPlaybackState();
         }
     }
 
     bool paused() const {
         return paused_;
+    }
+
+    void setFastForwardEnabled(bool enabled) {
+        if (fast_forward_enabled_ == enabled) {
+            return;
+        }
+
+        fast_forward_enabled_ = enabled;
+        clearQueuedAudio();
+
+        if (audio_dev_) {
+            updateAudioPlaybackState();
+        }
+    }
+
+    bool fastForwardEnabled() const {
+        return fast_forward_enabled_;
     }
 
     void runFrame() {
@@ -1613,7 +1679,7 @@ class ArmsxSession {
         }
 
         psxe_diag_breadcrumbf("Soft reset requested title=%s", title_.empty() ? "(none)" : title_.c_str());
-        clearQueuedAudio();
+        setFastForwardEnabled(false);
         psx_soft_reset(psx_);
         return true;
     }
@@ -1627,7 +1693,7 @@ class ArmsxSession {
             return false;
         }
 
-        clearQueuedAudio();
+        setFastForwardEnabled(false);
         disc_path_ = path;
         launch_kind_ = LaunchKind::Disc;
         title_ = StemToTitle(path);
@@ -1657,6 +1723,7 @@ class ArmsxSession {
         lines.push_back(fsui::OverlayTextLine{.text = std::string("Video: ") + RendererValueTitle(settings)});
         lines.push_back(fsui::OverlayTextLine{.text = std::string("VSync: ") + BoolTitle(settings.vsync_enabled)});
         lines.push_back(fsui::OverlayTextLine{.text = std::string("Debug View: ") + BoolTitle(debug_view_)});
+        lines.push_back(fsui::OverlayTextLine{.text = std::string("Fast Forward: ") + (fast_forward_enabled_ ? "2x" : "Off")});
         return lines;
     }
 
@@ -1670,6 +1737,9 @@ class ArmsxSession {
         lines.push_back(fsui::OverlayTextLine{.text = fps});
         lines.push_back(fsui::OverlayTextLine{.text = video});
         lines.push_back(fsui::OverlayTextLine{.text = std::string("State: ") + (paused_ ? "Paused" : "Running")});
+        if (fast_forward_enabled_) {
+            lines.push_back(fsui::OverlayTextLine{.text = "Speed: 2x"});
+        }
         return lines;
     }
 
@@ -1804,6 +1874,10 @@ class ArmsxSession {
         return static_cast<double>(psx_gpu_frame_rate(psx_->gpu));
     }
 
+    double targetFrameRate() const {
+        return frameRate() * (fast_forward_enabled_ ? 2.0 : 1.0);
+    }
+
     const char* timingModeTitle() const {
         if (!psx_ || !psx_->gpu) {
             return "NTSC-like";
@@ -1838,8 +1912,16 @@ class ArmsxSession {
         session->consumeQueuedAudio(buffer, static_cast<size_t>(size));
     }
 
+    void updateAudioPlaybackState() {
+        if (!audio_dev_) {
+            return;
+        }
+
+        SDL_PauseAudioDevice(audio_dev_, (paused_ || fast_forward_enabled_) ? 1 : 0);
+    }
+
     void queueAudioForFrame() {
-        if (!psx_ || !audio_dev_) {
+        if (!psx_ || !audio_dev_ || fast_forward_enabled_) {
             return;
         }
 
@@ -1934,6 +2016,7 @@ class ArmsxSession {
     std::string title_;
     LaunchKind launch_kind_ = LaunchKind::None;
     bool paused_ = false;
+    bool fast_forward_enabled_ = false;
     bool debug_view_ = false;
     std::uint64_t vblank_counter_ = 0;
     int texture_width_ = 0;
@@ -2356,12 +2439,11 @@ class ArmsxApp {
         settings_ = BuildSettings(cfg, cli_);
         psxe_cfg_destroy(cfg);
 
-        log_set_quiet(settings_.quiet ? 1 : 0);
-        log_set_level(settings_.log_level);
-        psxe_diag_breadcrumbf("Settings loaded model=%s region=%s quiet=%s log_level=%d",
+        applyLoggingSettings("startup");
+        psxe_diag_breadcrumbf("Settings loaded model=%s region=%s logging_enabled=%s log_level=%d",
             settings_.model.c_str(),
             settings_.region.c_str(),
-            settings_.quiet ? "true" : "false",
+            settings_.logging_enabled ? "true" : "false",
             settings_.log_level);
 
         installCrashHandlers();
@@ -2375,17 +2457,18 @@ class ArmsxApp {
         refreshGameList(true);
 
         g_active_app = this;
+        initializeWebLaunchSupport();
+        consumePendingLaunchArguments();
 
-        if (g_pending_wasm_path.has_value()) {
-            onWasmFile(*g_pending_wasm_path);
-            g_pending_wasm_path.reset();
-        } else if (cli_.has_boot_request) {
+        if (cli_.has_boot_request) {
             if (pending_cli_launch_.has_value()) {
                 launchSession(*pending_cli_launch_, false);
             } else if (!pending_cli_argument_.empty()) {
                 pending_error_dialog_ = "Unsupported launch path or URI.";
             }
         }
+
+        consumePendingLaunchArguments();
 
         if (!session_.valid()) {
             showLandingWindow();
@@ -2418,25 +2501,71 @@ class ArmsxApp {
         psxe_diag_dump_breadcrumbs();
     }
 
-    void onWasmFile(const std::filesystem::path& path) {
-        if (path.empty()) {
+  private:
+    void initializeWebLaunchSupport() {
+#if defined(__EMSCRIPTEN__)
+        static bool initialized = false;
+        if (initialized) {
             return;
         }
 
-        const LaunchRequest request = LaunchForPath(path);
+        initialized = true;
+        EM_ASM({
+            try {
+                const searchParams = new URLSearchParams(window.location.search);
+                let launchUri = searchParams.get('uri') || '';
+                if (!launchUri && window.location.hash) {
+                    const hash = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash;
+                    launchUri = new URLSearchParams(hash).get('uri') || '';
+                }
+
+                if (launchUri.startsWith('web+armsx:')) {
+                    launchUri = 'armsx:' + launchUri.substring('web+armsx:'.length);
+                }
+
+                if (window.location.protocol === 'https:' && typeof navigator !== 'undefined' &&
+                    typeof navigator.registerProtocolHandler === 'function') {
+                    try {
+                        navigator.registerProtocolHandler(
+                            'web+armsx',
+                            window.location.origin + window.location.pathname + '?uri=%s',
+                            'ARMSX'
+                        );
+                    } catch (error) {
+                        console.warn('ARMSX protocol handler registration skipped', error);
+                    }
+                }
+
+                if (launchUri && typeof Module !== 'undefined' && typeof Module.ccall === 'function') {
+                    Module.ccall('psxe_enqueue_launch_argument', null, ['string'], [launchUri]);
+                }
+            } catch (error) {
+                console.warn('ARMSX web launch bootstrap failed', error);
+            }
+        });
+#endif
+    }
+
+    void queueLaunchArgument(std::string_view argument, bool close_ui, const char* error_message = "Unsupported launch path or URI.") {
+        const LaunchRequest request = LaunchForArgument(argument);
+        psxe_diag_logf("launch", "Launch argument=%s kind=%s", std::string(argument).c_str(), LaunchKindTitle(request.kind));
         if (request.kind == LaunchKind::None) {
-            pending_error_dialog_ = "Unsupported file type for browser launch.";
+            pending_error_dialog_ = error_message;
             if (!session_.valid()) {
                 showLandingWindow();
             }
             return;
         }
 
-        deferred_launch_ = request;
-        close_ui_after_launch_ = true;
+        queueLaunchRequest(request, close_ui);
     }
 
-  private:
+    void consumePendingLaunchArguments() {
+        for (const std::string& argument : DrainPendingLaunchArguments()) {
+            queueLaunchArgument(argument, true);
+        }
+    }
+
     void queueLaunchRequest(const LaunchRequest& request, bool close_ui) {
         if (request.kind == LaunchKind::None) {
             return;
@@ -2500,6 +2629,8 @@ class ArmsxApp {
             fsui::Shutdown(true);
             fsui_initialized_ = false;
         }
+
+        ImGuiFullscreen::ClearFileSelectorExtraRoots();
 
         imgui_backend_.shutdown();
 
@@ -2693,7 +2824,7 @@ class ArmsxApp {
 
     double currentTargetFrameRate() const {
         if (session_.valid() && !session_.paused()) {
-            return session_.frameRate();
+            return session_.targetFrameRate();
         }
 
         return kUiFrameRate;
@@ -2787,6 +2918,38 @@ class ArmsxApp {
 #else
         (void)reason;
 #endif
+    }
+
+    std::filesystem::path diagnosticsLogPath() const {
+        const char* live_path = psxe_diag_log_path();
+        if (live_path && live_path[0]) {
+            return std::filesystem::path(live_path);
+        }
+
+        return DefaultDiagnosticsLogPath();
+    }
+
+    void applyLoggingSettings(const char* reason) {
+        const bool enable_logs = settings_.logging_enabled;
+        settings_.quiet = !enable_logs;
+
+        if (!enable_logs && psxe_diag_is_enabled()) {
+            psxe_diag_logf("diag", "Debug logging disabled reason=%s", reason ? reason : "(none)");
+        }
+
+        psxe_diag_set_enabled(enable_logs ? 1 : 0);
+        log_set_level(settings_.log_level);
+        log_set_quiet(settings_.quiet ? 1 : 0);
+
+        if (enable_logs) {
+            psxe_diag_logf(
+                "diag",
+                "Debug logging enabled reason=%s level=%s path=%s",
+                reason ? reason : "(none)",
+                log_level_string(settings_.log_level),
+                diagnosticsLogPath().string().c_str()
+            );
+        }
     }
 
     void logRendererBootstrap(const char* phase, double frame_rate) const {
@@ -3050,6 +3213,12 @@ class ArmsxApp {
         host.get_settings_pages = [this](fsui::SettingsScope scope) { return buildSettingsPages(scope); };
 
         context.host = std::move(host);
+        ImGuiFullscreen::SetFileSelectorExtraRoots({
+            ImGuiFullscreen::FileSelectorRootEntry{
+                .title = "App Folder",
+                .path = DefaultBrowseDirectory().string(),
+            },
+        });
 
         if (!fsui::Initialize(context)) {
             return false;
@@ -3091,6 +3260,18 @@ class ArmsxApp {
             return;
         }
 
+        if (event.type == SDL_DROPFILE) {
+            if (event.drop.file) {
+                queueLaunchArgument(event.drop.file, true);
+                SDL_free(event.drop.file);
+            }
+            return;
+        }
+
+        if (event.type == SDL_DROPCOMPLETE) {
+            return;
+        }
+
         const bool fsui_active = fsui::HasActiveWindow();
         input_router_.processEvent(event, session_.valid() ? &session_ : nullptr, fsui_active);
 
@@ -3118,6 +3299,8 @@ class ArmsxApp {
                 }
             }
         }
+
+        consumePendingLaunchArguments();
 
         waitForFrameDeadline(currentTargetFrameRate());
 
@@ -3268,6 +3451,16 @@ class ArmsxApp {
                 }
             } catch (...) {
                 pending_error_dialog_ = "Failed to prepare the screenshot folder.";
+            }
+        }
+
+        if (deferred_fast_forward_toggle_) {
+            deferred_fast_forward_toggle_ = false;
+            if (session_.valid()) {
+                session_.setFastForwardEnabled(!session_.fastForwardEnabled());
+                session_.setPaused(false);
+                resetFramePacing("toggle-fast-forward");
+                returnToMainWindow();
             }
         }
     }
@@ -3617,6 +3810,15 @@ class ArmsxApp {
         settings.on_activate = [this]() { switchToSettingsWindow(); };
         items.push_back(std::move(settings));
 
+        fsui::MenuItemDescriptor fast_forward;
+        fast_forward.id = "fast-forward";
+        fast_forward.title = ICON_FA_FAST_FORWARD " Fast Forward";
+        fast_forward.summary = session_.fastForwardEnabled()
+            ? "Current speed is 2x. Click to return to normal speed and resume gameplay."
+            : "Current speed is normal. Click to resume gameplay at 2x.";
+        fast_forward.on_activate = [this]() { deferred_fast_forward_toggle_ = true; };
+        items.push_back(std::move(fast_forward));
+
         fsui::MenuItemDescriptor quit;
         quit.id = "quit-game";
         quit.title = ICON_FA_POWER_OFF " Quit Game";
@@ -3927,33 +4129,43 @@ class ArmsxApp {
         advanced_page.build_rows = [this]() {
             std::vector<fsui::SettingsRowDescriptor> rows;
 
-            fsui::SettingsRowDescriptor log_level;
-            log_level.kind = fsui::SettingsRowKind::Choice;
-            log_level.id = "log-level";
-            log_level.title = ICON_FA_TERMINAL " Log Level";
-            log_level.summary = "Adjust ARMSX logging verbosity.";
-            log_level.value = log_level_string(settings_.log_level);
-            log_level.dialog_title = log_level.title;
-            log_level.choices = BuildLogLevelChoices(settings_.log_level);
-            log_level.on_choice = [this](int index) {
-                settings_.log_level = std::clamp(index, static_cast<int>(LOG_TRACE), static_cast<int>(LOG_FATAL));
-                log_set_level(settings_.log_level);
+            fsui::SettingsRowDescriptor logging_enabled;
+            logging_enabled.kind = fsui::SettingsRowKind::Toggle;
+            logging_enabled.id = "logging-enabled";
+            logging_enabled.title = ICON_FA_BUG " Debug Logging";
+            logging_enabled.summary =
+                "Write diagnostic logs for troubleshooting only. Leave this off during normal play because it can reduce performance.";
+            logging_enabled.toggle_value = settings_.logging_enabled;
+            logging_enabled.on_toggle = [this](bool value) {
+                settings_.logging_enabled = value;
+                applyLoggingSettings("settings-toggle");
                 SaveSettings(settings_);
             };
-            rows.push_back(std::move(log_level));
+            rows.push_back(std::move(logging_enabled));
 
-            fsui::SettingsRowDescriptor quiet;
-            quiet.kind = fsui::SettingsRowKind::Toggle;
-            quiet.id = "quiet";
-            quiet.title = ICON_FA_VOLUME_MUTE " Quiet Logs";
-            quiet.summary = "Silence all emulator logs.";
-            quiet.toggle_value = settings_.quiet;
-            quiet.on_toggle = [this](bool value) {
-                settings_.quiet = value;
-                log_set_quiet(value ? 1 : 0);
-                SaveSettings(settings_);
-            };
-            rows.push_back(std::move(quiet));
+            if (settings_.logging_enabled) {
+                fsui::SettingsRowDescriptor log_level;
+                log_level.kind = fsui::SettingsRowKind::Choice;
+                log_level.id = "log-level";
+                log_level.title = ICON_FA_TERMINAL " Log Level";
+                log_level.summary = "Choose how much detail ARMSX writes to the debug log.";
+                log_level.value = log_level_string(settings_.log_level);
+                log_level.dialog_title = log_level.title;
+                log_level.choices = BuildLogLevelChoices(settings_.log_level);
+                log_level.on_choice = [this](int index) {
+                    settings_.log_level = std::clamp(index, static_cast<int>(LOG_TRACE), static_cast<int>(LOG_FATAL));
+                    applyLoggingSettings("settings-log-level");
+                    SaveSettings(settings_);
+                };
+                rows.push_back(std::move(log_level));
+
+                fsui::SettingsRowDescriptor log_path;
+                log_path.kind = fsui::SettingsRowKind::Notice;
+                log_path.id = "log-path";
+                log_path.title = ICON_FA_FILE_ALT " Log File";
+                log_path.summary = diagnosticsLogPath().string();
+                rows.push_back(std::move(log_path));
+            }
 
             fsui::SettingsRowDescriptor settings_path;
             settings_path.kind = fsui::SettingsRowKind::Notice;
@@ -4301,6 +4513,7 @@ class ArmsxApp {
     bool deferred_exit_to_library_ = false;
     bool deferred_reset_ = false;
     bool deferred_screenshot_ = false;
+    bool deferred_fast_forward_toggle_ = false;
     bool fsui_initialized_ = false;
     FsuiWindowState ui_window_state_ = FsuiWindowState::None;
     bool managed_renderer_vsync_ = DefaultVsyncEnabled();
@@ -4436,17 +4649,41 @@ extern "C" int psxe_run(int argc, const char* argv[], void* external_window, voi
     return app.run();
 }
 
+extern "C" PSXE_API void psxe_enqueue_launch_argument(const char* argument) {
+    if (!argument || !*argument) {
+        return;
+    }
+
+    EnqueuePendingLaunchArgument(argument);
+}
+
 extern "C" PSXE_API void psxe_wasm_on_file(const char* path) {
     if (!path || !*path) {
         return;
     }
 
-    if (g_active_app) {
-        g_active_app->onWasmFile(path);
-    } else {
-        g_pending_wasm_path = std::filesystem::path(path);
-    }
+    psxe_enqueue_launch_argument(path);
 }
+
+#if defined(__ANDROID__)
+extern "C" JNIEXPORT void JNICALL Java_com_nanodata_armsx_EmulatorActivity_nativeEnqueueLaunchArgument(
+    JNIEnv* env,
+    jclass,
+    jstring argument
+) {
+    if (!env || !argument) {
+        return;
+    }
+
+    const char* utf = env->GetStringUTFChars(argument, nullptr);
+    if (!utf) {
+        return;
+    }
+
+    psxe_enqueue_launch_argument(utf);
+    env->ReleaseStringUTFChars(argument, utf);
+}
+#endif
 
 extern "C" PSXE_API int external_main(int argc, const char* argv[], void* external_window, void* external_renderer) {
     return psxe_run(argc, argv, external_window, external_renderer);

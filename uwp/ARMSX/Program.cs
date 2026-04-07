@@ -16,6 +16,9 @@ namespace ARMSX
         [DllImport("libarmsx.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "external_main")]
         private static extern int external_main(int argc, IntPtr argv, IntPtr external_window, IntPtr external_renderer);
 
+        [DllImport("libarmsx.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "psxe_enqueue_launch_argument")]
+        private static extern void psxe_enqueue_launch_argument([MarshalAs(UnmanagedType.LPStr)] string argument);
+
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         private static extern void OutputDebugStringW(string message);
 
@@ -28,6 +31,7 @@ namespace ARMSX
             launchArgs = ResolveLaunchArgs(args ?? Array.Empty<string>());
             nativeLogPath = BuildNativeLogPath();
             InstallExceptionHandlers();
+            InstallActivationHandlers();
             LogHost($"ARMSX UWP host starting. Native log path: {nativeLogPath}");
 
             try
@@ -103,15 +107,11 @@ namespace ARMSX
         {
             try
             {
-                IActivatedEventArgs activatedArgs = AppInstance.GetActivatedEventArgs();
-                if (activatedArgs is ProtocolActivatedEventArgs protocolArgs && protocolArgs.Uri != null)
+                string protocolUri = ExtractProtocolUri(AppInstance.GetActivatedEventArgs());
+                if (!string.IsNullOrWhiteSpace(protocolUri))
                 {
-                    string protocolUri = protocolArgs.Uri.OriginalString;
-                    if (!string.IsNullOrWhiteSpace(protocolUri))
-                    {
-                        LogHost($"Protocol activation URI: {protocolUri}");
-                        return new[] { protocolUri };
-                    }
+                    LogHost($"Protocol activation URI: {protocolUri}");
+                    return new[] { protocolUri };
                 }
             }
             catch (Exception ex)
@@ -120,6 +120,66 @@ namespace ARMSX
             }
 
             return args ?? Array.Empty<string>();
+        }
+
+        private static void InstallActivationHandlers()
+        {
+            try
+            {
+                AppInstance.GetCurrent().Activated += (_, args) =>
+                {
+                    try
+                    {
+                        string protocolUri = ExtractProtocolUri(args);
+                        if (string.IsNullOrWhiteSpace(protocolUri))
+                        {
+                            return;
+                        }
+
+                        LogHost($"Runtime protocol activation URI: {protocolUri}");
+                        psxe_enqueue_launch_argument(protocolUri);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogManagedException("AppInstance.Activated", ex);
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                LogManagedException("InstallActivationHandlers", ex);
+            }
+        }
+
+        private static string ExtractProtocolUri(object activatedArgs)
+        {
+            if (activatedArgs is ProtocolActivatedEventArgs protocolArgs && protocolArgs.Uri != null)
+            {
+                return protocolArgs.Uri.OriginalString;
+            }
+
+            if (activatedArgs is IActivatedEventArgs uwpArgs)
+            {
+                return ExtractProtocolUri(uwpArgs);
+            }
+
+            object data = activatedArgs?.GetType().GetProperty("Data")?.GetValue(activatedArgs);
+            if (data is IActivatedEventArgs dataArgs)
+            {
+                return ExtractProtocolUri(dataArgs);
+            }
+
+            return string.Empty;
+        }
+
+        private static string ExtractProtocolUri(IActivatedEventArgs activatedArgs)
+        {
+            if (activatedArgs is ProtocolActivatedEventArgs protocolArgs && protocolArgs.Uri != null)
+            {
+                return protocolArgs.Uri.OriginalString;
+            }
+
+            return string.Empty;
         }
 
         private static void InstallExceptionHandlers()
