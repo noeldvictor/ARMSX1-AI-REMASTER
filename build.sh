@@ -163,12 +163,19 @@ elif [ "$MODE" = "android" ]; then
     case "${ANDROID_ABI}" in
         arm64-v8a)
             ANDROID_TRIPLE="aarch64-linux-android"
+            ANDROID_CXX_RUNTIME_TRIPLE="aarch64-linux-android"
             ;;
         armeabi-v7a)
             ANDROID_TRIPLE="armv7a-linux-androideabi"
+            ANDROID_CXX_RUNTIME_TRIPLE="arm-linux-androideabi"
+            ;;
+        x86)
+            ANDROID_TRIPLE="i686-linux-android"
+            ANDROID_CXX_RUNTIME_TRIPLE="i686-linux-android"
             ;;
         x86_64)
             ANDROID_TRIPLE="x86_64-linux-android"
+            ANDROID_CXX_RUNTIME_TRIPLE="x86_64-linux-android"
             ;;
         *)
             echo "Unsupported ANDROID_ABI '${ANDROID_ABI}'."
@@ -204,17 +211,23 @@ elif [ "$MODE" = "android" ]; then
 
     echo "Using Android NDK at ${ANDROID_NDK_ROOT} (toolchain ${HOST_TAG}, ABI ${ANDROID_ABI}, API ${ANDROID_API})"
 
-    SDL_BUILD_ROOT="build/android/sdl"
+    ANDROID_TOOLCHAIN_FILE="${ANDROID_NDK_ROOT}/build/cmake/android.toolchain.cmake"
+    if [ ! -f "${ANDROID_TOOLCHAIN_FILE}" ]; then
+        echo "Android toolchain file not found at ${ANDROID_TOOLCHAIN_FILE}"
+        exit 1
+    fi
+
+    REPO_ROOT="$(pwd)"
+
+    SDL_BUILD_ROOT="${REPO_ROOT}/build/android/sdl"
     SDL_INSTALL_DIR="${SDL_BUILD_ROOT}/install"
     mkdir -p "${SDL_BUILD_ROOT}"
 
     cmake -S third_party/SDL -B "${SDL_BUILD_ROOT}" \
-        -DANDROID=ON \
+        -DCMAKE_TOOLCHAIN_FILE="${ANDROID_TOOLCHAIN_FILE}" \
         -DANDROID_ABI="${ANDROID_ABI}" \
         -DANDROID_PLATFORM="${ANDROID_PLATFORM}" \
         -DANDROID_STL=c++_shared \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK="${ANDROID_NDK_ROOT}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DSDL_STATIC=OFF \
@@ -227,13 +240,18 @@ elif [ "$MODE" = "android" ]; then
     SDL_LIB_PATH="${SDL_INSTALL_DIR}/lib"
     SDL_INCLUDE_PATH="${SDL_INSTALL_DIR}/include/SDL2"
     SDL_SHARED_LIB="${SDL_LIB_PATH}/libSDL2.so"
+    CXX_SHARED_RUNTIME="${TOOLCHAIN_DIR}/sysroot/usr/lib/${ANDROID_CXX_RUNTIME_TRIPLE}/libc++_shared.so"
     if [ ! -f "${SDL_SHARED_LIB}" ]; then
         echo "SDL shared library not found at ${SDL_SHARED_LIB}"
         exit 1
     fi
+    if [ ! -f "${CXX_SHARED_RUNTIME}" ]; then
+        echo "Android C++ shared runtime not found at ${CXX_SHARED_RUNTIME}"
+        exit 1
+    fi
 
-    JNI_LIB_DIR="android/app/src/main/jniLibs/${ANDROID_ABI}"
-    SDL_HEADER_STAGE="android/native-deps/SDL2/include"
+    JNI_LIB_DIR="${REPO_ROOT}/android/app/src/main/jniLibs/${ANDROID_ABI}"
+    SDL_HEADER_STAGE="${REPO_ROOT}/android/native-deps/SDL2/include"
     mkdir -p "${JNI_LIB_DIR}"
     rm -rf "${SDL_HEADER_STAGE}"
     mkdir -p "${SDL_HEADER_STAGE}"
@@ -248,25 +266,34 @@ elif [ "$MODE" = "android" ]; then
     SDL_CFLAGS="-D_REENTRANT -DANDROID -I${SDL_INCLUDE_PATH}"
     SDL_LIBS="-L${SDL_LIB_PATH} -lSDL2 -llog -landroid -lGLESv3 -lEGL -lOpenSLES -lm -lc++_shared"
 
-    FSUI_BUILD_ROOT="build/fsui/android/${ANDROID_ABI}"
+    FSUI_BUILD_ROOT="${REPO_ROOT}/build/fsui/android/${ANDROID_ABI}"
     cmake -S third_party/fsui-lib -B "${FSUI_BUILD_ROOT}" \
         -DFSUI_BUILD_SAMPLES=OFF \
         -DFSUI_PLATFORM_BACKEND=SDL2 \
         -DFSUI_USE_SYSTEM_SDL2=ON \
-        -DANDROID=ON \
+        -DCMAKE_TOOLCHAIN_FILE="${ANDROID_TOOLCHAIN_FILE}" \
         -DANDROID_ABI="${ANDROID_ABI}" \
         -DANDROID_PLATFORM="${ANDROID_PLATFORM}" \
         -DANDROID_STL=c++_shared \
-        -DCMAKE_SYSTEM_NAME=Android \
-        -DCMAKE_ANDROID_NDK="${ANDROID_NDK_ROOT}" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH="${SDL_INSTALL_DIR}"
+        -DCMAKE_PREFIX_PATH="${SDL_INSTALL_DIR}" \
+        -DSDL2_DIR="${SDL_INSTALL_DIR}/lib/cmake/SDL2"
     cmake --build "${FSUI_BUILD_ROOT}" --config Release -j"${BUILD_JOBS}"
 
     make clean
-    SDL_STATIC=0 SDL_CFLAGS="${SDL_CFLAGS}" SDL_LIBS_DYNAMIC="${SDL_LIBS}" FSUI_BUILD_DIR="$(pwd)/${FSUI_BUILD_ROOT}" make shared
+    make \
+        SDL_STATIC=0 \
+        SDL_CFLAGS="${SDL_CFLAGS}" \
+        SDL_LIBS_DYNAMIC="${SDL_LIBS}" \
+        FSUI_BUILD_DIR="${FSUI_BUILD_ROOT}" \
+        PLATFORM=Android \
+        OS_INFO=Android \
+        PLATFORM_EXTRA_LDFLAGS= \
+        PLATFORM_EXTRA_LIBS= \
+        shared
 
     cp "${SDL_SHARED_LIB}" "${JNI_LIB_DIR}/"
+    cp "${CXX_SHARED_RUNTIME}" "${JNI_LIB_DIR}/"
     cp bin/libarmsx.so "${JNI_LIB_DIR}/"
 
 elif [ "$MODE" = "psvita" ]; then

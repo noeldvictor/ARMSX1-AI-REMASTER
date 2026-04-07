@@ -67,12 +67,14 @@ dependencies {
 
 def repoRootDir = rootProject.projectDir.parentFile
 def nativeOutput = file("$projectDir/src/main/jniLibs/arm64-v8a/libarmsx.so")
+def skipNativePrepare = System.getenv("ARMSX_SKIP_NATIVE_PREPARE") == "1"
 
 tasks.register("prepareNativeBinaries") {
     group = "native"
     description = "Build SDL2/libarmsx via build.sh android."
     inputs.file(new File(repoRootDir, "build.sh"))
     outputs.file(nativeOutput)
+    onlyIf { !skipNativePrepare }
     doLast {
         exec {
             workingDir repoRootDir

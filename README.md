@@ -4,13 +4,11 @@ A simple and portable Sony PlayStation emulator and emulation library written in
 ## Screenshots
 | Windows  | Ubuntu | macOS |
 | ------------- | ------------- | ------------- 
-| ![Mega Man X6 (USA)](https://github.com/allkern/psxe/assets/15825466/34dde8f9-eedb-4b44-a08d-c17026df2ff2) | ![Bloody Roar 2 - Bringer of the New Age (Europe)](https://github.com/allkern/psxe/assets/15825466/41a6dc67-b0ba-442f-bed6-7b207c0db4dd) | ![Parodius (Europe)](https://github.com/allkern/psxe/assets/15825466/9ab291d9-ec47-4997-92d3-23e38982ae45) |
-| ![Spyro 2 - Ripto's Rage (USA)](https://github.com/allkern/psxe/assets/15825466/e161ab66-af57-4327-9a94-8b2591a0012a) | ![Namco Museum Vol. 1 (USA)](https://github.com/allkern/psxe/assets/15825466/67ea61e4-5f30-470c-a978-23e0755850b6) | ![Darius Gaiden (Japan)](https://github.com/allkern/psxe/assets/15825466/0c55118c-ab42-40e5-b34a-7594528080bf) |
+| ![Mega Man X6 (USA)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/34dde8f9-eedb-4b44-a08d-c17026df2ff2) | ![Bloody Roar 2 - Bringer of the New Age (Europe)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/41a6dc67-b0ba-442f-bed6-7b207c0db4dd) | ![Parodius (Europe)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/9ab291d9-ec47-4997-92d3-23e38982ae45) |
+| ![Spyro 2 - Ripto's Rage (USA)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/e161ab66-af57-4327-9a94-8b2591a0012a) | ![Namco Museum Vol. 1 (USA)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/67ea61e4-5f30-470c-a978-23e0755850b6) | ![Darius Gaiden (Japan)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/0c55118c-ab42-40e5-b34a-7594528080bf) |
 
 ### CI status
-![Windows](https://github.com/allkern/psx/actions/workflows/windows.yml/badge.svg)
-![macOS](https://github.com/allkern/psx/actions/workflows/macos.yml/badge.svg)
-![Ubuntu](https://github.com/allkern/psx/actions/workflows/ubuntu.yml/badge.svg)
+CI now lives in `.gitea/workflows/build.yml`.
 
 ## Running
 You can download the latest automated build for your platform on Releases. If your system isn't supported, you can easily build the emulator from source, instructions on "Building" below.
@@ -24,15 +22,15 @@ Use the `-b` or `--bios` setting to configure the BIOS file.
 ## Progress
 All major components have been implemented, including memory card support.
 
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> CPU </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> DMA </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> GPU </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> SPU </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> MDEC </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> GTE </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> Timers </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> CDROM </br>
-<img src="https://github.com/allkern/psxe/assets/15825466/0ed1fe97-de2f-47de-bb30-82286e6c5fa0" width="12" height="12"/> Memory cards </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> CPU </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> DMA </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> GPU </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> SPU </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> MDEC </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> GTE </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> Timers </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> CDROM </br>
+<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/0ed1fe97-de2f-47de-bb30-82286e6c5fa0" width="12" height="12"/> Memory cards </br>
 
 ## Building
 Building the emulator should be easy, just use the scripts provided in this repo.
@@ -58,8 +56,8 @@ Assuming you did everything described above, you should be able to build the emu
 
 ### Windows
 ```
-git clone https://github.com/allkern/psxe
-cd psxe
+git clone https://git.nanodata.cloud/moonpower/ARMSX.git
+cd ARMSX
 ./build-deps
 ./build-win64.ps1
 ```
@@ -67,15 +65,15 @@ On rare cases these scripts might not work (PowerShell/Windows bugs). If so, ple
 
 ### Ubuntu
 ```
-git clone https://github.com/allkern/psxe
-cd psxe
+git clone https://git.nanodata.cloud/moonpower/ARMSX.git
+cd ARMSX
 make clean && make
 ```
 
 ### macOS
 ```
-git clone https://github.com/allkern/psxe
-cd psxe
+git clone https://git.nanodata.cloud/moonpower/ARMSX.git
+cd ARMSX
 ./build.sh
 ```
 

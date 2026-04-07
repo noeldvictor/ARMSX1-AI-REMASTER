@@ -245,6 +245,8 @@ ALL_OBJS_SHARED := $(C_OBJS_SHARED) $(CPP_OBJS)
 # Force dynamic SDL when building the shared library
 ifneq (,$(filter shared,$(MAKECMDGOALS)))
 override SDL_STATIC := 0
+BASE_CFLAGS += -D__DLL_BUILD -fPIC
+BASE_CXXFLAGS += -D__DLL_BUILD -fPIC
 endif
 
 ifeq ($(SDL_STATIC),1)
