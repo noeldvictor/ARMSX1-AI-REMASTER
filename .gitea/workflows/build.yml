@@ -18,7 +18,7 @@ env:
 jobs:
   linux:
     name: Linux ${{ matrix.target }}
-    runs-on: linux_amd64
+    runs-on: ${{ vars.ARMSX_LINUX_RUNNER_LABEL || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -173,7 +173,7 @@ jobs:
 
   psvita:
     name: PSVita VPK
-    runs-on: linux_amd64
+    runs-on: ${{ vars.ARMSX_LINUX_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -264,7 +264,7 @@ jobs:
 
   linux-musl:
     name: Linux musl ${{ matrix.target }}
-    runs-on: linux_amd64
+    runs-on: ${{ vars.ARMSX_LINUX_RUNNER_LABEL || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -335,7 +335,7 @@ jobs:
 
   windows:
     name: Windows ${{ matrix.target }}
-    runs-on: linux_amd64
+    runs-on: ${{ vars.ARMSX_LINUX_RUNNER_LABEL || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -398,7 +398,7 @@ jobs:
 
   android:
     name: Android Debug APK
-    runs-on: linux_amd64
+    runs-on: ${{ vars.ARMSX_LINUX_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -491,7 +491,7 @@ jobs:
 
   wasm:
     name: WASM
-    runs-on: linux_amd64
+    runs-on: ${{ vars.ARMSX_LINUX_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
