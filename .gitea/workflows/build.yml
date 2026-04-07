@@ -23,16 +23,16 @@ jobs:
         include:
           - target: x64
             extra_arch: ""
-            packages: "build-essential binutils cmake file git libgl1-mesa-dev libsdl2-dev make pkg-config python3 zip"
+            packages: "build-essential binutils cmake file git libgl1-mesa-dev libsdl2-dev make pkg-config python3 python3-jinja2 zip"
           - target: x32
             extra_arch: "i386"
-            packages: "binutils cmake file gcc-multilib g++-multilib git libc6-dev-i386 libgl1-mesa-dev:i386 libsdl2-dev:i386 make pkg-config python3 zip"
+            packages: "binutils cmake file gcc-multilib g++-multilib git libc6-dev-i386 libgl1-mesa-dev:i386 libsdl2-dev:i386 make pkg-config python3 python3-jinja2 zip"
           - target: arm64
             extra_arch: "arm64"
-            packages: "binutils cmake file gcc-aarch64-linux-gnu g++-aarch64-linux-gnu git libgl1-mesa-dev:arm64 libsdl2-dev:arm64 make pkg-config python3 zip"
+            packages: "binutils cmake file gcc-aarch64-linux-gnu g++-aarch64-linux-gnu git libgl1-mesa-dev:arm64 libsdl2-dev:arm64 make pkg-config python3 python3-jinja2 zip"
           - target: arm32
             extra_arch: "armhf"
-            packages: "binutils cmake file gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf git libgl1-mesa-dev:armhf libsdl2-dev:armhf make pkg-config python3 zip"
+            packages: "binutils cmake file gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf git libgl1-mesa-dev:armhf libsdl2-dev:armhf make pkg-config python3 python3-jinja2 zip"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -120,6 +120,7 @@ jobs:
             g++-mingw-w64 \
             make \
             python3 \
+            python3-jinja2 \
             zip
 
       - name: Build Windows package
@@ -173,6 +174,7 @@ jobs:
             openjdk-17-jdk \
             pkg-config \
             python3 \
+            python3-jinja2 \
             unzip \
             zip
 
@@ -248,7 +250,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y zip
+          DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-jinja2 zip
 
       - name: Build WebAssembly package
         shell: bash
