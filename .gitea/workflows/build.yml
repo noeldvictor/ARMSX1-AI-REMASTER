@@ -41,15 +41,17 @@ jobs:
       - name: Fetch submodules with private repo token
         shell: bash
         env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
-            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+          token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
             exit 1
           fi
 
-          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          auth="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
           git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
           git submodule sync --recursive
           git submodule update --init --recursive --depth=1
@@ -90,15 +92,17 @@ jobs:
       - name: Fetch submodules with private repo token
         shell: bash
         env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
-            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+          token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
             exit 1
           fi
 
-          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          auth="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
           git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
           git submodule sync --recursive
           git submodule update --init --recursive --depth=1
@@ -140,15 +144,17 @@ jobs:
       - name: Fetch submodules with private repo token
         shell: bash
         env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
-            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+          token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
             exit 1
           fi
 
-          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          auth="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
           git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
           git submodule sync --recursive
           git submodule update --init --recursive --depth=1
@@ -222,15 +228,17 @@ jobs:
       - name: Fetch submodules with private repo token
         shell: bash
         env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
-            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+          token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
             exit 1
           fi
 
-          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          auth="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
           git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
           git submodule sync --recursive
           git submodule update --init --recursive --depth=1
