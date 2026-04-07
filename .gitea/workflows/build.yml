@@ -36,7 +36,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch submodules with private repo token
+        shell: bash
+        env:
+          FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
+            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+            exit 1
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
 
       - name: Install Linux dependencies
         shell: bash
@@ -69,7 +85,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch submodules with private repo token
+        shell: bash
+        env:
+          FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
+            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+            exit 1
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
 
       - name: Install MinGW toolchains
         shell: bash
@@ -103,7 +135,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch submodules with private repo token
+        shell: bash
+        env:
+          FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
+            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+            exit 1
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
 
       - name: Install Android build dependencies
         shell: bash
@@ -169,7 +217,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch submodules with private repo token
+        shell: bash
+        env:
+          FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FSUI_SUBMODULE_TOKEN" ]; then
+            echo "FSUI_SUBMODULE_TOKEN is required to fetch the private fsui-lib submodule." >&2
+            exit 1
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$FSUI_SUBMODULE_TOKEN" | base64 | tr -d '\n')"
+          git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
 
       - name: Install WASM packaging tools
         shell: bash
