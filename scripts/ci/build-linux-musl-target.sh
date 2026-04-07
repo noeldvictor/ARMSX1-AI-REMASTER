@@ -116,6 +116,13 @@ configure_target() {
 
 configure_target
 
+musl_link_atomic=0
+case "$target" in
+    arm64|arm32)
+        musl_link_atomic=1
+        ;;
+esac
+
 toolchain_dir="$(download_toolchain "$toolchain_name")"
 apk_static="$(download_apk_static)"
 python3_bin="$(command -v python3 || true)"
@@ -200,6 +207,7 @@ make \
     FSUI_LINK_SYSTEM_GL=0 \
     SDL_CFLAGS="$sdl_cflags" \
     SDL_LIBS_DYNAMIC="$sdl_libs" \
+    MUSL_LINK_ATOMIC="$musl_link_atomic" \
     FSUI_BUILD_DIR="$fsui_build_dir" \
     PLATFORM_EXTRA_LDFLAGS="-static-libstdc++ -static-libgcc"
 
