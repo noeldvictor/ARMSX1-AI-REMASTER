@@ -11,12 +11,14 @@ on:
 env:
   BUILD_JOBS: 4
 
+# These jobs are intended for host-mode Gitea runners.
+# Running them in docker-mode creates per-job bridge networks and can exhaust
+# the daemon's address pools on busy runners.
+
 jobs:
   linux:
     name: Linux ${{ matrix.target }}
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-24.04
+    runs-on: linux_amd64
     strategy:
       fail-fast: false
       matrix:
@@ -64,14 +66,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then
+            apt_cmd() { "$@"; }
+          elif command -v sudo >/dev/null 2>&1; then
+            apt_cmd() { sudo "$@"; }
+          else
+            echo "Host-mode Linux runner needs root or passwordless sudo for apt-get." >&2
+            exit 1
+          fi
           if [ -n "${{ matrix.extra_arch }}" ]; then
-            dpkg --add-architecture "${{ matrix.extra_arch }}"
+            apt_cmd dpkg --add-architecture "${{ matrix.extra_arch }}"
           fi
           if [ -n "${{ matrix.apt_source_arch }}" ]; then
             ./scripts/ci/configure-linux-apt-sources.sh "${{ matrix.apt_source_arch }}"
           fi
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y ${{ matrix.packages }}
+          apt_cmd apt-get update
+          DEBIAN_FRONTEND=noninteractive apt_cmd apt-get install -y ${{ matrix.packages }}
 
       - name: Build Linux package
         shell: bash
@@ -163,9 +173,7 @@ jobs:
 
   psvita:
     name: PSVita VPK
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-24.04
+    runs-on: linux_amd64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -193,8 +201,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          if [ "$(id -u)" -eq 0 ]; then
+            apt_cmd() { "$@"; }
+          elif command -v sudo >/dev/null 2>&1; then
+            apt_cmd() { sudo "$@"; }
+          else
+            echo "Host-mode Linux runner needs root or passwordless sudo for apt-get." >&2
+            exit 1
+          fi
+          apt_cmd apt-get update
+          DEBIAN_FRONTEND=noninteractive apt_cmd apt-get install -y \
             build-essential \
             bzip2 \
             ca-certificates \
@@ -248,9 +264,7 @@ jobs:
 
   linux-musl:
     name: Linux musl ${{ matrix.target }}
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-24.04
+    runs-on: linux_amd64
     strategy:
       fail-fast: false
       matrix:
@@ -286,8 +300,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          if [ "$(id -u)" -eq 0 ]; then
+            apt_cmd() { "$@"; }
+          elif command -v sudo >/dev/null 2>&1; then
+            apt_cmd() { sudo "$@"; }
+          else
+            echo "Host-mode Linux runner needs root or passwordless sudo for apt-get." >&2
+            exit 1
+          fi
+          apt_cmd apt-get update
+          DEBIAN_FRONTEND=noninteractive apt_cmd apt-get install -y \
             ca-certificates \
             cmake \
             curl \
@@ -313,9 +335,7 @@ jobs:
 
   windows:
     name: Windows ${{ matrix.target }}
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-24.04
+    runs-on: linux_amd64
     strategy:
       fail-fast: false
       matrix:
@@ -347,8 +367,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          if [ "$(id -u)" -eq 0 ]; then
+            apt_cmd() { "$@"; }
+          elif command -v sudo >/dev/null 2>&1; then
+            apt_cmd() { sudo "$@"; }
+          else
+            echo "Host-mode Linux runner needs root or passwordless sudo for apt-get." >&2
+            exit 1
+          fi
+          apt_cmd apt-get update
+          DEBIAN_FRONTEND=noninteractive apt_cmd apt-get install -y \
             binutils-mingw-w64 \
             cmake \
             git \
@@ -370,9 +398,7 @@ jobs:
 
   android:
     name: Android Debug APK
-    runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-24.04
+    runs-on: linux_amd64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -400,8 +426,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          if [ "$(id -u)" -eq 0 ]; then
+            apt_cmd() { "$@"; }
+          elif command -v sudo >/dev/null 2>&1; then
+            apt_cmd() { sudo "$@"; }
+          else
+            echo "Host-mode Linux runner needs root or passwordless sudo for apt-get." >&2
+            exit 1
+          fi
+          apt_cmd apt-get update
+          DEBIAN_FRONTEND=noninteractive apt_cmd apt-get install -y \
             cmake \
             curl \
             git \
@@ -457,9 +491,7 @@ jobs:
 
   wasm:
     name: WASM
-    runs-on: ubuntu-latest
-    container:
-      image: emscripten/emsdk:3.1.72
+    runs-on: linux_amd64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -487,8 +519,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-jinja2 zip
+          if [ "$(id -u)" -eq 0 ]; then
+            apt_cmd() { "$@"; }
+          elif command -v sudo >/dev/null 2>&1; then
+            apt_cmd() { sudo "$@"; }
+          else
+            echo "Host-mode Linux runner needs root or passwordless sudo for apt-get." >&2
+            exit 1
+          fi
+          apt_cmd apt-get update
+          DEBIAN_FRONTEND=noninteractive apt_cmd apt-get install -y python3 python3-jinja2 zip
 
       - name: Build WebAssembly package
         shell: bash

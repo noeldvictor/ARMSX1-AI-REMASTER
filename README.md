@@ -33,6 +33,9 @@ Not implemented yet:
 
 Desktop and Android are the main day-to-day targets. The other ports are present and buildable, but they are more platform-specific and may lag behind the desktop path.
 
+## CI Runners
+The Gitea workflow expects host-mode Linux runner labels for the Linux-based jobs, currently `linux_amd64`. Docker-mode runners create per-job bridge networks and can exhaust the daemon's address pools on long CI runs.
+
 ## Running
 On desktop, launch the emulator directly:
 
