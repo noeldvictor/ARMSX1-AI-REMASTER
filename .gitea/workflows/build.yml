@@ -530,10 +530,24 @@ jobs:
           apt_cmd apt-get update
           DEBIAN_FRONTEND=noninteractive apt_cmd apt-get install -y python3 python3-jinja2 zip
 
+      - name: Install Emscripten
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d "$HOME/emsdk/.git" ]; then
+            git clone --depth=1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          else
+            git -C "$HOME/emsdk" pull --ff-only
+          fi
+          cd "$HOME/emsdk"
+          ./emsdk install latest
+          ./emsdk activate latest
+
       - name: Build WebAssembly package
         shell: bash
         run: |
           set -euo pipefail
+          source "$HOME/emsdk/emsdk_env.sh"
           ./build.sh wasm
           mkdir -p artifacts/wasm
           (

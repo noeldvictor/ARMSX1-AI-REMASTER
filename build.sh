@@ -33,7 +33,7 @@ build_fsui_native() {
 
 build_fsui_wasm() {
     if ! command -v emcmake >/dev/null 2>&1 || ! command -v emcc >/dev/null 2>&1; then
-        for candidate in "${EMSCRIPTEN_ROOT:-}" "${EMSDK:-}" "/Volumes/FastDrive/linkertools/emsdk"; do
+        for candidate in "${EMSCRIPTEN_ROOT:-}" "${EMSDK:-}" "$HOME/emsdk" "/opt/emsdk" "/Volumes/FastDrive/linkertools/emsdk"; do
             if [ -z "${candidate}" ] || [ ! -d "${candidate}" ]; then
                 continue
             fi
@@ -59,7 +59,7 @@ build_fsui_wasm() {
     fi
 
     if ! command -v emcmake >/dev/null 2>&1 || ! command -v emcc >/dev/null 2>&1; then
-        echo "emcmake/emcc are required for the wasm FSUI build. Set EMSCRIPTEN_ROOT or install Emscripten."
+        echo "emcmake/emcc are required for the wasm FSUI build. Set EMSCRIPTEN_ROOT, EMSDK, or install Emscripten under \$HOME/emsdk."
         exit 1
     fi
 

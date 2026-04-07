@@ -2,6 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
+def repoDebugKeystore = file("debug.keystore")
+def hasRepoDebugKeystore = repoDebugKeystore.exists()
+
 android {
     namespace 'com.nanodata.armsx'
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,20 +19,27 @@ android {
     }
 
     signingConfigs {
-        debug {
-            storeFile file("debug.keystore")
-            storePassword "android"
-            keyAlias "androiddebugkey"
-            keyPassword "android"
+        if (hasRepoDebugKeystore) {
+            debug {
+                storeFile repoDebugKeystore
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
         }
     }
 
     buildTypes {
         debug {
             matchingFallbacks = ['release']
+            if (hasRepoDebugKeystore) {
+                signingConfig signingConfigs.debug
+            }
         }
         release {
-            signingConfig signingConfigs.debug
+            if (hasRepoDebugKeystore) {
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

@@ -45,6 +45,7 @@ CONTROLLER_GENERIC ?= 0
 FSUI_DIR := third_party/fsui-lib
 FSUI_BUILD_DIR ?= build/fsui/native
 WASM_HTML_POSTPROCESS := $(FSUI_DIR)/cmake/postprocess_web_html.cmake
+FSUI_LINK_OPENGL ?= 1
 
 ifeq ($(PSVITA_TARGET),1)
 	ifeq ($(strip $(VITASDK)),)
@@ -224,9 +225,11 @@ FSUI_LIBS += \
 else
 
 ifneq ($(WASM_TARGET),wasm)
+ifeq ($(FSUI_LINK_OPENGL),1)
 FSUI_LIBS += \
 	$(FSUI_BUILD_DIR)/libfsui-renderer-opengl.a \
 	$(FSUI_BUILD_DIR)/libfsui_glad.a
+endif
 endif
 endif
 
@@ -247,7 +250,10 @@ ifneq ($(UWP_TARGET),1)
 	PLATFORM_EXTRA_LIBS += -ldbghelp
 endif
 else ifneq ($(WASM_TARGET),wasm)
-	PLATFORM_EXTRA_LIBS += -ldl -lGL
+	PLATFORM_EXTRA_LIBS += -ldl
+ifeq ($(FSUI_LINK_OPENGL),1)
+	PLATFORM_EXTRA_LIBS += -lGL
+endif
 endif
 
 C_OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(C_SOURCES))
