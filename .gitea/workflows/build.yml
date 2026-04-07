@@ -23,15 +23,19 @@ jobs:
         include:
           - target: x64
             extra_arch: ""
+            apt_source_arch: ""
             packages: "build-essential binutils cmake file git libgl1-mesa-dev libsdl2-dev make pkg-config python3 python3-jinja2 zip"
           - target: x32
             extra_arch: "i386"
+            apt_source_arch: ""
             packages: "binutils cmake file gcc-multilib g++-multilib git libc6-dev-i386 libgl1-mesa-dev:i386 libsdl2-dev:i386 make pkg-config python3 python3-jinja2 zip"
           - target: arm64
             extra_arch: "arm64"
+            apt_source_arch: "arm64"
             packages: "binutils cmake file gcc-aarch64-linux-gnu g++-aarch64-linux-gnu git libgl1-mesa-dev:arm64 libsdl2-dev:arm64 make pkg-config python3 python3-jinja2 zip"
           - target: arm32
             extra_arch: "armhf"
+            apt_source_arch: "armhf"
             packages: "binutils cmake file gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf git libgl1-mesa-dev:armhf libsdl2-dev:armhf make pkg-config python3 python3-jinja2 zip"
     steps:
       - uses: actions/checkout@v4
@@ -62,12 +66,9 @@ jobs:
           set -euo pipefail
           if [ -n "${{ matrix.extra_arch }}" ]; then
             dpkg --add-architecture "${{ matrix.extra_arch }}"
-            printf '%s\n' \
-              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse" \
-              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse" \
-              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse" \
-              "deb [arch=${{ matrix.extra_arch }}] http://ports.ubuntu.com/ubuntu-ports noble-backports main restricted universe multiverse" \
-              > "/etc/apt/sources.list.d/ubuntu-ports-${{ matrix.extra_arch }}.list"
+          fi
+          if [ -n "${{ matrix.apt_source_arch }}" ]; then
+            ./scripts/ci/configure-linux-apt-sources.sh "${{ matrix.apt_source_arch }}"
           fi
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y ${{ matrix.packages }}
@@ -80,6 +81,150 @@ jobs:
         with:
           name: armsx-linux-${{ matrix.target }}
           path: artifacts/linux/${{ matrix.target }}/armsx-linux-${{ matrix.target }}.zip
+
+  macos-ventura:
+    name: macOS Ventura x64
+    runs-on: macos-ventura-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch submodules with private repo token
+        shell: bash
+        env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            exit 1
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
+          git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
+
+      - name: Validate Ventura runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(uname -s)" != "Darwin" ]; then
+            echo "macOS Ventura runner required." >&2
+            exit 1
+          fi
+          if [ "$(uname -m)" != "x86_64" ]; then
+            echo "macOS Ventura x64 runner required." >&2
+            exit 1
+          fi
+          major="$(sw_vers -productVersion | cut -d. -f1)"
+          if [ "${major:-0}" -lt 13 ]; then
+            echo "macOS Ventura 13.x or newer required." >&2
+            exit 1
+          fi
+
+      - name: Install macOS dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          if ! command -v brew >/dev/null 2>&1; then
+            echo "Homebrew is required on the macOS Ventura runner." >&2
+            exit 1
+          fi
+          brew list cmake >/dev/null 2>&1 || brew install cmake
+          brew list sdl2 >/dev/null 2>&1 || brew install sdl2
+          brew list dylibbundler >/dev/null 2>&1 || brew install dylibbundler
+          if ! command -v python3 >/dev/null 2>&1; then
+            brew install python@3
+          fi
+          if ! python3 -c 'import importlib.util; raise SystemExit(0 if importlib.util.find_spec("jinja2") else 1)'; then
+            python3 -m pip install --user jinja2
+          fi
+
+      - name: Build macOS Ventura package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./build.sh macosapp
+          mkdir -p artifacts/macos/ventura
+          (
+            cd .
+            zip -r artifacts/macos/ventura/armsx-macos-ventura-x64.zip armsx.app
+          )
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: armsx-macos-ventura-x64
+          path: artifacts/macos/ventura/armsx-macos-ventura-x64.zip
+
+  linux-musl:
+    name: Linux musl ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    container:
+      image: catthehacker/ubuntu:act-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x64
+          - target: x32
+          - target: arm64
+          - target: arm32
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch submodules with private repo token
+        shell: bash
+        env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          FSUI_SUBMODULE_TOKEN: ${{ secrets.FSUI_SUBMODULE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            exit 1
+          fi
+
+          auth="$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
+          git config --global http.https://git.nanodata.cloud/.extraheader "AUTHORIZATION: basic $auth"
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
+
+      - name: Install musl build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ca-certificates \
+            cmake \
+            curl \
+            file \
+            git \
+            make \
+            pkg-config \
+            python3 \
+            python3-jinja2 \
+            tar \
+            unzip \
+            xz-utils \
+            zip
+
+      - name: Build musl package
+        shell: bash
+        run: ./scripts/ci/build-linux-musl-target.sh "${{ matrix.target }}"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: armsx-linux-musl-${{ matrix.target }}
+          path: artifacts/linux-musl/${{ matrix.target }}/armsx-linux-musl-${{ matrix.target }}.zip
 
   windows:
     name: Windows ${{ matrix.target }}
