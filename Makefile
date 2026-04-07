@@ -1,4 +1,5 @@
 .ONESHELL:
+.SHELLFLAGS := -ec
 
 WASM_TARGET := $(filter wasm,$(MAKECMDGOALS))
 
@@ -300,6 +301,10 @@ $(RUNTIME_ICON_DEST): $(RUNTIME_ICON_SRC) | $(BIN_DIR)
 $(BIN): $(ALL_OBJS) $(RUNTIME_ICON_DEST) | $(BIN_DIR)
 	$(CXX) $(ALL_OBJS) $(FSUI_LIBS) -o $(BIN) $(SDL_LIBS) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS) $(WASM_LDFLAGS)
 ifeq ($(WASM_TARGET),wasm)
+	@if [ ! -f "$(BIN)" ]; then \
+		echo "WASM build did not produce $(BIN)"; \
+		exit 1; \
+	fi
 	cmake -DINPUT_FILE="$(BIN)" -P "$(WASM_HTML_POSTPROCESS)"
 endif
 
