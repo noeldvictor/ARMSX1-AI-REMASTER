@@ -197,7 +197,7 @@ make \
     AR="${toolchain_dir}/bin/${toolchain_name}-ar" \
     RANLIB="${toolchain_dir}/bin/${toolchain_name}-ranlib" \
     SDL_STATIC=0 \
-    FSUI_LINK_OPENGL=0 \
+    FSUI_LINK_SYSTEM_GL=0 \
     SDL_CFLAGS="$sdl_cflags" \
     SDL_LIBS_DYNAMIC="$sdl_libs" \
     FSUI_BUILD_DIR="$fsui_build_dir" \
