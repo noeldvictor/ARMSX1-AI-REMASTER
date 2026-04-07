@@ -27,6 +27,15 @@ resolve_library() {
             IFS="$old_ifs"
             return 0
         fi
+        if [ -d "$dir" ]; then
+            local recursive_match
+            recursive_match="$(find "$dir" -type f -name "$lib_name" -print -quit 2>/dev/null || true)"
+            if [ -n "$recursive_match" ]; then
+                printf '%s\n' "$recursive_match"
+                IFS="$old_ifs"
+                return 0
+            fi
+        fi
     done
     IFS="$old_ifs"
     return 1
