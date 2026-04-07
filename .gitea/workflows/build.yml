@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: ./scripts/ci/build-linux-target.sh "${{ matrix.target }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
           name: armsx-linux-${{ matrix.target }}
           path: artifacts/linux/${{ matrix.target }}/armsx-linux-${{ matrix.target }}.zip
@@ -127,7 +127,7 @@ jobs:
         shell: bash
         run: ./scripts/ci/build-windows-cross.sh "${{ matrix.target }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
           name: armsx-windows-${{ matrix.target }}
           path: artifacts/windows/${{ matrix.target }}/armsx-windows-${{ matrix.target }}.zip
@@ -212,7 +212,7 @@ jobs:
 
           ./scripts/ci/build-android-all.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
           name: armsx-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
@@ -263,7 +263,7 @@ jobs:
             zip -r ../artifacts/wasm/armsx-wasm.zip wasm
           )
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v3
         with:
           name: armsx-wasm
           path: artifacts/wasm/armsx-wasm.zip
