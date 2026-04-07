@@ -38,8 +38,13 @@
 #include <dbghelp.h>
 #endif
 #elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(PSVITA_TARGET)
+#if defined(__has_include)
+#if __has_include(<execinfo.h>)
 #include <dlfcn.h>
 #include <execinfo.h>
+#define PSXE_HAS_EXECINFO 1
+#endif
+#endif
 #endif
 
 #if defined(__EMSCRIPTEN__)
@@ -4595,7 +4600,7 @@ void WriteNativeStackTraceImpl() {
 #if !defined(UWP_TARGET)
     SymCleanup(process);
 #endif
-#elif !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(PSVITA_TARGET)
+#elif defined(PSXE_HAS_EXECINFO)
     void* frames[64] = {};
     const int frame_count = backtrace(frames, static_cast<int>(std::size(frames)));
     psxe_diag_logf("crash", "Native stack trace (%d frames):", frame_count);
