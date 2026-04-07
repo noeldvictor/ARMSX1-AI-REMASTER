@@ -34,7 +34,9 @@ Not implemented yet:
 Desktop and Android are the main day-to-day targets. The other ports are present and buildable, but they are more platform-specific and may lag behind the desktop path.
 
 ## CI Runners
-The Gitea workflow defaults the Linux-based jobs to `ubuntu-latest`. If you have a host-mode runner and want to avoid Docker network churn, set the repository variable `ARMSX_LINUX_RUNNER_LABEL` to your host label, such as `linux_amd64`.
+The Gitea workflow matches whatever label your act runner advertises. If that label is a docker-mode label like `ubuntu-latest:docker://...`, Gitea will keep creating per-job bridge networks and can eventually hit Docker address pool exhaustion.
+
+To run the jobs directly on the runner container or host, change the runner labels to host mode, for example `ubuntu-latest:host` or `linux_amd64:host`, then restart act_runner. If the runner is started from a Docker image, remove the `/var/run/docker.sock` mount when you want host mode.
 
 ## Running
 On desktop, launch the emulator directly:
