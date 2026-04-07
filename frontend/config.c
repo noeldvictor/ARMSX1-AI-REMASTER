@@ -71,6 +71,9 @@ static const char g_default_settings[] =
     "true"
 #endif
     "\n"
+#ifdef USE_HARDWARE
+    "    gpu_backend = \"software\" # software | hardware\n"
+#endif
     "    texture_scale_mode = false\n"
     "    debug_panel = false\n"
     "    stretch_mode = false\n"
@@ -397,6 +400,9 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
 #else
     cfg->vsync_enabled = 1;
 #endif
+#ifdef USE_HARDWARE
+    cfg->gpu_backend = 0;
+#endif
     cfg->texture_scale_mode = 0;
     cfg->debug_panel = 0;
     cfg->stretch_mode = 0;
@@ -427,6 +433,9 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int console_source = 0;
     int scale = 0;
     int vsync_enabled = cfg->vsync_enabled;
+#ifdef USE_HARDWARE
+    int gpu_backend = cfg->gpu_backend;
+#endif
     int texture_scale_mode = 0;
     int debug_panel = 0;
     int stretch_mode = 0;
@@ -586,6 +595,22 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
             if (s_vsync.ok)
                 vsync_enabled = s_vsync.u.b;
 
+#ifdef USE_HARDWARE
+            toml_datum_t s_gpu_backend = toml_string_in(s_video_table, "gpu_backend");
+
+            if (s_gpu_backend.ok && s_gpu_backend.u.s) {
+                const char* backend = s_gpu_backend.u.s;
+
+                if (!strcasecmp(backend, "hardware") || !strcasecmp(backend, "hardware (experimental)") || !strcasecmp(backend, "hw") || !strcasecmp(backend, "hw-renderer")) {
+                    gpu_backend = 1;
+                } else {
+                    gpu_backend = 0;
+                }
+
+                free(s_gpu_backend.u.s);
+            }
+#endif
+
             toml_datum_t s_texture_scale_mode = toml_bool_in(s_video_table, "texture_scale_mode");
 
             if (s_texture_scale_mode.ok)
@@ -698,6 +723,9 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
         cfg->scale = scale;
 
     cfg->vsync_enabled = vsync_enabled;
+#ifdef USE_HARDWARE
+    cfg->gpu_backend = gpu_backend;
+#endif
     cfg->texture_scale_mode = texture_scale_mode;
     cfg->debug_panel = debug_panel;
     cfg->stretch_mode = stretch_mode;

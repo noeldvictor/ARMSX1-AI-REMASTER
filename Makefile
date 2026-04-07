@@ -23,6 +23,7 @@ SDL_LIBS_DYNAMIC ?= $(shell $(SDL_CONFIG) --libs 2>/dev/null)
 SDL_LIBS_STATIC ?= $(shell $(SDL_CONFIG) --static-libs 2>/dev/null || $(SDL_CONFIG) --libs --static 2>/dev/null)
 SDL_STATIC ?= 1
 WASM_LDFLAGS ?=
+USE_HARDWARE ?= 0
 
 PLATFORM := $(shell uname -s)
 ifeq ($(WASM_TARGET),wasm)
@@ -91,6 +92,11 @@ BASE_CXXFLAGS = -std=c++20 $(BASE_CFLAGS) $(FSUI_INCLUDE_FLAGS) $(FSUI_COMPILE_D
 ifeq ($(CONTROLLER_GENERIC),1)
 	BASE_CFLAGS += -DCONTROLLER_GENERIC
 	BASE_CXXFLAGS += -DCONTROLLER_GENERIC
+endif
+
+ifeq ($(USE_HARDWARE),1)
+	BASE_CFLAGS += -DUSE_HARDWARE
+	BASE_CXXFLAGS += -DUSE_HARDWARE
 endif
 
 ifeq ($(UWP_TARGET),1)
@@ -185,6 +191,9 @@ C_SOURCES := $(wildcard psx/*.c) \
              frontend/config.c \
              frontend/diagnostics.c \
              frontend/toml.c
+ifeq ($(USE_HARDWARE),1)
+C_SOURCES += frontend/gpu_hw.c
+endif
 ifeq ($(PSVITA_TARGET),1)
 C_SOURCES += frontend/vita_sdl_stubs.c
 endif

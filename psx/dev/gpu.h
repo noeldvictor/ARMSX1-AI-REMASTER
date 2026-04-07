@@ -79,12 +79,22 @@ typedef struct {
     uint16_t clut, texp;
 } poly_data_t;
 
+#ifdef USE_HARDWARE
+typedef void (*psx_gpu_render_triangle_t)(psx_gpu_t*, vertex_t, vertex_t, vertex_t, poly_data_t, int);
+#endif
+
 typedef struct {
     uint8_t attrib;
     vertex_t v0;
     uint16_t clut;
     uint16_t width, height;
 } rect_data_t;
+
+#ifdef USE_HARDWARE
+typedef struct {
+    psx_gpu_render_triangle_t render_triangle;
+} psx_gpu_renderer_t;
+#endif
 
 struct psx_gpu_t {
     uint32_t bus_delay;
@@ -157,6 +167,9 @@ struct psx_gpu_t {
     psx_ic_t* ic;
 
     psx_gpu_event_callback_t event_cb_table[8];
+#ifdef USE_HARDWARE
+    psx_gpu_renderer_t renderer;
+#endif
 };
 
 static inline int psx_gpu_is_pal_mode(const psx_gpu_t* gpu) {
@@ -184,5 +197,7 @@ void psx_gpu_set_udata(psx_gpu_t*, int, void*);
 void psx_gpu_set_event_callback(psx_gpu_t*, int, psx_gpu_event_callback_t);
 void* psx_gpu_get_display_buffer(psx_gpu_t*);
 void psx_gpu_update(psx_gpu_t*, int);
+void gpu_render_triangle(psx_gpu_t*, vertex_t, vertex_t, vertex_t, poly_data_t, int);
+uint16_t gpu_fetch_texel(psx_gpu_t*, uint16_t, uint16_t, uint32_t, uint32_t, uint16_t, uint16_t, int);
 
 #endif

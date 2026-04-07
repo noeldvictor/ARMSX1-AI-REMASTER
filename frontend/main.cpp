@@ -69,6 +69,9 @@ extern "C" {
 }
 
 #include "IconsFontAwesome5.h"
+#ifdef USE_HARDWARE
+#include "gpu_hw.h"
+#endif
 #include "fsui/backend_sdl.hpp"
 #include "fsui/fsui.hpp"
 #include "fsui/imgui_fullscreen.hpp"
@@ -96,6 +99,13 @@ constexpr bool DefaultVsyncEnabled() {
     return true;
 #endif
 }
+
+#ifdef USE_HARDWARE
+enum class GpuBackend {
+    Software = 0,
+    HardwareExperimental = 1,
+};
+#endif
 
 class ArmsxApp;
 
@@ -256,6 +266,9 @@ struct FrontendSettings {
     bool quiet = true;
     bool logging_enabled = false;
     bool vsync_enabled = DefaultVsyncEnabled();
+#ifdef USE_HARDWARE
+    GpuBackend gpu_backend = GpuBackend::Software;
+#endif
     bool texture_scale_mode = false;
     bool debug_panel = false;
     bool stretch_mode = false;
@@ -696,6 +709,36 @@ std::string RendererValueTitle(const FrontendSettings& settings) {
     return value;
 }
 
+#ifdef USE_HARDWARE
+constexpr bool SupportsHardwareGpuBackend() {
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || defined(IOS_TARGET) || defined(UWP_TARGET) || defined(PSVITA_TARGET)
+    return false;
+#else
+    return true;
+#endif
+}
+
+const char* GpuBackendTitle(GpuBackend backend) {
+    switch (backend) {
+        case GpuBackend::HardwareExperimental:
+            return "Hardware (experimental)";
+        case GpuBackend::Software:
+        default:
+            return "Software";
+    }
+}
+
+const char* GpuBackendSettingToken(GpuBackend backend) {
+    switch (backend) {
+        case GpuBackend::HardwareExperimental:
+            return "hardware";
+        case GpuBackend::Software:
+        default:
+            return "software";
+    }
+}
+#endif
+
 int RegionFromSettings(const FrontendSettings& settings) {
     const std::string region = ToLower(settings.region);
 
@@ -937,6 +980,15 @@ std::vector<fsui::SettingsChoiceOption> BuildChoices(const std::vector<std::stri
 
     return options;
 }
+
+#ifdef USE_HARDWARE
+std::vector<fsui::SettingsChoiceOption> BuildGpuBackendChoices(GpuBackend current_backend) {
+    return BuildChoices(
+        {"Software", "Hardware (experimental)"},
+        static_cast<int>(current_backend == GpuBackend::HardwareExperimental ? 1 : 0)
+    );
+}
+#endif
 
 std::vector<fsui::SettingsChoiceOption> BuildAspectChoices(int current) {
     return BuildChoices({"Classic", "Square", "Wide 16:9"}, current);
@@ -1205,6 +1257,17 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
             settings.vsync_enabled = vsync.u.b != 0;
         }
 
+#ifdef USE_HARDWARE
+        toml_datum_t gpu_backend = toml_string_in(video, "gpu_backend");
+        if (gpu_backend.ok && gpu_backend.u.s) {
+            const std::string value = ToLower(gpu_backend.u.s);
+            settings.gpu_backend = (value == "hardware" || value == "hardware (experimental)" || value == "hw" || value == "hw-renderer")
+                ? GpuBackend::HardwareExperimental
+                : GpuBackend::Software;
+            free(gpu_backend.u.s);
+        }
+#endif
+
         toml_datum_t texture_scale_mode = toml_bool_in(video, "texture_scale_mode");
         if (texture_scale_mode.ok) {
             settings.texture_scale_mode = texture_scale_mode.u.b != 0;
@@ -1284,6 +1347,9 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
     settings.quiet = cfg ? (cfg->quiet != 0) : true;
     settings.logging_enabled = !settings.quiet;
     settings.vsync_enabled = cfg ? (cfg->vsync_enabled != 0) : DefaultVsyncEnabled();
+#ifdef USE_HARDWARE
+    settings.gpu_backend = cfg && cfg->gpu_backend ? GpuBackend::HardwareExperimental : GpuBackend::Software;
+#endif
     settings.texture_scale_mode = cfg ? (cfg->texture_scale_mode != 0) : false;
     settings.debug_panel = cfg ? (cfg->debug_panel != 0) : false;
     settings.stretch_mode = cfg ? (cfg->stretch_mode != 0) : false;
@@ -1363,6 +1429,9 @@ bool SaveSettings(const FrontendSettings& settings) {
         << "    default_psx_exe = \"" << EscapeTomlString(settings.default_exe_path) << "\"\n\n"
         << "[video]\n"
         << "    vsync = " << (settings.vsync_enabled ? "true" : "false") << "\n"
+#ifdef USE_HARDWARE
+        << "    gpu_backend = \"" << GpuBackendSettingToken(settings.gpu_backend) << "\"\n"
+#endif
         << "    texture_scale_mode = " << (settings.texture_scale_mode ? "true" : "false") << "\n"
         << "    debug_panel = " << (settings.debug_panel ? "true" : "false") << "\n"
         << "    stretch_mode = " << (settings.stretch_mode ? "true" : "false") << "\n"
@@ -1487,6 +1556,27 @@ class ArmsxSession {
         psx_gpu_set_event_callback(gpu, GPU_EVENT_HBLANK_END, psxe_gpu_hblank_end_event_cb);
         psx_gpu_set_udata(gpu, 0, this);
         psx_gpu_set_udata(gpu, 1, psx_->timer);
+        psx_gpu_set_udata(gpu, 2, nullptr);
+
+#ifdef USE_HARDWARE
+        hardware_backend_active_ = settings.gpu_backend == GpuBackend::HardwareExperimental;
+        if (hardware_backend_active_) {
+            if (!SupportsHardwareGpuBackend()) {
+                psxe_diag_logf("renderer", "Hardware GPU backend requested but not supported on this platform; falling back to software.");
+                hardware_backend_active_ = false;
+            } else {
+                hw_renderer_ = armsx_hw_renderer_create(renderer_);
+                if (!hw_renderer_) {
+                    psxe_diag_logf("renderer", "Hardware GPU backend requested but failed to initialize; falling back to software.");
+                    hardware_backend_active_ = false;
+                } else {
+                    psx_gpu_set_udata(gpu, 2, hw_renderer_);
+                    gpu->renderer.render_triangle = gpu_hw_render_triangle;
+                    psxe_diag_logf("renderer", "Hardware GPU backend enabled (experimental).");
+                }
+            }
+        }
+#endif
 
         psx_cdrom_set_region(psx_get_cdrom(psx_), RegionFromSettings(settings));
 
@@ -1609,6 +1699,13 @@ class ArmsxSession {
             texture_ = nullptr;
         }
 
+#ifdef USE_HARDWARE
+        if (hw_renderer_) {
+            armsx_hw_renderer_destroy(hw_renderer_);
+            hw_renderer_ = nullptr;
+        }
+#endif
+
         const bool input_attached = psx_ && psx_->pad && (psx_->pad->joy_slot[0] == input_);
 
         if (psx_) {
@@ -1635,6 +1732,9 @@ class ArmsxSession {
         fast_forward_enabled_ = false;
         debug_view_ = false;
         vblank_counter_ = 0;
+#ifdef USE_HARDWARE
+        hardware_backend_active_ = false;
+#endif
     }
 
     bool valid() const {
@@ -1651,6 +1751,14 @@ class ArmsxSession {
 
     void rebindRenderer(SDL_Renderer* renderer, const FrontendSettings& settings) {
         renderer_ = renderer;
+#ifdef USE_HARDWARE
+        if (hw_renderer_) {
+            armsx_hw_renderer_set_renderer(hw_renderer_, renderer_);
+            if (texture_width_ > 0 && texture_height_ > 0) {
+                armsx_hw_renderer_set_output_size(hw_renderer_, texture_width_, texture_height_);
+            }
+        }
+#endif
         if (texture_) {
             SDL_DestroyTexture(texture_);
             texture_ = nullptr;
@@ -1698,6 +1806,12 @@ class ArmsxSession {
         if (!psx_ || paused_) {
             return;
         }
+
+#ifdef USE_HARDWARE
+        if (hardware_backend_active_ && hw_renderer_) {
+            armsx_hw_renderer_begin_frame(hw_renderer_);
+        }
+#endif
 
         const std::uint64_t start_vblank = vblank_counter_;
         std::uint32_t steps = 0;
@@ -1798,9 +1912,51 @@ class ArmsxSession {
             return;
         }
 
-        const int next_width = debug_view_ ? PSX_GPU_FB_WIDTH : static_cast<int>(psx_get_display_width(psx_));
-        const int next_height = debug_view_ ? PSX_GPU_FB_HEIGHT : static_cast<int>(psx_get_display_height(psx_));
+        int next_width = debug_view_ ? PSX_GPU_FB_WIDTH : static_cast<int>(psx_get_display_width(psx_));
+        int next_height = debug_view_ ? PSX_GPU_FB_HEIGHT : static_cast<int>(psx_get_display_height(psx_));
+        if (next_width <= 0) {
+            next_width = texture_width_ > 0 ? texture_width_ : 320;
+        }
+        if (next_height <= 0) {
+            next_height = texture_height_ > 0 ? texture_height_ : 240;
+        }
         const Uint32 next_format = debug_view_ || !psx_get_display_format(psx_) ? SDL_PIXELFORMAT_BGR555 : SDL_PIXELFORMAT_RGB24;
+        const bool use_vram_source = debug_view_ || !psx_ || !psx_->gpu ? false : ((psx_->gpu->disp_y + next_height) > PSX_GPU_FB_HEIGHT);
+
+#ifdef USE_HARDWARE
+        if (hardware_backend_active_) {
+            int output_width = 0;
+            int output_height = 0;
+            SDL_GetRendererOutputSize(renderer_, &output_width, &output_height);
+            psxe_diag_logf(
+                "hw",
+                "texture-select frame=%llu display_mode=0x%08x display_enable=%d dmode=%ux%u display=%ux%u aspect=%.3f disp_window=(%u,%u)-(%u,%u) disp_y=%u offset=(%d,%d) output=%dx%d next=%dx%d format=%s source=%s stretch=%s debug=%s",
+                static_cast<unsigned long long>(vblank_counter_),
+                psx_ && psx_->gpu ? psx_->gpu->display_mode : 0u,
+                psx_ && psx_->gpu ? psx_->gpu->display_enable : 0,
+                psx_ ? psx_get_dmode_width(psx_) : 0u,
+                psx_ ? psx_get_dmode_height(psx_) : 0u,
+                psx_ ? psx_get_display_width(psx_) : 0u,
+                psx_ ? psx_get_display_height(psx_) : 0u,
+                psx_ ? psx_get_display_aspect(psx_) : 0.0,
+                psx_ && psx_->gpu ? psx_->gpu->disp_x1 : 0u,
+                psx_ && psx_->gpu ? psx_->gpu->disp_y1 : 0u,
+                psx_ && psx_->gpu ? psx_->gpu->disp_x2 : 0u,
+                psx_ && psx_->gpu ? psx_->gpu->disp_y2 : 0u,
+                psx_ && psx_->gpu ? psx_->gpu->disp_y : 0u,
+                psx_ && psx_->gpu ? psx_->gpu->off_x : 0,
+                psx_ && psx_->gpu ? psx_->gpu->off_y : 0,
+                output_width,
+                output_height,
+                next_width,
+                next_height,
+                SDL_GetPixelFormatName(next_format),
+                use_vram_source ? "vram" : "display",
+                settings.stretch_mode ? "true" : "false",
+                debug_view_ ? "true" : "false"
+            );
+        }
+#endif
 
         if ((next_width != texture_width_) || (next_height != texture_height_) || (next_format != texture_format_) || !texture_) {
             if (texture_) {
@@ -1812,6 +1968,12 @@ class ArmsxSession {
             texture_width_ = next_width;
             texture_height_ = next_height;
             texture_format_ = next_format;
+
+#ifdef USE_HARDWARE
+            if (hw_renderer_) {
+                armsx_hw_renderer_set_output_size(hw_renderer_, texture_width_, texture_height_);
+            }
+#endif
         }
 
         if (!texture_) {
@@ -1828,10 +1990,7 @@ class ArmsxSession {
 #endif
         }
 
-        void* display_buffer = debug_view_ ? psx_get_vram(psx_) : psx_get_display_buffer(psx_);
-        if (!debug_view_ && ((psx_->gpu->disp_y + texture_height_) > PSX_GPU_FB_HEIGHT)) {
-            display_buffer = psx_get_vram(psx_);
-        }
+        void* display_buffer = use_vram_source ? psx_get_vram(psx_) : psx_get_display_buffer(psx_);
 
         SDL_UpdateTexture(texture_, nullptr, display_buffer, PSX_GPU_FB_STRIDE);
     }
@@ -1842,6 +2001,7 @@ class ArmsxSession {
         }
 
         const ImVec2 display = ImGui::GetIO().DisplaySize;
+        const ImVec2 framebuffer_scale = ImGui::GetIO().DisplayFramebufferScale;
         const float display_width = std::max(display.x, 1.0f);
         const float display_height = std::max(display.y, 1.0f);
 
@@ -1875,12 +2035,55 @@ class ArmsxSession {
         }
 
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+        psxe_diag_logf(
+            "ui",
+            "session-draw frame=%llu display=(%.1f,%.1f) fb_scale=(%.2f,%.2f) texture=%dx%d aspect=%.3f stretch=%s debug=%s target=(%.1f,%.1f) offset=(%.1f,%.1f) hardware=%s",
+            static_cast<unsigned long long>(vblank_counter_),
+            display.x,
+            display.y,
+            framebuffer_scale.x,
+            framebuffer_scale.y,
+            texture_width_,
+            texture_height_,
+            aspect,
+            settings.stretch_mode ? "true" : "false",
+            debug_view_ ? "true" : "false",
+            target_width,
+            target_height,
+            offset_x,
+            offset_y,
+#ifdef USE_HARDWARE
+            hardware_backend_active_ ? "true" : "false"
+#else
+            "false"
+#endif
+        );
         draw_list->AddRectFilled(ImVec2(0.0f, 0.0f), display, IM_COL32(0, 0, 0, 255));
         draw_list->AddImage(
             reinterpret_cast<ImTextureID>(texture_),
             ImVec2(offset_x, offset_y),
             ImVec2(offset_x + target_width, offset_y + target_height)
         );
+
+#ifdef USE_HARDWARE
+        if (!debug_view_ && hw_renderer_) {
+            if (SDL_Texture* overlay = armsx_hw_renderer_overlay_texture(hw_renderer_)) {
+                draw_list->AddImage(
+                    reinterpret_cast<ImTextureID>(overlay),
+                    ImVec2(offset_x, offset_y),
+                    ImVec2(offset_x + target_width, offset_y + target_height)
+                );
+            }
+        }
+#endif
+    }
+
+    void finishHardwareFrame() {
+#ifdef USE_HARDWARE
+        if (hardware_backend_active_ && hw_renderer_) {
+            armsx_hw_renderer_end_frame(hw_renderer_);
+        }
+#endif
     }
 
     bool saveScreenshot(const std::filesystem::path& path) {
@@ -1927,6 +2130,28 @@ class ArmsxSession {
     double targetFrameRate() const {
         return frameRate() * (fast_forward_enabled_ ? 2.0 : 1.0);
     }
+
+    std::uint64_t vblankCounter() const {
+        return vblank_counter_;
+    }
+
+#ifdef USE_HARDWARE
+    bool hardwareBackendActive() const {
+        return hardware_backend_active_;
+    }
+
+    int textureWidth() const {
+        return texture_width_;
+    }
+
+    int textureHeight() const {
+        return texture_height_;
+    }
+
+    Uint32 textureFormat() const {
+        return texture_format_;
+    }
+#endif
 
     const char* timingModeTitle() const {
         if (!psx_ || !psx_->gpu) {
@@ -1988,6 +2213,7 @@ class ArmsxSession {
             return;
         }
 
+        const size_t queue_before = audio_queue_.size() - audio_queue_read_offset_;
         std::vector<uint8_t> frame_audio(byte_count);
         MixPsxAudio(psx_, frame_audio.data(), static_cast<int>(frame_audio.size()));
 
@@ -1997,7 +2223,26 @@ class ArmsxSession {
             resetAudioQueueLocked();
         }
         audio_queue_.insert(audio_queue_.end(), frame_audio.begin(), frame_audio.end());
+        const size_t queue_after = audio_queue_.size() - audio_queue_read_offset_;
         SDL_UnlockAudioDevice(audio_dev_);
+
+#ifdef USE_HARDWARE
+        if (hardware_backend_active_) {
+            psxe_diag_logf(
+                "audio",
+                "frame-audio frame=%llu samples=%d bytes=%zu queue_before=%zu queue_after=%zu accumulator=%.3f frame_rate=%.3f fast_forward=%s paused=%s",
+                static_cast<unsigned long long>(vblank_counter_),
+                sample_count,
+                byte_count,
+                queue_before,
+                queue_after,
+                audio_sample_accumulator_,
+                frameRate(),
+                fast_forward_enabled_ ? "true" : "false",
+                paused_ ? "true" : "false"
+            );
+        }
+#endif
     }
 
     void consumeQueuedAudio(uint8_t* buffer, size_t size) {
@@ -2057,6 +2302,9 @@ class ArmsxSession {
     psx_input_t* input_ = nullptr;
     psxi_sda_t* pad_device_ = nullptr;
     SDL_Texture* texture_ = nullptr;
+#ifdef USE_HARDWARE
+    armsx_hw_renderer_t* hw_renderer_ = nullptr;
+#endif
     SDL_AudioDeviceID audio_dev_ = 0;
     std::vector<uint8_t> audio_queue_;
     size_t audio_queue_read_offset_ = 0;
@@ -2068,6 +2316,9 @@ class ArmsxSession {
     bool paused_ = false;
     bool fast_forward_enabled_ = false;
     bool debug_view_ = false;
+#ifdef USE_HARDWARE
+    bool hardware_backend_active_ = false;
+#endif
     std::uint64_t vblank_counter_ = 0;
     int texture_width_ = 0;
     int texture_height_ = 0;
@@ -2656,6 +2907,25 @@ class ArmsxApp {
         return renderer_flags;
     }
 
+#ifdef USE_HARDWARE
+    bool hardwareRendererAvailable() const {
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || defined(IOS_TARGET) || defined(UWP_TARGET) || defined(PSVITA_TARGET)
+        return false;
+#else
+        if (!owns_renderer_ || external_renderer_ || !renderer_ || !armsx_hw_renderer_is_supported()) {
+            return false;
+        }
+
+        SDL_RendererInfo info{};
+        if (SDL_GetRendererInfo(renderer_, &info) != 0) {
+            return false;
+        }
+
+        return (info.flags & SDL_RENDERER_ACCELERATED) && (info.flags & SDL_RENDERER_TARGETTEXTURE);
+#endif
+    }
+#endif
+
     bool createManagedRenderer(bool vsync_enabled) {
         renderer_ = SDL_CreateRenderer(window_, -1, managedRendererFlags(vsync_enabled));
         owns_renderer_ = renderer_ != nullptr;
@@ -3033,6 +3303,101 @@ class ArmsxApp {
         );
     }
 
+    void logUiRendererState(const char* stage) const {
+        if (!renderer_) {
+            return;
+        }
+
+        int window_width = 0;
+        int window_height = 0;
+        if (window_) {
+            SDL_GetWindowSize(window_, &window_width, &window_height);
+        }
+
+        int output_width = 0;
+        int output_height = 0;
+        SDL_GetRendererOutputSize(renderer_, &output_width, &output_height);
+
+        SDL_Rect viewport = {0, 0, 0, 0};
+        SDL_Rect clip_rect = {0, 0, 0, 0};
+        int logical_width = 0;
+        int logical_height = 0;
+        float scale_x = 0.0f;
+        float scale_y = 0.0f;
+
+        SDL_RenderGetViewport(renderer_, &viewport);
+        SDL_RenderGetClipRect(renderer_, &clip_rect);
+        SDL_RenderGetLogicalSize(renderer_, &logical_width, &logical_height);
+        SDL_RenderGetScale(renderer_, &scale_x, &scale_y);
+
+        const SDL_Texture* target = SDL_GetRenderTarget(renderer_);
+        const Uint32 window_flags = window_ ? SDL_GetWindowFlags(window_) : 0u;
+        const bool clip_enabled = SDL_RenderIsClipEnabled(renderer_) == SDL_TRUE;
+        const bool integer_scale = SDL_RenderGetIntegerScale(renderer_) == SDL_TRUE;
+
+        float imgui_display_x = 0.0f;
+        float imgui_display_y = 0.0f;
+        float imgui_scale_x = 0.0f;
+        float imgui_scale_y = 0.0f;
+        float imgui_font_scale = 0.0f;
+        int imgui_backend_flags = 0;
+        int imgui_config_flags = 0;
+        if (ImGui::GetCurrentContext()) {
+            const ImGuiIO& io = ImGui::GetIO();
+            imgui_display_x = io.DisplaySize.x;
+            imgui_display_y = io.DisplaySize.y;
+            imgui_scale_x = io.DisplayFramebufferScale.x;
+            imgui_scale_y = io.DisplayFramebufferScale.y;
+            imgui_font_scale = io.FontGlobalScale;
+            imgui_backend_flags = static_cast<int>(io.BackendFlags);
+            imgui_config_flags = static_cast<int>(io.ConfigFlags);
+        }
+
+        psxe_diag_logf(
+            "ui",
+            "%s window=%dx%d window_flags=0x%x output=%dx%d target=%p viewport=%d,%d %dx%d clip=%d,%d %dx%d scale=(%f,%f) logical=%dx%d clip_enabled=%s integer_scale=%s imgui_display=(%.1f,%.1f) imgui_fb_scale=(%.2f,%.2f) imgui_font_scale=%.3f backend_flags=0x%x config_flags=0x%x session_hw=%s texture=%dx%d format=%s",
+            stage ? stage : "(state)",
+            window_width,
+            window_height,
+            window_flags,
+            output_width,
+            output_height,
+            (const void*)target,
+            viewport.x,
+            viewport.y,
+            viewport.w,
+            viewport.h,
+            clip_rect.x,
+            clip_rect.y,
+            clip_rect.w,
+            clip_rect.h,
+            scale_x,
+            scale_y,
+            logical_width,
+            logical_height,
+            clip_enabled ? "true" : "false",
+            integer_scale ? "true" : "false",
+            imgui_display_x,
+            imgui_display_y,
+            imgui_scale_x,
+            imgui_scale_y,
+            imgui_font_scale,
+            imgui_backend_flags,
+            imgui_config_flags,
+#ifdef USE_HARDWARE
+            session_.valid() ? (session_.hardwareBackendActive() ? "true" : "false") : "false",
+            session_.valid() ? session_.textureWidth() : 0,
+            session_.valid() ? session_.textureHeight() : 0,
+            session_.valid() ? SDL_GetPixelFormatName(session_.textureFormat()) : "(none)"
+#else
+            "false",
+            0,
+            0,
+            "(none)"
+#endif
+        );
+    }
+
     void logCpuState() const {
         if (!session_.valid() || !session_.psx() || !session_.psx()->cpu) {
             psxe_diag_logf("crash", "CPU state unavailable.");
@@ -3349,9 +3714,20 @@ class ArmsxApp {
         if (session_.valid() && !session_.paused()) {
             session_.runFrame();
             session_.updateTexture(settings_);
+            session_.finishHardwareFrame();
         }
 
+#ifdef USE_HARDWARE
+        if (session_.valid() && session_.hardwareBackendActive()) {
+            logUiRendererState("ui-pre-imgui");
+        }
+#endif
         imgui_backend_.newFrame();
+#ifdef USE_HARDWARE
+        if (session_.valid() && session_.hardwareBackendActive()) {
+            logUiRendererState("ui-post-imgui-backend");
+        }
+#endif
         ImGui::NewFrame();
 
         if (session_.valid()) {
@@ -3373,6 +3749,12 @@ class ArmsxApp {
 
         ImGui::Render();
         imgui_backend_.renderDrawData(ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+
+#ifdef USE_HARDWARE
+        if (session_.valid() && session_.hardwareBackendActive()) {
+            logUiRendererState("ui-post-imgui-render");
+        }
+#endif
 
         const bool fsui_is_active = fsui::HasActiveWindow();
 
@@ -4312,6 +4694,32 @@ class ArmsxApp {
         const bool can_control_vsync = false;
 #else
         const bool can_control_vsync = owns_renderer_ && !external_renderer_;
+#endif
+
+#ifdef USE_HARDWARE
+        {
+            fsui::SettingsRowDescriptor gpu_backend;
+            gpu_backend.kind = fsui::SettingsRowKind::Choice;
+            gpu_backend.id = "gpu-backend";
+            gpu_backend.title = ICON_FA_TACHOMETER_ALT " GPU Backend";
+            gpu_backend.summary = hardwareRendererAvailable()
+                ? "Choose the PSX rendering path. The hardware backend is experimental and applies on the next launch."
+                : "Choose the PSX rendering path. The hardware backend is unavailable on this renderer.";
+            gpu_backend.value = GpuBackendTitle(settings_.gpu_backend);
+            gpu_backend.dialog_title = gpu_backend.title;
+            gpu_backend.choices = BuildGpuBackendChoices(settings_.gpu_backend);
+            gpu_backend.enabled = hardwareRendererAvailable();
+            if (!gpu_backend.enabled) {
+                gpu_backend.availability = fsui::AvailabilityMode::Disabled;
+                gpu_backend.unavailable_title = gpu_backend.title;
+                gpu_backend.unavailable_message = "This SDL renderer does not expose the features needed for the experimental hardware backend.";
+            }
+            gpu_backend.on_choice = [this](int index) {
+                settings_.gpu_backend = (index == 1) ? GpuBackend::HardwareExperimental : GpuBackend::Software;
+                SaveSettings(settings_);
+            };
+            rows.push_back(std::move(gpu_backend));
+        }
 #endif
 
         if (include_scale) {

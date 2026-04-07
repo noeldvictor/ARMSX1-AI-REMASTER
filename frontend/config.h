@@ -16,6 +16,9 @@ typedef struct {
     int console_source;
     int scale;
     int vsync_enabled;
+#ifdef USE_HARDWARE
+    int gpu_backend;
+#endif
     int texture_scale_mode;
     int debug_panel;
     int stretch_mode;
