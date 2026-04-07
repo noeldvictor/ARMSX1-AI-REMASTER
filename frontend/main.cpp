@@ -1316,6 +1316,8 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
 
 bool SaveSettings(const FrontendSettings& settings) {
     const std::filesystem::path target = settings.settings_path.empty() ? std::filesystem::path(DefaultSettingsPath()) : std::filesystem::path(settings.settings_path);
+    std::filesystem::path temp = target;
+    temp += ".tmp";
 
     try {
         if (target.has_parent_path()) {
@@ -1325,7 +1327,7 @@ bool SaveSettings(const FrontendSettings& settings) {
         return false;
     }
 
-    std::ofstream out(target);
+    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
 
     if (!out.is_open()) {
         return false;
@@ -1377,7 +1379,36 @@ bool SaveSettings(const FrontendSettings& settings) {
         << "    game_sort = " << settings.ui_state.game_sort << "\n"
         << "    game_sort_reverse = " << (settings.ui_state.game_sort_reverse ? "true" : "false") << "\n";
 
-    return out.good();
+    out.flush();
+    if (!out.good()) {
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
+
+    out.close();
+    if (!out.good()) {
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
+
+#if defined(_WIN32)
+    if (MoveFileExW(temp.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0) {
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
+#else
+    std::error_code ec;
+    std::filesystem::rename(temp, target, ec);
+    if (ec) {
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
+#endif
+
+    return true;
 }
 
 void MixPsxAudio(psx_t* psx, uint8_t* buffer, int size) {
