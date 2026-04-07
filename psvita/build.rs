@@ -12,6 +12,9 @@ fn main() {
         return;
     }
 
+    println!("cargo:rustc-check-cfg=cfg(vita_target)");
+    println!("cargo:rustc-cfg=vita_target");
+
     let vitasdk = env::var("VITASDK").expect("VITASDK environment variable must be set");
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set"));
     let repo_root = manifest_dir.parent().expect("psvita crate must live under the repo root");

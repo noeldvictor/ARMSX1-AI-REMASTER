@@ -5,6 +5,7 @@ use std::os::raw::{c_char, c_int, c_void};
 unsafe extern "C" {
     fn external_main(argc: c_int, argv: *const *const c_char, external_window: *mut c_void, external_renderer: *mut c_void) -> c_int;
     fn SDL_Init(flags: u32) -> c_int;
+    #[cfg(not(vita_target))]
     fn SDL_Quit();
     fn SDL_CreateWindow(
         title: *const c_char,
@@ -15,7 +16,9 @@ unsafe extern "C" {
         flags: u32,
     ) -> *mut c_void;
     fn SDL_CreateRenderer(window: *mut c_void, index: c_int, flags: u32) -> *mut c_void;
+    #[cfg(not(vita_target))]
     fn SDL_DestroyRenderer(renderer: *mut c_void);
+    #[cfg(not(vita_target))]
     fn SDL_DestroyWindow(window: *mut c_void);
     fn SDL_GetError() -> *const c_char;
 }
@@ -50,17 +53,14 @@ fn main() -> Result<(), String> {
         )
     };
     if raw_window.is_null() {
-        unsafe { SDL_Quit() };
+        unsafe { cleanup_sdl(std::ptr::null_mut(), std::ptr::null_mut()) };
         return Err(sdl_error("SDL_CreateWindow"));
     }
 
     let raw_renderer =
         unsafe { SDL_CreateRenderer(raw_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) };
     if raw_renderer.is_null() {
-        unsafe {
-            SDL_DestroyWindow(raw_window);
-            SDL_Quit();
-        }
+        unsafe { cleanup_sdl(raw_window, std::ptr::null_mut()) };
         return Err(sdl_error("SDL_CreateRenderer"));
     }
 
@@ -78,9 +78,7 @@ fn main() -> Result<(), String> {
     let ret = unsafe { external_main((ptrs.len() - 1) as c_int, ptrs.as_ptr(), raw_window, raw_renderer) };
 
     unsafe {
-        SDL_DestroyRenderer(raw_renderer);
-        SDL_DestroyWindow(raw_window);
-        SDL_Quit();
+        cleanup_sdl(raw_window, raw_renderer);
     }
 
     if ret != 0 {
@@ -101,4 +99,18 @@ fn sdl_error(prefix: &str) -> String {
     };
 
     format!("{prefix} failed: {message}")
+}
+
+#[cfg(vita_target)]
+unsafe fn cleanup_sdl(_window: *mut c_void, _renderer: *mut c_void) {}
+
+#[cfg(not(vita_target))]
+unsafe fn cleanup_sdl(window: *mut c_void, renderer: *mut c_void) {
+    if !renderer.is_null() {
+        SDL_DestroyRenderer(renderer);
+    }
+    if !window.is_null() {
+        SDL_DestroyWindow(window);
+    }
+    SDL_Quit();
 }
