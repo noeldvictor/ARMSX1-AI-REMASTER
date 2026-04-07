@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include <errno.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -30,12 +31,32 @@ typedef struct {
 
 static FILE* g_diag_file = NULL;
 static char g_diag_log_path[1024] = {0};
+static char g_diag_run_tag[64] = {0};
 static int g_diag_enabled = 0;
 static char g_diag_breadcrumbs[PSXE_DIAG_BREADCRUMB_CAPACITY][PSXE_DIAG_LINE_CAPACITY];
 static size_t g_diag_breadcrumb_count = 0;
 static size_t g_diag_breadcrumb_head = 0;
 static psxe_diag_stream_buffer_t g_stdout_buffer = {0};
 static psxe_diag_stream_buffer_t g_stderr_buffer = {0};
+
+static void psxe_diag_load_run_tag(void) {
+    g_diag_run_tag[0] = '\0';
+
+    const char* env = getenv("ARMSX_TRACE_TAG");
+    if (!env || !env[0]) {
+        return;
+    }
+
+    size_t out = 0;
+    for (const char* cursor = env; *cursor && (out + 1u) < sizeof(g_diag_run_tag); cursor++) {
+        const unsigned char ch = (unsigned char)*cursor;
+        if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.') {
+            g_diag_run_tag[out++] = (char)tolower(ch);
+        }
+    }
+
+    g_diag_run_tag[out] = '\0';
+}
 
 static void psxe_diag_output_debug_string(const char* line) {
 #ifdef _WIN32
@@ -226,6 +247,7 @@ void psxe_diag_initialize(const char* pref_path) {
     psxe_diag_close_file();
 
     g_diag_log_path[0] = '\0';
+    psxe_diag_load_run_tag();
 
     if (pref_path && pref_path[0]) {
         char log_directory[1024] = {0};
@@ -233,16 +255,26 @@ void psxe_diag_initialize(const char* pref_path) {
         psxe_diag_make_directory(log_directory);
 
 #if defined(UWP_TARGET)
-        SDL_snprintf(g_diag_log_path, sizeof(g_diag_log_path), "%s/armsx-uwp.log", log_directory);
+        if (g_diag_run_tag[0]) {
+            SDL_snprintf(g_diag_log_path, sizeof(g_diag_log_path), "%s/armsx-uwp-%s.log", log_directory, g_diag_run_tag);
+        } else {
+            SDL_snprintf(g_diag_log_path, sizeof(g_diag_log_path), "%s/armsx-uwp.log", log_directory);
+        }
 #else
-        SDL_snprintf(g_diag_log_path, sizeof(g_diag_log_path), "%s/armsx.log", log_directory);
+        if (g_diag_run_tag[0]) {
+            SDL_snprintf(g_diag_log_path, sizeof(g_diag_log_path), "%s/armsx-%s.log", log_directory, g_diag_run_tag);
+        } else {
+            SDL_snprintf(g_diag_log_path, sizeof(g_diag_log_path), "%s/armsx.log", log_directory);
+        }
 #endif
     }
 
     psxe_diag_update_file_handle();
 
     if (g_diag_enabled) {
-        psxe_diag_logf("diag", "Diagnostics initialized%s%s",
+        psxe_diag_logf("diag", "Diagnostics initialized%s%s%s%s",
+            g_diag_run_tag[0] ? " tag=" : "",
+            g_diag_run_tag[0] ? g_diag_run_tag : "",
             g_diag_log_path[0] ? " at " : "",
             g_diag_log_path[0] ? g_diag_log_path : "");
     }

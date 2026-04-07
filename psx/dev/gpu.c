@@ -71,6 +71,23 @@ void psx_gpu_init(psx_gpu_t* gpu, psx_ic_t* ic) {
 #ifdef USE_HARDWARE
     gpu->renderer.render_triangle = gpu_render_triangle;
 #endif
+
+    GPU_HW_DEBUG(
+        "gpu-init display_mode=0x%08x gpustat=0x%08x draw=(%u,%u)-(%u,%u) disp=(%u,%u)-(%u,%u) offset=(%d,%d) pal=%s",
+        gpu->display_mode,
+        gpu->gpustat,
+        gpu->draw_x1,
+        gpu->draw_y1,
+        gpu->draw_x2,
+        gpu->draw_y2,
+        gpu->disp_x1,
+        gpu->disp_y1,
+        gpu->disp_x2,
+        gpu->disp_y2,
+        gpu->off_x,
+        gpu->off_y,
+        psx_gpu_is_pal_mode(gpu) ? "true" : "false"
+    );
 }
 
 uint32_t psx_gpu_read32(psx_gpu_t* gpu, uint32_t offset) {
@@ -1994,25 +2011,36 @@ void psx_gpu_write32(psx_gpu_t* gpu, uint32_t offset, uint32_t value) {
             switch (cmd) {
                 // Display enable
                 case 0x03: {
+                    const uint32_t before = gpu->gpustat;
                     gpu->gpustat &= ~0x00800000;
                     gpu->gpustat |= (value << 23) & 0x00800000;
+                    GPU_HW_DEBUG("gp1-display-enable value=%08x gpustat=%08x->%08x display_enable=%d", value, before, gpu->gpustat, (gpu->gpustat & 0x00800000) != 0);
                 } break;
                 case 0x04: {
                 } break;
                 case 0x05: {
                     gpu->disp_x = value & 0x3ff;
                     gpu->disp_y = (value >> 10) & 0x1ff;
+                    GPU_HW_DEBUG("gp1-display-start value=%08x disp=(%u,%u)", value, gpu->disp_x, gpu->disp_y);
                 } break;
                 case 0x06: {
                     gpu->disp_x1 = value & 0xfff;
                     gpu->disp_x2 = (value >> 12) & 0xfff;
+                    GPU_HW_DEBUG("gp1-display-range-h value=%08x disp_x=(%u,%u)", value, gpu->disp_x1, gpu->disp_x2);
                 } break;
                 case 0x07: {
                     gpu->disp_y1 = value & 0x1ff;
                     gpu->disp_y2 = (value >> 10) & 0x1ff;
+                    GPU_HW_DEBUG("gp1-display-range-v value=%08x disp_y=(%u,%u)", value, gpu->disp_y1, gpu->disp_y2);
                 } break;
                 case 0x08:
                     gpu->display_mode = value & 0xffffff;
+                    GPU_HW_DEBUG(
+                        "gp1-display-mode value=%08x display_mode=0x%08x video_standard=%s",
+                        value,
+                        gpu->display_mode,
+                        psx_gpu_is_pal_mode(gpu) ? "PAL" : "NTSC"
+                    );
 
                     if (gpu->event_cb_table[GPU_EVENT_DMODE])
                         gpu->event_cb_table[GPU_EVENT_DMODE](gpu);
@@ -2020,6 +2048,7 @@ void psx_gpu_write32(psx_gpu_t* gpu, uint32_t offset, uint32_t value) {
 
                 case 0x10: {
                     gpu->gp1_10h_req = value & 7;
+                    GPU_HW_DEBUG("gp1-texpage-query value=%08x req=%u", value, gpu->gp1_10h_req);
                 } break;
             }
 
@@ -2103,11 +2132,35 @@ void gpu_hblank_event(psx_gpu_t* gpu) {
     gpu->line++;
 
     if (gpu->line == scans_per_vdraw) {
+        GPU_HW_DEBUG(
+            "vblank-start line=%d mode=%s gpustat=0x%08x display_mode=0x%08x draw=(%u,%u)-(%u,%u) disp=(%u,%u)-(%u,%u) offset=(%d,%d)",
+            gpu->line,
+            psx_gpu_is_pal_mode(gpu) ? "PAL" : "NTSC",
+            gpu->gpustat,
+            gpu->display_mode,
+            gpu->draw_x1,
+            gpu->draw_y1,
+            gpu->draw_x2,
+            gpu->draw_y2,
+            gpu->disp_x1,
+            gpu->disp_y1,
+            gpu->disp_x2,
+            gpu->disp_y2,
+            gpu->off_x,
+            gpu->off_y
+        );
         if (gpu->event_cb_table[GPU_EVENT_VBLANK])
             gpu->event_cb_table[GPU_EVENT_VBLANK](gpu);
 
         psx_ic_irq(gpu->ic, IC_VBLANK);
     } else if (gpu->line == scans_per_frame) {
+        GPU_HW_DEBUG(
+            "vblank-end line=%d mode=%s gpustat=0x%08x display_mode=0x%08x",
+            gpu->line,
+            psx_gpu_is_pal_mode(gpu) ? "PAL" : "NTSC",
+            gpu->gpustat,
+            gpu->display_mode
+        );
         if (gpu->event_cb_table[GPU_EVENT_VBLANK_END])
             gpu->event_cb_table[GPU_EVENT_VBLANK_END](gpu);
 
