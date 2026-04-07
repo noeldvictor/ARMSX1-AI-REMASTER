@@ -76,6 +76,11 @@ struct armsx_hw_renderer {
     int height;
     uint64_t frame_index;
     uint64_t triangle_index;
+    uint64_t solid_triangle_count;
+    uint64_t textured_fallback_count;
+    uint64_t transparent_fallback_count;
+    uint64_t geometry_draw_count;
+    uint64_t geometry_fail_count;
     int trace_enabled;
     int fallback_warned;
 };
@@ -240,12 +245,11 @@ static bool ensure_overlay_texture(armsx_hw_renderer_t* hw) {
     );
 
     if (!hw->page_texture) {
-        psxe_diag_logf("hw", "failed to create triangle texture: %s", SDL_GetError());
-        return false;
+        psxe_diag_logf("hw", "triangle page texture unavailable, continuing without it: %s", SDL_GetError());
+    } else {
+        SDL_SetTextureBlendMode(hw->page_texture, SDL_BLENDMODE_NONE);
+        SDL_SetTextureScaleMode(hw->page_texture, SDL_ScaleModeNearest);
     }
-
-    SDL_SetTextureBlendMode(hw->page_texture, SDL_BLENDMODE_NONE);
-    SDL_SetTextureScaleMode(hw->page_texture, SDL_ScaleModeNearest);
 
     if (hw->overlay_texture && hw->width > 0 && hw->height > 0) {
         return true;
@@ -364,6 +368,11 @@ void armsx_hw_renderer_begin_frame(armsx_hw_renderer_t* hw) {
 
     hw->frame_index++;
     hw->triangle_index = 0;
+    hw->solid_triangle_count = 0;
+    hw->textured_fallback_count = 0;
+    hw->transparent_fallback_count = 0;
+    hw->geometry_draw_count = 0;
+    hw->geometry_fail_count = 0;
     save_renderer_state(hw);
     hw_log_renderer_state(hw, "frame-pre-overlay");
     hw_tracef(
@@ -400,6 +409,18 @@ void armsx_hw_renderer_end_frame(armsx_hw_renderer_t* hw) {
         return;
     }
 
+    if (hw_trace_enabled()) {
+        hw_tracef(
+            "frame-summary frame=%llu solid=%llu textured_fallback=%llu transparent_fallback=%llu geometry_draws=%llu geometry_failures=%llu",
+            (unsigned long long)hw->frame_index,
+            (unsigned long long)hw->solid_triangle_count,
+            (unsigned long long)hw->textured_fallback_count,
+            (unsigned long long)hw->transparent_fallback_count,
+            (unsigned long long)hw->geometry_draw_count,
+            (unsigned long long)hw->geometry_fail_count
+        );
+    }
+
     hw_tracef("frame-end frame=%llu renderer=%p", (unsigned long long)(hw ? hw->frame_index : 0), (void*)hw->renderer);
     SDL_SetRenderTarget(hw->renderer, NULL);
     restore_renderer_state(hw);
@@ -422,7 +443,7 @@ SDL_Texture* armsx_hw_renderer_overlay_texture(armsx_hw_renderer_t* hw) {
 void gpu_hw_render_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex_t v2, poly_data_t data, int edge) {
     armsx_hw_renderer_t* hw = gpu ? (armsx_hw_renderer_t*)gpu->udata[2] : NULL;
 
-    if (!hw || !hw->renderer || !hw->page_texture || !hw->overlay_texture) {
+    if (!hw || !hw->renderer || !hw->overlay_texture) {
         if (hw && !hw->fallback_warned) {
             hw->fallback_warned = 1;
             psxe_diag_logf(
@@ -439,6 +460,12 @@ void gpu_hw_render_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex_t v
     }
 
     if ((data.attrib & (PA_TEXTURED | PA_TRANSP)) != 0) {
+        if (data.attrib & PA_TEXTURED) {
+            hw->textured_fallback_count++;
+        }
+        if (data.attrib & PA_TRANSP) {
+            hw->transparent_fallback_count++;
+        }
         hw_tracef(
             "fallback-to-software frame=%llu index=%llu reason=%s attrib=0x%02x edge=%d",
             (unsigned long long)hw->frame_index,
@@ -475,6 +502,7 @@ void gpu_hw_render_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex_t v
     const int depth = (data.texp >> 7) & 3;
 
     hw->triangle_index++;
+    hw->solid_triangle_count++;
     hw_tracef(
         "tri frame=%llu index=%llu edge=%d attrib=0x%02x clut=0x%04x texp=0x%04x page=(%d,%d) depth=%d "
         "v0=(%d,%d c=%08x tx=%u ty=%u) v1=(%d,%d c=%08x tx=%u ty=%u) v2=(%d,%d c=%08x tx=%u ty=%u)",
@@ -536,37 +564,11 @@ void gpu_hw_render_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex_t v
     verts[2].color.g = (c.c >> 8) & 0xff;
     verts[2].color.b = (c.c >> 16) & 0xff;
 
-    if (SDL_UpdateTexture(hw->page_texture, NULL, &gpu->vram[tpx + (tpy * 1024)], 2048) != 0) {
-        psxe_diag_logf("hw", "texture-upload-failed frame=%llu index=%llu page=(%d,%d) error=%s",
-            (unsigned long long)hw->frame_index,
-            (unsigned long long)hw->triangle_index,
-            tpx,
-            tpy,
-            SDL_GetError());
-        return;
-    }
-
-    hw_tracef(
-        "texture-upload-ok frame=%llu index=%llu texture=%p source=%p pitch=%d",
-        (unsigned long long)hw->frame_index,
-        (unsigned long long)hw->triangle_index,
-        (void*)hw->page_texture,
-        (void*)&gpu->vram[tpx + (tpy * 1024)],
-        2048
-    );
-
-    if (data.attrib & PA_TEXTURED) {
-        if (depth < 0 || depth > 3) {
-            return;
-        }
-    }
-
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     hw_tracef(
-        "geometry-draw frame=%llu index=%llu texture=%p positions=[(%f,%f),(%f,%f),(%f,%f)] texcoords=[(%f,%f),(%f,%f),(%f,%f)] colors=[(%u,%u,%u,%u),(%u,%u,%u,%u),(%u,%u,%u,%u)]",
+        "geometry-draw frame=%llu index=%llu texture=null positions=[(%f,%f),(%f,%f),(%f,%f)] texcoords=[(%f,%f),(%f,%f),(%f,%f)] colors=[(%u,%u,%u,%u),(%u,%u,%u,%u),(%u,%u,%u,%u)]",
         (unsigned long long)hw->frame_index,
         (unsigned long long)hw->triangle_index,
-        (void*)hw->page_texture,
         verts[0].position.x, verts[0].position.y,
         verts[1].position.x, verts[1].position.y,
         verts[2].position.x, verts[2].position.y,
@@ -577,13 +579,16 @@ void gpu_hw_render_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex_t v
         verts[1].color.r, verts[1].color.g, verts[1].color.b, verts[1].color.a,
         verts[2].color.r, verts[2].color.g, verts[2].color.b, verts[2].color.a
     );
-    if (SDL_RenderGeometry(hw->renderer, hw->page_texture, verts, 3, NULL, 0) != 0) {
+    if (SDL_RenderGeometry(hw->renderer, NULL, verts, 3, NULL, 0) != 0) {
+        hw->geometry_fail_count++;
         psxe_diag_logf("hw", "geometry-draw-failed frame=%llu index=%llu error=%s",
             (unsigned long long)hw->frame_index,
             (unsigned long long)hw->triangle_index,
             SDL_GetError());
+        gpu_render_triangle(gpu, v0, v1, v2, data, edge);
         return;
     }
+    hw->geometry_draw_count++;
 #else
     gpu_render_triangle(gpu, v0, v1, v2, data, edge);
 #endif
