@@ -163,7 +163,9 @@ jobs:
 
   psvita:
     name: PSVita VPK
-    runs-on: psvita
+    runs-on: ubuntu-latest
+    container:
+      image: catthehacker/ubuntu:act-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -187,25 +189,56 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --depth=1
 
-      - name: Validate Vita runner
+      - name: Install Vita toolchain on Ubuntu x64
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${VITASDK:-}" ]; then
-            echo "VITASDK must be set on the Vita runner." >&2
-            exit 1
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential \
+            bzip2 \
+            ca-certificates \
+            cmake \
+            curl \
+            file \
+            git \
+            make \
+            patch \
+            pkg-config \
+            python3 \
+            python3-jinja2 \
+            unzip \
+            wget \
+            xz-utils \
+            zip
+
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain nightly
+          else
+            rustup toolchain install nightly --profile minimal
           fi
-          for tool in cargo vita-mksfoex vita-elf-create vita-make-fself vita-pack-vpk; do
-            if ! command -v "$tool" >/dev/null 2>&1; then
-              echo "$tool is required on the Vita runner." >&2
-              exit 1
-            fi
-          done
+
+          source "$HOME/.cargo/env"
+          rustup component add rust-src --toolchain nightly
+          cargo +nightly install cargo-vita --locked
+
+          git clone --depth=1 https://github.com/vitasdk/vdpm /tmp/vdpm
+          cd /tmp/vdpm
+          ./bootstrap-vitasdk.sh
+          export VITASDK=/usr/local/vitasdk
+          export PATH="$VITASDK/bin:$PATH"
+          ./install-all.sh
+
+          {
+            echo "VITASDK=$VITASDK"
+            echo "RUSTUP_TOOLCHAIN=nightly"
+            echo "PKG_CONFIG=$VITASDK/bin/arm-vita-eabi-pkg-config"
+          } >> "$GITHUB_ENV"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$VITASDK/bin" >> "$GITHUB_PATH"
 
       - name: Build PSVita package
         shell: bash
-        env:
-          RUSTUP_TOOLCHAIN: nightly
         run: ./build.sh psvita
 
       - uses: actions/upload-artifact@v3
