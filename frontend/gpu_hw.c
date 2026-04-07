@@ -10,12 +10,16 @@
 static int g_hw_trace_mode = -1;
 
 static bool hw_trace_enabled(void) {
+#if !defined(HW_DEBUG)
+    return false;
+#else
     if (g_hw_trace_mode < 0) {
         const char* env = getenv("ARMSX_HW_TRACE");
         g_hw_trace_mode = (env && env[0] && env[0] != '0') ? 1 : 0;
     }
 
     return g_hw_trace_mode != 0;
+#endif
 }
 
 static void hw_tracef(const char* fmt, ...) {

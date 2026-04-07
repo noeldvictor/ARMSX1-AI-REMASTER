@@ -24,6 +24,7 @@ SDL_LIBS_STATIC ?= $(shell $(SDL_CONFIG) --static-libs 2>/dev/null || $(SDL_CONF
 SDL_STATIC ?= 1
 WASM_LDFLAGS ?=
 USE_HARDWARE ?= 0
+HW_DEBUG ?= 0
 
 PLATFORM := $(shell uname -s)
 ifeq ($(WASM_TARGET),wasm)
@@ -97,6 +98,11 @@ endif
 ifeq ($(USE_HARDWARE),1)
 	BASE_CFLAGS += -DUSE_HARDWARE
 	BASE_CXXFLAGS += -DUSE_HARDWARE
+endif
+
+ifeq ($(HW_DEBUG),1)
+	BASE_CFLAGS += -DHW_DEBUG
+	BASE_CXXFLAGS += -DHW_DEBUG
 endif
 
 ifeq ($(UWP_TARGET),1)

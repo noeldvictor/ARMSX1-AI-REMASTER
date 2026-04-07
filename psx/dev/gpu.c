@@ -8,6 +8,12 @@
 
 #define SE10(v) ((int16_t)((v) << 5) >> 5)
 
+#if defined(HW_DEBUG)
+#define GPU_HW_DEBUG(...) psxe_diag_logf("gpu", __VA_ARGS__)
+#else
+#define GPU_HW_DEBUG(...) do { } while (0)
+#endif
+
 int g_psx_gpu_dither_kernel[] = {
     -4, +0, -3, +1,
     +2, -2, +3, -1,
@@ -663,6 +669,19 @@ void gpu_render_flat_rectangle(psx_gpu_t* gpu, vertex_t v, uint32_t w, uint32_t 
     int xmax = min(xmin + w, gpu->draw_x2);
     int ymax = min(ymin + h, gpu->draw_y2);
 
+    GPU_HW_DEBUG(
+        "soft-flat-rect color=%08x origin=(%d,%d) size=%ux%u bounds=(%d,%d)-(%d,%d)",
+        color,
+        v.x,
+        v.y,
+        w,
+        h,
+        xmin,
+        ymin,
+        xmax,
+        ymax
+    );
+
     for (uint32_t y = ymin; y < ymax; y++) {
         for (uint32_t x = xmin; x < xmax; x++) {
             int bc = (x >= gpu->draw_x1) && (x <= gpu->draw_x2) &&
@@ -688,6 +707,23 @@ void gpu_render_textured_rectangle(psx_gpu_t* gpu, vertex_t v, uint32_t w, uint3
     int ymax = min(ymin + h, gpu->draw_y2);
 
     uint32_t xc = 0, yc = 0;
+
+    GPU_HW_DEBUG(
+        "soft-textured-rect color=%08x origin=(%d,%d) size=%ux%u page=(%u,%u) clut=(%u,%u) bounds=(%d,%d)-(%d,%d)",
+        color,
+        v.x,
+        v.y,
+        w,
+        h,
+        gpu->texp_x,
+        gpu->texp_y,
+        clutx,
+        cluty,
+        xmin,
+        ymin,
+        xmax,
+        ymax
+    );
 
     for (int y = ymin; y < ymax; y++) {
         for (int x = xmin; x < xmax; x++) {
@@ -736,6 +772,21 @@ void gpu_render_flat_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex_t
     int xmax = min(max(max(a.x, b.x), c.x), gpu->draw_x2); 
     int ymax = min(max(max(a.y, b.y), c.y), gpu->draw_y2);
 
+    GPU_HW_DEBUG(
+        "soft-flat-tri color=%08x bounds=(%d,%d)-(%d,%d) vertices=(%d,%d)-(%d,%d)-(%d,%d)",
+        color,
+        xmin,
+        ymin,
+        xmax,
+        ymax,
+        a.x,
+        a.y,
+        b.x,
+        b.y,
+        c.x,
+        c.y
+    );
+
     for (int y = ymin; y < ymax; y++) {
         for (int x = xmin; x < xmax; x++) {
             int z0 = ((b.x - a.x) * (y - a.y)) - ((b.y - a.y) * (x - a.x));
@@ -776,6 +827,24 @@ void gpu_render_shaded_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex
     int ymax = min(max(max(a.y, b.y), c.y), gpu->draw_y2);
 
     int area = EDGE(a, b, c);
+
+    GPU_HW_DEBUG(
+        "soft-shaded-tri bounds=(%d,%d)-(%d,%d) area=%d v0=(%d,%d c=%08x) v1=(%d,%d c=%08x) v2=(%d,%d c=%08x)",
+        xmin,
+        ymin,
+        xmax,
+        ymax,
+        area,
+        a.x,
+        a.y,
+        a.c,
+        b.x,
+        b.y,
+        b.c,
+        c.x,
+        c.y,
+        c.c
+    );
 
     for (int y = ymin; y < ymax; y++) {
         for (int x = xmin; x < xmax; x++) {
@@ -850,6 +919,35 @@ void gpu_render_textured_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vert
 
     uint32_t area = EDGE(a, b, c);
 
+    GPU_HW_DEBUG(
+        "soft-textured-tri page=(%u,%u) clut=(%u,%u) depth=%d bounds=(%d,%d)-(%d,%d) area=%u v0=(%d,%d c=%08x tx=%u ty=%u) v1=(%d,%d c=%08x tx=%u ty=%u) v2=(%d,%d c=%08x tx=%u ty=%u)",
+        tpx,
+        tpy,
+        clutx,
+        cluty,
+        depth,
+        xmin,
+        ymin,
+        xmax,
+        ymax,
+        area,
+        a.x,
+        a.y,
+        a.c,
+        a.tx,
+        a.ty,
+        b.x,
+        b.y,
+        b.c,
+        b.tx,
+        b.ty,
+        c.x,
+        c.y,
+        c.c,
+        c.tx,
+        c.ty
+    );
+
     for (int y = ymin; y < ymax; y++) {
         for (int x = xmin; x < xmax; x++) {
             vertex_t p;
@@ -891,6 +989,14 @@ void gpu_rect(psx_gpu_t* gpu) {
             int size = (gpu->buf[0] >> 27) & 3;
             int textured = (gpu->buf[0] & 0x04000000) != 0;
 
+            GPU_HW_DEBUG(
+                "rect-cmd raw=0x%08x attrib=0x%02x size=%d textured=%s",
+                gpu->buf[0],
+                gpu->buf[0] >> 24,
+                size,
+                textured ? "true" : "false"
+            );
+
             gpu->cmd_args_remaining = 1 + (size == RS_VARIABLE) + textured;
         } break;
 
@@ -918,6 +1024,21 @@ void gpu_rect(psx_gpu_t* gpu) {
                 if (textured && raw)
                     rect.v0.c = 0x808080;
 
+                GPU_HW_DEBUG(
+                    "rect-dispatch attrib=0x%02x v0=(%d,%d c=%08x tx=%u ty=%u) clut=0x%04x size=%ux%u raw=%s textured=%s",
+                    rect.attrib,
+                    rect.v0.x,
+                    rect.v0.y,
+                    rect.v0.c,
+                    rect.v0.tx,
+                    rect.v0.ty,
+                    rect.clut,
+                    rect.width,
+                    rect.height,
+                    raw ? "true" : "false",
+                    textured ? "true" : "false"
+                );
+
                 gpu_render_rect(gpu, rect);
 
                 gpu->state = GPU_STATE_RECV_CMD;
@@ -934,6 +1055,14 @@ void gpu_poly(psx_gpu_t* gpu) {
             int shaded   = (gpu->buf[0] & 0x10000000) != 0;
             int quad     = (gpu->buf[0] & 0x08000000) != 0;
             int textured = (gpu->buf[0] & 0x04000000) != 0;
+
+            GPU_HW_DEBUG(
+                "poly-cmd raw=0x%08x shaded=%s quad=%s textured=%s",
+                gpu->buf[0],
+                shaded ? "true" : "false",
+                quad ? "true" : "false",
+                textured ? "true" : "false"
+            );
 
             int fields_per_vertex = 1 + shaded + textured;
             int vertices = 3 + quad;
@@ -958,6 +1087,7 @@ void gpu_poly(psx_gpu_t* gpu) {
 
                 poly.clut = gpu->buf[2] >> 16;
                 poly.texp = gpu->buf[texp_offset] >> 16;
+                const bool poly_quad = (poly.attrib & PA_QUAD) != 0;
 
                 // Undocumented behavior?
                 // Fixes Mortal Kombat II, Bubble Bobble, Driver 1 & 2
@@ -968,6 +1098,21 @@ void gpu_poly(psx_gpu_t* gpu) {
                     gpu->gpustat &= 0xfffffe00;
                     gpu->gpustat |= poly.texp & 0x1ff;
                 }
+
+                GPU_HW_DEBUG(
+                    "poly-dispatch attrib=0x%02x shaded=%s quad=%s textured=%s clut=0x%04x texp=0x%04x "
+                    "v0=(%d,%d c=%08x tx=%u ty=%u) v1=(%d,%d c=%08x tx=%u ty=%u) v2=(%d,%d c=%08x tx=%u ty=%u) v3=(%d,%d c=%08x tx=%u ty=%u)",
+                    poly.attrib,
+                    shaded ? "true" : "false",
+                    poly_quad ? "true" : "false",
+                    textured ? "true" : "false",
+                    poly.clut,
+                    poly.texp,
+                    poly.v[0].x, poly.v[0].y, poly.v[0].c, poly.v[0].tx, poly.v[0].ty,
+                    poly.v[1].x, poly.v[1].y, poly.v[1].c, poly.v[1].tx, poly.v[1].ty,
+                    poly.v[2].x, poly.v[2].y, poly.v[2].c, poly.v[2].tx, poly.v[2].ty,
+                    poly.v[3].x, poly.v[3].y, poly.v[3].c, poly.v[3].tx, poly.v[3].ty
+                );
 
                 poly.v[0].c = gpu->buf[0+0*color_offset] & 0xffffff;
                 poly.v[1].c = gpu->buf[0+1*color_offset] & 0xffffff;
