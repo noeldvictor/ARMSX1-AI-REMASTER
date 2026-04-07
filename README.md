@@ -1,123 +1,129 @@
-# psxe
-A simple and portable Sony PlayStation emulator and emulation library written in C
+# ARMSX
+ARMSX is a fork of `psxe`, rebuilt around a native FSUI donor shell and SDL2-hosted frontends for desktop, Android, iOS, UWP, web, and PSVita.
 
-## Screenshots
-| Windows  | Ubuntu | macOS |
-| ------------- | ------------- | ------------- 
-| ![Mega Man X6 (USA)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/34dde8f9-eedb-4b44-a08d-c17026df2ff2) | ![Bloody Roar 2 - Bringer of the New Age (Europe)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/41a6dc67-b0ba-442f-bed6-7b207c0db4dd) | ![Parodius (Europe)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/9ab291d9-ec47-4997-92d3-23e38982ae45) |
-| ![Spyro 2 - Ripto's Rage (USA)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/e161ab66-af57-4327-9a94-8b2591a0012a) | ![Namco Museum Vol. 1 (USA)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/67ea61e4-5f30-470c-a978-23e0755850b6) | ![Darius Gaiden (Japan)](https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/0c55118c-ab42-40e5-b34a-7594528080bf) |
+## What It Supports
+ARMSX currently has the following emulator pieces wired up:
+- CPU, DMA, GPU, SPU, MDEC, GTE, and timers
+- CD-ROM loading
+- memory cards
+- BIOS selection and PS-X EXE boot
+- screenshot capture
+- logging controls
+- VSync control
+- fast forward
+- protocol/file launch through `armsx:///...` on supported hosts
+- the FSUI settings shell
 
-### CI status
-CI now lives in `.gitea/workflows/build.yml`.
+Disc image support is:
+- `BIN/CUE`
+- single-track `BIN`
+- `ISO`
+
+Not implemented yet:
+- save states
+- netplay
+- texture packs
+- a separate hardware renderer backend
+- CHD support, which is still stubbed in-tree
+
+## Supported Targets
+- Desktop: macOS, Linux, Windows
+- Mobile and alternate hosts: Android, iOS, UWP, WebAssembly, PSVita
+- CI also builds Linux `x64`, `x32`, `arm64`, `arm32` and Windows `x64`/`x32` packages
+
+Desktop and Android are the main day-to-day targets. The other ports are present and buildable, but they are more platform-specific and may lag behind the desktop path.
 
 ## Running
-You can download the latest automated build for your platform on Releases. If your system isn't supported, you can easily build the emulator from source, instructions on "Building" below.
+On desktop, launch the emulator directly:
 
-In order to run the emulator, you will need a BIOS file. You can either get one from the internet or [dump it from your own console](https://www.youtube.com/watch?v=u8eHp0COcBo).
+```sh
+./bin/armsx --bios=/path/to/bios.bin --cdrom=/path/to/game.cue
+```
 
-Most BIOS versions are confirmed to work.
+You can also launch a file with the protocol handler on supported hosts:
 
-Use the `-b` or `--bios` setting to configure the BIOS file.
+```text
+armsx:///absolute/path/to/game.cue
+```
 
-## Progress
-All major components have been implemented, including memory card support.
+The app opens an FSUI shell where you can choose BIOS files, start discs, change settings, take screenshots, and toggle fast forward or VSync.
 
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> CPU </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> DMA </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> GPU </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> SPU </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> MDEC </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> GTE </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> Timers </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/199c20e4-4e7e-4d0a-a033-eda347034ed5" width="12" height="12"/> CDROM </br>
-<img src="https://git.nanodata.cloud/moonpower/ARMSX/assets/15825466/0ed1fe97-de2f-47de-bb30-82286e6c5fa0" width="12" height="12"/> Memory cards </br>
+Settings are stored under SDL's pref path, usually `SDL_GetPrefPath("nanodata", "armsx")`, in `settings.toml`.
 
 ## Building
-Building the emulator should be easy, just use the scripts provided in this repo.
+### Linux Desktop
+Install SDL2 development packages, then run:
 
-On Windows, the `build-deps.ps1` script downloads SDL2 and unzips it. If you want to run the emulator standalone, you will have to move the SDL2 DLL to the same folder where the executable is located.
-
-**If you already have SDL2 on your system**, you can skip running `build-deps.ps1`. Though you will have to edit `build-win.ps1` to point the `SDL2_DIR` variable to your installation path.
-
-On Ubuntu, you will also need to install `libsdl2-dev`, you can get it from `apt` like so:
-```
-sudo apt update
-sudo apt upgrade
-sudo apt install libsdl2-dev
-```
-
-Building on macOS requires installing SDL2 and dylibbundler, this can be done using `brew`:
-```
-brew install sdl2
-brew install dylibbundler
-```
-
-Assuming you did everything described above, you should be able to build the emulator by using the following commands.
-
-### Windows
-```
-git clone https://git.nanodata.cloud/moonpower/ARMSX.git
-cd ARMSX
-./build-deps
-./build-win64.ps1
-```
-On rare cases these scripts might not work (PowerShell/Windows bugs). If so, please open an issue on the issues tab with information about your system so we can make sure we cover the maximum amount of systems. 
-
-### Ubuntu
-```
-git clone https://git.nanodata.cloud/moonpower/ARMSX.git
-cd ARMSX
-make clean && make
-```
-
-### macOS
-```
-git clone https://git.nanodata.cloud/moonpower/ARMSX.git
-cd ARMSX
+```sh
 ./build.sh
 ```
 
+### macOS
+Install SDL2 and dylibbundler:
+
+```sh
+brew install sdl2 dylibbundler
+```
+
+Then build a bundle:
+
+```sh
+./build.sh macosapp
+```
+
+### Windows
+Install a MinGW toolchain and SDL2, then run:
+
+```powershell
+./build-deps.ps1
+./build-win64.ps1
+./build-win32.ps1
+```
+
+### Android
+Set `ANDROID_NDK_ROOT` to an NDK 27+ install and build:
+
+```sh
+./build.sh android
+```
+
+### iOS
+Use the bundled SDL2 xcframework and run:
+
+```sh
+./build.sh ios
+```
+
+### UWP
+Build the native runtime or solution from Windows:
+
+```sh
+./build-uwp-native.sh x64 Debug
+./build-uwp-native.sh x86 Release
+./build-uwp-all.ps1
+```
+
+### WebAssembly
+Requires Emscripten:
+
+```sh
+./build.sh wasm
+```
+
+### PSVita
+Requires VITASDK:
+
+```sh
+./build.sh psvita
+```
+
 ## Configuration
-
-A `settings.toml` is generated on first run under SDL's pref path (`SDL_GetPrefPath("nanodata", "armsx")`), falling back to the working directory if unavailable. CLI flags always override file settings for a session.
-
-### Settings file keys
-- `psxe_version` (string, managed by PSXE)
-
-`[bios]`
-- `search_path` (string): directory to search for BIOS files
-- `preferred_model` (string): default model (e.g. `SCPH-1001`)
-- `override_file` (string): explicit BIOS path; leave empty to use search/model
-
-`[console]`
-- `region` (string): `ntsc`, `pal`, or `auto`
-
-`[video]`
-- `texture_scale_mode` (bool): enable SDL texture scale mode; toggle bilinear via F4 when supported
-
-### CLI flags (override settings)
-`psxe [options] path-to-cdrom`
-- `-a, --use-args` : ignore settings file
-- `-b, --bios=<str>` : BIOS file
-- `-B, --bios-folder` : BIOS search folder
-- `-c, --console-source=<str>` : auto | null | kernel | atcons
-- `-e, --exp-rom=<str>` : expansion ROM file
-- `-L, --log-level=<int>` : 0=trace .. 5=fatal
-- `-M, --model=<str>` : console model (SCPH-XXXX)
-- `-r, --region=<str>` : console region
-- `-s, --scale=<int>` : display scaling factor
-- `-S, --settings-file=<str>` : settings file path
-- `-q, --quiet` : silence logs
-- `-x, --exe=<str>` : PS-X EXE to boot
-- `--cdrom=<str>` : CDROM image
-- `-h/--help` | `--help-model` | `--help-region` | `-v/--version` : info helpers
+`settings.toml` is generated on first run. CLI flags always override file settings for the current session. Some internal fields still use historical `psxe_*` names for compatibility.
 
 ## Acknowledgements
-This project uses external open source code that can be found on the following GitHub repos:
-- argparse.c: https://github.com/cofyc/argparse
-- log.c (slightly modified): https://github.com/rxi/log.c
-- tomlc99: https://github.com/cktan/tomlc99
-
-Their original licenses are respected and apply to the code in this project.
-
-As always, thanks to all original developers for their amazing work.
+ARMSX uses:
+- `argparse.c`
+- `log.c`
+- `tomlc99`
+- SDL2
+- FSUI donor / ImGui
