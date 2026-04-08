@@ -116,13 +116,6 @@ configure_target() {
 
 configure_target
 
-musl_link_atomic=0
-case "$target" in
-    arm64|arm32)
-        musl_link_atomic=1
-        ;;
-esac
-
 toolchain_dir="$(download_toolchain "$toolchain_name")"
 apk_static="$(download_apk_static)"
 python3_bin="$(command -v python3 || true)"
@@ -180,6 +173,12 @@ export PKG_CONFIG_LIBDIR="$sysroot_dir/usr/lib/pkgconfig:$sysroot_dir/usr/share/
 
 sdl_cflags="$(pkg-config --cflags sdl2)"
 sdl_libs="$(pkg-config --libs sdl2)"
+platform_extra_ldflags="-static-libstdc++ -static-libgcc"
+case "$target" in
+    arm64|arm32)
+        platform_extra_ldflags="$platform_extra_ldflags -Wl,-Bstatic -latomic -Wl,-Bdynamic"
+        ;;
+esac
 
 rm -rf "$fsui_build_dir" "$artifact_root"
 mkdir -p "$artifact_root"
@@ -207,9 +206,8 @@ make \
     FSUI_LINK_SYSTEM_GL=0 \
     SDL_CFLAGS="$sdl_cflags" \
     SDL_LIBS_DYNAMIC="$sdl_libs" \
-    MUSL_LINK_ATOMIC="$musl_link_atomic" \
     FSUI_BUILD_DIR="$fsui_build_dir" \
-    PLATFORM_EXTRA_LDFLAGS="-static-libstdc++ -static-libgcc"
+    PLATFORM_EXTRA_LDFLAGS="$platform_extra_ldflags"
 
 mkdir -p "$package_root/lib" "$package_root/icons"
 cp "$repo_root/bin/armsx" "$package_root/armsx.bin"
