@@ -175,8 +175,11 @@ sdl_cflags="$(pkg-config --cflags sdl2)"
 sdl_libs="$(pkg-config --libs sdl2)"
 platform_extra_ldflags="-static-libstdc++ -static-libgcc"
 case "$target" in
-    arm64|arm32)
+    arm32)
         platform_extra_ldflags="$platform_extra_ldflags -Wl,-Bstatic -latomic -Wl,-Bdynamic"
+        ;;
+    arm64)
+        platform_extra_ldflags="$platform_extra_ldflags -Wl,-Bstatic -latomic -lgcc -Wl,-Bdynamic"
         ;;
 esac
 

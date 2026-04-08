@@ -544,10 +544,21 @@ jobs:
           set -euo pipefail
           source "$HOME/emsdk/emsdk_env.sh"
           ./build.sh wasm
-          mkdir -p artifacts/wasm
+          rm -rf artifacts/wasm/package
+          mkdir -p artifacts/wasm/package/wasm
+          cp bin/wasm/armsx.html artifacts/wasm/package/wasm/
+          cp bin/wasm/armsx.js artifacts/wasm/package/wasm/
+          cp bin/wasm/armsx.wasm artifacts/wasm/package/wasm/
+          if [ -f bin/wasm/armsx.data ]; then
+            cp bin/wasm/armsx.data artifacts/wasm/package/wasm/
+          fi
+          if [ -d bin/wasm/icons ]; then
+            mkdir -p artifacts/wasm/package/wasm/icons
+            cp -R bin/wasm/icons/. artifacts/wasm/package/wasm/icons/
+          fi
           (
-            cd bin
-            zip -r ../artifacts/wasm/armsx-wasm.zip wasm
+            cd artifacts/wasm/package
+            zip -r ../armsx-wasm.zip wasm
           )
 
       - uses: actions/upload-artifact@v3
