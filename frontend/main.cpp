@@ -3108,6 +3108,48 @@ class ArmsxApp {
         }
     }
 
+    void refreshFileSelectorRoots() {
+        std::vector<ImGuiFullscreen::FileSelectorRootEntry> roots{
+            ImGuiFullscreen::FileSelectorRootEntry{
+                .title = "App Folder",
+                .path = DefaultBrowseDirectory().string(),
+            },
+        };
+
+#ifdef USE_CONNECTIVITY
+        if (ftp_connected_ && !ftp_root_path_.empty()) {
+            roots.push_back(ImGuiFullscreen::FileSelectorRootEntry{
+                .title = "FTP Root",
+                .path = ftp_root_path_.string(),
+            });
+        }
+#endif
+
+        ImGuiFullscreen::SetFileSelectorExtraRoots(std::move(roots));
+    }
+
+#ifdef USE_CONNECTIVITY
+    void connectFtpRoot(const std::filesystem::path& root_path) {
+        std::error_code ec;
+        if (root_path.empty() || !std::filesystem::exists(root_path, ec) || !std::filesystem::is_directory(root_path, ec)) {
+            pending_error_dialog_ = "Choose a valid folder to expose as FTP Root.";
+            return;
+        }
+
+        ftp_root_path_ = root_path;
+        ftp_connected_ = true;
+        refreshFileSelectorRoots();
+        psxe_diag_breadcrumbf("FTP root connected path=%s", ftp_root_path_.string().c_str());
+    }
+
+    void disconnectFtpRoot() {
+        ftp_connected_ = false;
+        ftp_root_path_.clear();
+        refreshFileSelectorRoots();
+        psxe_diag_breadcrumbf("FTP root disconnected");
+    }
+#endif
+
     void showLandingWindow() {
         ui_window_state_ = FsuiWindowState::Landing;
         fsui::ShowLandingWindow();
@@ -3769,12 +3811,7 @@ class ArmsxApp {
         host.get_settings_pages = [this](fsui::SettingsScope scope) { return buildSettingsPages(scope); };
 
         context.host = std::move(host);
-        ImGuiFullscreen::SetFileSelectorExtraRoots({
-            ImGuiFullscreen::FileSelectorRootEntry{
-                .title = "App Folder",
-                .path = DefaultBrowseDirectory().string(),
-            },
-        });
+        refreshFileSelectorRoots();
 
         if (!fsui::Initialize(context)) {
             return false;
@@ -4691,6 +4728,40 @@ class ArmsxApp {
             refresh.on_activate = [this]() { refreshGameList(true); };
             rows.push_back(std::move(refresh));
 
+#ifdef USE_CONNECTIVITY
+            fsui::SettingsRowDescriptor connect_ftp;
+            connect_ftp.kind = fsui::SettingsRowKind::Action;
+            connect_ftp.id = "connect-ftp";
+            connect_ftp.title = ICON_FA_PLUG " Connect FTP";
+            connect_ftp.summary = ftp_connected_
+                ? ("FTP Root is available in the file picker: " + ftp_root_path_.string())
+                : "Choose a folder to expose as FTP Root in the file picker.";
+            connect_ftp.on_activate = [this]() {
+                ImGuiFullscreen::OpenFileSelector(
+                    "Connect FTP",
+                    true,
+                    [this](const std::string& path) {
+                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
+                            connectFtpRoot(std::filesystem::path(*selection));
+                        }
+                    },
+                    {},
+                    initialBrowseDirectory().string()
+                );
+            };
+            rows.push_back(std::move(connect_ftp));
+
+            if (ftp_connected_) {
+                fsui::SettingsRowDescriptor disconnect_ftp;
+                disconnect_ftp.kind = fsui::SettingsRowKind::Action;
+                disconnect_ftp.id = "disconnect-ftp";
+                disconnect_ftp.title = ICON_FA_UNLINK " Disconnect FTP";
+                disconnect_ftp.summary = "Remove FTP Root from the file picker.";
+                disconnect_ftp.on_activate = [this]() { disconnectFtpRoot(); };
+                rows.push_back(std::move(disconnect_ftp));
+            }
+#endif
+
             auto append_folder_rows = [&](const std::vector<std::filesystem::path>& folders, bool recursive) {
                 for (size_t index = 0; index < folders.size(); index++) {
                     fsui::SettingsRowDescriptor row;
@@ -5147,6 +5218,10 @@ class ArmsxApp {
     bool managed_renderer_vsync_ = DefaultVsyncEnabled();
     uint64_t next_frame_deadline_ = 0;
     uint64_t frame_period_ticks_ = 0;
+#ifdef USE_CONNECTIVITY
+    std::filesystem::path ftp_root_path_{};
+    bool ftp_connected_ = false;
+#endif
 };
 
 std::string ModuleNameFromPath(const char* path) {

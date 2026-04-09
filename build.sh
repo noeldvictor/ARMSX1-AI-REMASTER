@@ -14,6 +14,7 @@ set -e
 MODE="$1"
 BUILD_JOBS="${BUILD_JOBS:-4}"
 export USE_CHD="${USE_CHD:-0}"
+export USE_CONNECTIVITY="${USE_CONNECTIVITY:-0}"
 
 build_fsui_native() {
     if [ "$(uname -s)" = "Darwin" ]; then
