@@ -17,6 +17,8 @@ SDL_CONFIG ?= sdl2-config
 
 CC ?= gcc
 CXX ?= g++
+AR := /usr/bin/ar
+RANLIB := /usr/bin/ranlib
 
 SDL_CFLAGS ?= $(shell $(SDL_CONFIG) --cflags 2>/dev/null)
 SDL_LIBS_DYNAMIC ?= $(shell $(SDL_CONFIG) --libs 2>/dev/null)
@@ -24,6 +26,7 @@ SDL_LIBS_STATIC ?= $(shell $(SDL_CONFIG) --static-libs 2>/dev/null || $(SDL_CONF
 SDL_STATIC ?= 1
 WASM_LDFLAGS ?=
 USE_HARDWARE ?= 0
+USE_CHD ?= 0
 HW_DEBUG ?= 0
 
 PLATFORM := $(shell uname -s)
@@ -54,8 +57,8 @@ $(error VITASDK must be set when PSVITA_TARGET=1)
 	SDL_CONFIG := $(VITASDK)/bin/arm-vita-eabi-pkg-config
 	CC := $(VITASDK)/bin/arm-vita-eabi-gcc
 	CXX := $(VITASDK)/bin/arm-vita-eabi-g++
-	AR ?= $(VITASDK)/bin/arm-vita-eabi-ar
-	RANLIB ?= $(VITASDK)/bin/arm-vita-eabi-ranlib
+	AR := $(VITASDK)/bin/arm-vita-eabi-ar
+	RANLIB := $(VITASDK)/bin/arm-vita-eabi-ranlib
 	PLATFORM := Vita
 	SDL_STATIC := 1
 endif
@@ -89,7 +92,71 @@ endif
 
 FSUI_COMPILE_DEFS = -DIMGUI_FRONTEND -DFSUI_HAS_SDL2_PLATFORM -DFSUI_HAS_SDL2SURFACE_RENDERER -DFSUI_HAS_SDL2RENDERER_RENDERER -DSDL_MAIN_HANDLED
 
+LIBCHDR_DIR := third_party/libchdr
+LIBCHDR_BUILD_DIR :=
+LIBCHDR_INCLUDE_FLAGS :=
+LIBCHDR_INPUTS :=
+LIBCHDR_ARCHIVE :=
+LIBCHDR_LIBS :=
+LIBCHDR_CONFIGURE :=
+LIBCHDR_CMAKE_ARGS :=
+CHD_COMPILE_DEFS :=
+CHD_BUILD_DEPS :=
+CHD_LINK_LIBS :=
+ifeq ($(USE_CHD),1)
+	ifeq ($(WASM_TARGET),wasm)
+		LIBCHDR_BUILD_DIR := build/libchdr/wasm
+	else ifeq ($(PSVITA_TARGET),1)
+		LIBCHDR_BUILD_DIR := build/libchdr/psvita
+	else ifeq ($(IOS_TARGET),1)
+		LIBCHDR_BUILD_DIR := build/libchdr/ios
+	else
+		LIBCHDR_BUILD_DIR := build/libchdr/native
+	endif
+
+	LIBCHDR_INCLUDE_FLAGS := -I$(LIBCHDR_DIR)/include
+	LIBCHDR_INPUTS := $(shell find $(LIBCHDR_DIR) -type f 2>/dev/null)
+	LIBCHDR_ARCHIVE := $(LIBCHDR_BUILD_DIR)/libchdr-static.a
+	LIBCHDR_LIBS := \
+		$(LIBCHDR_ARCHIVE) \
+		$(LIBCHDR_BUILD_DIR)/deps/lzma-25.01/libchdr-lzma.a \
+		$(LIBCHDR_BUILD_DIR)/deps/miniz-3.1.1/libminiz.a \
+		$(LIBCHDR_BUILD_DIR)/deps/zstd-1.5.7/libzstd.a
+	LIBCHDR_CONFIGURE := cmake
+	ifeq ($(WASM_TARGET),wasm)
+		LIBCHDR_CONFIGURE := emcmake cmake
+	endif
+
+	LIBCHDR_CMAKE_ARGS := -S $(LIBCHDR_DIR) -B $(LIBCHDR_BUILD_DIR) -DBUILD_SHARED_LIBS=OFF -DCHDR_WANT_RAW_DATA_SECTOR=ON -DCHDR_WANT_SUBCODE=ON -DCMAKE_BUILD_TYPE=Release
+	ifneq ($(strip $(CC)),)
+		LIBCHDR_CMAKE_ARGS += -DCMAKE_C_COMPILER=$(CC)
+	endif
+	ifneq ($(strip $(CXX)),)
+		LIBCHDR_CMAKE_ARGS += -DCMAKE_CXX_COMPILER=$(CXX)
+	endif
+	ifneq ($(strip $(AR)),)
+		LIBCHDR_CMAKE_ARGS += -DCMAKE_AR=$(AR)
+	endif
+	ifneq ($(strip $(RANLIB)),)
+		LIBCHDR_CMAKE_ARGS += -DCMAKE_RANLIB=$(RANLIB)
+	endif
+	ifeq ($(PLATFORM),Darwin)
+	ifneq ($(IOS_TARGET),1)
+		LIBCHDR_CMAKE_ARGS += -DCMAKE_OSX_DEPLOYMENT_TARGET=$(MACOS_DEPLOYMENT_TARGET)
+	endif
+	endif
+	ifeq ($(IOS_TARGET),1)
+		LIBCHDR_CMAKE_ARGS += -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=$(IOS_DEPLOYMENT_TARGET) -DCMAKE_OSX_SYSROOT=$(SDKROOT)
+	endif
+
+	CHD_COMPILE_DEFS := -DUSE_CHD
+	CHD_BUILD_DEPS := $(LIBCHDR_ARCHIVE)
+	CHD_LINK_LIBS := $(LIBCHDR_LIBS)
+endif
+
 BASE_CXXFLAGS = -std=c++20 $(BASE_CFLAGS) $(FSUI_INCLUDE_FLAGS) $(FSUI_COMPILE_DEFS)
+BASE_CFLAGS += $(LIBCHDR_INCLUDE_FLAGS) $(CHD_COMPILE_DEFS)
+BASE_CXXFLAGS += $(LIBCHDR_INCLUDE_FLAGS) $(CHD_COMPILE_DEFS)
 
 ifeq ($(CONTROLLER_GENERIC),1)
 	BASE_CFLAGS += -DCONTROLLER_GENERIC
@@ -198,8 +265,12 @@ C_SOURCES := $(wildcard psx/*.c) \
              frontend/config.c \
              frontend/diagnostics.c \
              frontend/toml.c
+C_SOURCES := $(filter-out psx/dev/cdrom/chd.c,$(C_SOURCES))
 ifeq ($(USE_HARDWARE),1)
 C_SOURCES += frontend/gpu_hw.c
+endif
+ifeq ($(USE_CHD),1)
+C_SOURCES += psx/dev/cdrom/chd.c
 endif
 ifeq ($(PSVITA_TARGET),1)
 C_SOURCES += frontend/vita_sdl_stubs.c
@@ -311,12 +382,19 @@ $(OBJ_DIR)/%.o: %.rc | $(OBJ_DIR)
 	mkdir -p $(dir $@)
 	$(WINDRES) -I. $< $@
 
+ifeq ($(USE_CHD),1)
+$(LIBCHDR_ARCHIVE): $(LIBCHDR_INPUTS)
+	mkdir -p $(LIBCHDR_BUILD_DIR)
+	$(LIBCHDR_CONFIGURE) $(LIBCHDR_CMAKE_ARGS)
+	cmake --build $(LIBCHDR_BUILD_DIR) -j$(BUILD_JOBS)
+endif
+
 $(RUNTIME_ICON_DEST): $(RUNTIME_ICON_SRC) | $(BIN_DIR)
 	mkdir -p $(dir $@)
 	cp $< $@
 
-$(BIN): $(ALL_OBJS) $(RUNTIME_ICON_DEST) | $(BIN_DIR)
-	$(CXX) $(ALL_OBJS) $(FSUI_LIBS) -o $(BIN) $(SDL_LIBS) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS) $(WASM_LDFLAGS)
+$(BIN): $(ALL_OBJS) $(RUNTIME_ICON_DEST) $(CHD_BUILD_DEPS) | $(BIN_DIR)
+	$(CXX) $(ALL_OBJS) $(CHD_LINK_LIBS) $(FSUI_LIBS) -o $(BIN) $(SDL_LIBS) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS) $(WASM_LDFLAGS)
 ifeq ($(WASM_TARGET),wasm)
 	@if [ ! -f "$(BIN)" ]; then \
 		echo "WASM build did not produce $(BIN)"; \
@@ -329,8 +407,8 @@ $(VITA_NATIVE_LIB): $(ALL_OBJS) $(RUNTIME_ICON_DEST) | $(BIN_DIR)
 	$(AR) rcs $@ $(ALL_OBJS)
 	$(RANLIB) $@
 
-$(SHARED_BIN): $(ALL_OBJS_SHARED) | $(BIN_DIR)
-	$(CXX) $(SHARED_LDFLAGS) $(ALL_OBJS_SHARED) $(FSUI_LIBS) -o $(SHARED_BIN) $(SDL_LIBS_SHARED) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS)
+$(SHARED_BIN): $(ALL_OBJS_SHARED) $(CHD_BUILD_DEPS) | $(BIN_DIR)
+	$(CXX) $(SHARED_LDFLAGS) $(ALL_OBJS_SHARED) $(CHD_LINK_LIBS) $(FSUI_LIBS) -o $(SHARED_BIN) $(SDL_LIBS_SHARED) $(PLATFORM_EXTRA_LDFLAGS) $(PLATFORM_EXTRA_LIBS)
 
 clean:
 	rm -rf "$(BIN_DIR)"

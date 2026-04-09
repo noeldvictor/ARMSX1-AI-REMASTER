@@ -629,7 +629,11 @@ std::string ResolveFsuiAppIconPath() {
 
 bool IsDiscPath(const std::filesystem::path& path) {
     const std::string ext = ToLower(path.extension().string());
-    return ext == ".cue" || ext == ".bin" || ext == ".iso" || ext == ".img";
+    return ext == ".cue" || ext == ".bin" || ext == ".iso" || ext == ".img"
+#ifdef USE_CHD
+        || ext == ".chd"
+#endif
+        ;
 }
 
 bool IsExePath(const std::filesystem::path& path) {
@@ -1543,7 +1547,7 @@ class ArmsxSession {
         destroy();
 
         if (!renderer) {
-            error = "SDL renderer is not initialized.";
+            error = "Display is not ready.";
             return false;
         }
 
@@ -3915,7 +3919,7 @@ class ArmsxApp {
     }
 
     void applyCommand(const fsui::Command& command) {
-        psxe_diag_breadcrumbf("FSUI command type=%d", static_cast<int>(command.type));
+        psxe_diag_breadcrumbf("Frontend command type=%d", static_cast<int>(command.type));
 
         switch (command.type) {
             case fsui::CommandType::LaunchPath:
@@ -4199,7 +4203,7 @@ class ArmsxApp {
         game_list.id = "game-list";
         game_list.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::GameList);
         game_list.title = "Game List";
-        game_list.summary = "Browse library folders and boot a title through the native SDL shell.";
+        game_list.summary = "Browse your library folders and open a game.";
         game_list.on_activate = [this]() { showGameListWindow(); };
         items.push_back(std::move(game_list));
 
@@ -4215,7 +4219,7 @@ class ArmsxApp {
         settings.id = "settings";
         settings.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::Settings);
         settings.title = "Settings";
-        settings.summary = "Edit the real ARMSX runtime, BIOS, video, and library settings.";
+        settings.summary = "Adjust ARMSX, BIOS, video, and library settings.";
         settings.on_activate = [this]() { switchToSettingsWindow(); };
         items.push_back(std::move(settings));
 
@@ -4239,7 +4243,7 @@ class ArmsxApp {
         start_file.id = "start-file";
         start_file.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::StartFile);
         start_file.title = "Start File";
-        start_file.summary = "Pick a disc image or PS-X EXE from the managed filesystem.";
+        start_file.summary = "Choose a disc image or PS-X EXE from your files.";
         start_file.on_activate = [this, default_dir]() {
             ImGuiFullscreen::OpenFileSelector(
                 "Start File",
@@ -4247,7 +4251,11 @@ class ArmsxApp {
                 [this](const std::string& path) {
                     queueLaunchSelection(path);
                 },
-                {".cue", ".bin", ".iso", ".img", ".exe", ".ps-exe", ".psexe"},
+                {".cue", ".bin", ".iso", ".img",
+#ifdef USE_CHD
+                 ".chd",
+#endif
+                 ".exe", ".ps-exe", ".psexe"},
                 default_dir.string()
             );
         };
@@ -4282,7 +4290,11 @@ class ArmsxApp {
                 [this](const std::string& path) {
                     queueLaunchSelection(path, LaunchKind::Disc);
                 },
-                {".cue", ".bin", ".iso", ".img"},
+                {".cue", ".bin", ".iso", ".img",
+#ifdef USE_CHD
+                 ".chd",
+#endif
+                },
                 default_dir.string()
             );
         };
@@ -4303,7 +4315,7 @@ class ArmsxApp {
         back.id = "back";
         back.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::Back);
         back.title = "Back";
-        back.summary = "Return to the landing screen.";
+        back.summary = "Return to the main menu.";
         back.on_activate = [this]() { showLandingWindow(); };
         items.push_back(std::move(back));
 
@@ -4325,7 +4337,7 @@ class ArmsxApp {
         back.id = "back";
         back.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::Back);
         back.title = "Back";
-        back.summary = "Return to the landing screen.";
+        back.summary = "Return to the main menu.";
         back.on_activate = [this]() { showLandingWindow(); };
         items.push_back(std::move(back));
 
@@ -4358,7 +4370,11 @@ class ArmsxApp {
                 "Change Disc",
                 false,
                 [this](const std::string& path) { queueDiscSwapSelection(path); },
-                {".cue", ".bin", ".iso", ".img"},
+                {".cue", ".bin", ".iso", ".img",
+#ifdef USE_CHD
+                 ".chd",
+#endif
+                },
                 initialBrowseDirectory().string()
             );
         };
@@ -4367,7 +4383,7 @@ class ArmsxApp {
         fsui::MenuItemDescriptor screenshot;
         screenshot.id = "screenshot";
         screenshot.title = ICON_FA_CAMERA " Save Screenshot";
-        screenshot.summary = "Write a BMP screenshot to the managed snapshot folder.";
+        screenshot.summary = "Save a BMP screenshot to the screenshot folder.";
         screenshot.on_activate = [this]() { deferred_screenshot_ = true; };
         items.push_back(std::move(screenshot));
 
@@ -4390,7 +4406,7 @@ class ArmsxApp {
         fsui::MenuItemDescriptor quit;
         quit.id = "quit-game";
         quit.title = ICON_FA_POWER_OFF " Quit Game";
-        quit.summary = "Destroy the active session and return to the FSUI shell.";
+        quit.summary = "Close the current game and return to the main menu.";
         quit.command = fsui::MakeExitToLibraryCommand();
         items.push_back(std::move(quit));
 
@@ -4440,7 +4456,7 @@ class ArmsxApp {
             model.kind = fsui::SettingsRowKind::Choice;
             model.id = "model";
             model.title = ICON_FA_MICROCHIP " Model";
-            model.summary = "Select the preferred BIOS model when using a BIOS folder.";
+            model.summary = "Choose which BIOS model to use when a BIOS folder contains more than one.";
             model.value = settings_.model;
             model.dialog_title = model.title;
             model.choices = BuildModelChoices(settings_.model);
@@ -4527,7 +4543,7 @@ class ArmsxApp {
             region.kind = fsui::SettingsRowKind::Choice;
             region.id = "region";
             region.title = ICON_FA_GLOBE " Region";
-            region.summary = "Select the firmware region policy used for disc boot.";
+            region.summary = "Choose which region the console should use when starting a disc.";
             region.value = ToLower(settings_.region);
             region.dialog_title = region.title;
             region.choices = BuildRegionChoices(settings_.region);
@@ -4605,7 +4621,7 @@ class ArmsxApp {
             browse_notice.kind = fsui::SettingsRowKind::Notice;
             browse_notice.id = "uwp-filesystem-roots";
             browse_notice.title = ICON_FA_FOLDER_OPEN " Mounted Drives";
-            browse_notice.summary = "Mounted drives are available from the file selector. Use Filesystem Roots or Parent Directory to switch drives.";
+            browse_notice.summary = "Drive roots are available in the file picker. Use Filesystem Roots or Parent Directory to switch drives.";
             rows.push_back(std::move(browse_notice));
 #endif
 
@@ -4802,11 +4818,15 @@ class ArmsxApp {
                 ImGuiFullscreen::OpenFileSelector(
                     "Change Disc",
                     false,
-                    [this](const std::string& path) { queueDiscSwapSelection(path); },
-                    {".cue", ".bin", ".iso", ".img"},
-                    initialBrowseDirectory().string()
-                );
-            };
+                [this](const std::string& path) { queueDiscSwapSelection(path); },
+                {".cue", ".bin", ".iso", ".img",
+#ifdef USE_CHD
+                 ".chd",
+#endif
+                },
+                initialBrowseDirectory().string()
+            );
+        };
             rows.push_back(std::move(disc));
 
             fsui::SettingsRowDescriptor screenshot;
@@ -4821,7 +4841,7 @@ class ArmsxApp {
             exit_library.kind = fsui::SettingsRowKind::Action;
             exit_library.id = "exit-library-now";
             exit_library.title = ICON_FA_FOLDER_OPEN " Exit To Library";
-            exit_library.summary = "Destroy the session and return to the landing screen.";
+            exit_library.summary = "Close the current game and return to the main menu.";
             exit_library.on_activate = [this]() { deferred_exit_to_library_ = true; };
             rows.push_back(std::move(exit_library));
 
@@ -4847,8 +4867,8 @@ class ArmsxApp {
             gpu_backend.id = "gpu-backend";
             gpu_backend.title = ICON_FA_TACHOMETER_ALT " GPU Backend";
             gpu_backend.summary = hardwareRendererAvailable()
-                ? "Choose the PSX rendering path. The hardware backend is experimental and applies on the next launch."
-                : "Choose the PSX rendering path. The hardware backend is unavailable on this renderer.";
+                ? "Choose how ARMSX draws the picture. The hardware backend is experimental and applies on the next launch."
+                : "Choose how ARMSX draws the picture. The hardware backend is unavailable in this display mode.";
             gpu_backend.value = GpuBackendTitle(settings_.gpu_backend);
             gpu_backend.dialog_title = gpu_backend.title;
             gpu_backend.choices = BuildGpuBackendChoices(settings_.gpu_backend);
@@ -4856,7 +4876,7 @@ class ArmsxApp {
             if (!gpu_backend.enabled) {
                 gpu_backend.availability = fsui::AvailabilityMode::Disabled;
                 gpu_backend.unavailable_title = gpu_backend.title;
-                gpu_backend.unavailable_message = "This SDL renderer does not expose the features needed for the experimental hardware backend.";
+                gpu_backend.unavailable_message = "This display mode does not support the experimental hardware backend.";
             }
             gpu_backend.on_choice = [this](int index) {
                 settings_.gpu_backend = (index == 1) ? GpuBackend::HardwareExperimental : GpuBackend::Software;
@@ -4871,7 +4891,7 @@ class ArmsxApp {
             scale.kind = fsui::SettingsRowKind::Choice;
             scale.id = "display-scale";
             scale.title = ICON_FA_EXPAND " Display Scale";
-            scale.summary = "Resize the managed desktop window.";
+            scale.summary = "Resize the app window.";
             scale.value = std::to_string(settings_.scale) + "x";
             scale.dialog_title = scale.title;
             scale.choices = BuildScaleChoices(settings_.scale);
@@ -4911,7 +4931,7 @@ class ArmsxApp {
         filter.kind = fsui::SettingsRowKind::Toggle;
         filter.id = "texture-filter";
         filter.title = ICON_FA_ADJUST " Texture Scaling / Bilinear";
-        filter.summary = "Use linear filtering for the SDL presentation texture.";
+        filter.summary = "Use smoother filtering for the display output.";
         filter.toggle_value = settings_.texture_scale_mode;
         filter.on_toggle = [this](bool value) {
             settings_.texture_scale_mode = value;
@@ -4923,7 +4943,7 @@ class ArmsxApp {
         stretch.kind = fsui::SettingsRowKind::Toggle;
         stretch.id = "stretch";
         stretch.title = ICON_FA_EXPAND_ARROWS_ALT " Stretch";
-        stretch.summary = "Fill the SDL window instead of preserving the content aspect ratio.";
+        stretch.summary = "Fill the window instead of preserving the original aspect ratio.";
         stretch.toggle_value = settings_.stretch_mode;
         stretch.on_toggle = [this](bool value) {
             settings_.stretch_mode = value;
@@ -4968,7 +4988,7 @@ class ArmsxApp {
         debug_panel.kind = fsui::SettingsRowKind::Toggle;
         debug_panel.id = "debug-panel";
         debug_panel.title = ICON_FA_TACHOMETER_ALT " Debug Panel";
-        debug_panel.summary = "Expose the FSUI runtime settings/performance overlays.";
+        debug_panel.summary = "Show the settings and performance overlays.";
         debug_panel.toggle_value = settings_.debug_panel;
         debug_panel.on_toggle = [this](bool value) {
             settings_.debug_panel = value;
@@ -4983,7 +5003,7 @@ class ArmsxApp {
             debug_view.kind = fsui::SettingsRowKind::Toggle;
             debug_view.id = "debug-view";
             debug_view.title = ICON_FA_BUG " VRAM Debug View";
-            debug_view.summary = "Render the raw PSX VRAM buffer instead of the display output.";
+            debug_view.summary = "Show raw VRAM instead of the game image.";
             debug_view.toggle_value = session_.debugView();
             debug_view.on_toggle = [this](bool value) {
                 session_.setDebugView(value);

@@ -29,7 +29,9 @@ enum {
     CD_EXT_CUE = 0,
     CD_EXT_BIN,
     CD_EXT_ISO,
+#ifdef USE_CHD
     CD_EXT_CHD,
+#endif
     CD_EXT_UNSUPPORTED
 };
 

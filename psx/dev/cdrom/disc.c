@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 
 #include "disc.h"
 #include "cue.h"
@@ -13,6 +14,9 @@ const char* disc_cd_extensions[] = {
     "cue",
     "bin",
     "iso",
+#ifdef USE_CHD
+    "chd",
+#endif
     0
 };
 
@@ -80,17 +84,28 @@ psx_disc_t* psx_disc_create(void) {
 }
 
 int disc_get_extension(const char* path) {
-    const char* ptr = &path[strlen(path) - 1];
+    char ext[16];
+    const char* ptr;
+    size_t len;
     int i = 0;
 
-    while ((*ptr != '.') && (ptr != path))
-        --ptr;
-
-    if (ptr == path)
+    if (!path || !path[0])
         return CD_EXT_UNSUPPORTED;
 
+    ptr = strrchr(path, '.');
+    if (!ptr || !ptr[1])
+        return CD_EXT_UNSUPPORTED;
+
+    len = strlen(ptr + 1);
+    if (len >= sizeof(ext))
+        return CD_EXT_UNSUPPORTED;
+
+    for (size_t index = 0; index < len; ++index)
+        ext[index] = (char)tolower((unsigned char)ptr[1 + index]);
+    ext[len] = '\0';
+
     while (disc_cd_extensions[i]) {
-        if (!strcmp(ptr + 1, disc_cd_extensions[i]))
+        if (!strcmp(ext, disc_cd_extensions[i]))
             return i;
         
         ++i;
@@ -170,6 +185,7 @@ int psx_disc_open_as(psx_disc_t* disc, const char* path, int type) {
             disc->destroy = raw_destroy;
         } break;
 
+#ifdef USE_CHD
         case CD_EXT_CHD: {
             chd_t* chd = chd_create();
 
@@ -182,13 +198,14 @@ int psx_disc_open_as(psx_disc_t* disc, const char* path, int type) {
             }
 
             disc->udata = chd;
-            disc->read_sector = (read_sector_func)chd_read;
+            disc->read_sector = (read_sector_func)chd_read_sector;
             disc->query_sector = (query_sector_func)chd_query;
             disc->get_track_number = (get_track_number_func)chd_get_track_number;
             disc->get_track_count = (get_track_count_func)chd_get_track_count;
             disc->get_track_lba = (get_track_lba_func)chd_get_track_lba;
             disc->destroy = (destroy_func)chd_destroy;
         } break;
+#endif
 
         default:
             return CDT_ERROR;

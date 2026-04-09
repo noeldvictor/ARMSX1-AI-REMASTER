@@ -6,6 +6,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=VITASDK");
     println!("cargo:rerun-if-env-changed=ARMSX_VITA_NATIVE_DIR");
     println!("cargo:rerun-if-env-changed=ARMSX_VITA_FSUI_DIR");
+    println!("cargo:rerun-if-env-changed=ARMSX_VITA_LIBCHDR_DIR");
+    println!("cargo:rerun-if-env-changed=USE_CHD");
 
     let target = env::var("TARGET").unwrap_or_default();
     if !target.contains("vita") {
@@ -38,14 +40,37 @@ fn main() {
         "libfsui_resources.a",
         "libfsui_glad.a",
     ]
-    .into_iter()
-    .map(|name| require_file(fsui_dir.join(name)))
-    .collect::<Vec<_>>();
+        .into_iter()
+        .map(|name| require_file(fsui_dir.join(name)))
+        .collect::<Vec<_>>();
+    let use_chd = env::var("USE_CHD").map(|value| value == "1").unwrap_or(false);
+    let libchdr_archives = if use_chd {
+        let libchdr_dir = env::var_os("ARMSX_VITA_LIBCHDR_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| repo_root.join("build/libchdr/psvita"));
+
+        [
+            "libchdr-static.a",
+            "deps/lzma-25.01/libchdr-lzma.a",
+            "deps/miniz-3.1.1/libminiz.a",
+            "deps/zstd-1.5.7/libzstd.a",
+        ]
+        .into_iter()
+        .map(|name| require_file(libchdr_dir.join(name)))
+        .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
 
     println!("cargo:rustc-link-search=native={}/arm-vita-eabi/lib", vitasdk);
     println!("cargo:rustc-link-lib=stdc++");
     println!("cargo:rustc-link-arg=-Wl,--start-group");
     println!("cargo:rustc-link-arg={}", native_archive.display());
+    if use_chd {
+        for archive in &libchdr_archives {
+            println!("cargo:rustc-link-arg={}", archive.display());
+        }
+    }
     for archive in &fsui_archives {
         println!("cargo:rustc-link-arg={}", archive.display());
     }

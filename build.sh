@@ -13,6 +13,7 @@ set -e
 
 MODE="$1"
 BUILD_JOBS="${BUILD_JOBS:-4}"
+export USE_CHD="${USE_CHD:-0}"
 
 build_fsui_native() {
     if [ "$(uname -s)" = "Darwin" ]; then
@@ -166,14 +167,14 @@ if [ "$MODE" = "ios" ]; then
     cmake --build build/fsui/ios -j"${BUILD_JOBS}"
     make clean
     IOS_ENV="IOS_TARGET=1 IOS_SDK=${IOS_SDK} IOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET} SDKROOT=${IOS_SDKROOT} CC=${IOS_CC} CXX=${IOS_CXX} SDL_STATIC=0 IOS_SDL_FRAMEWORK=${IOS_SDL_FRAMEWORK} FSUI_BUILD_DIR=$(pwd)/build/fsui/ios"
-    eval "make shared ${IOS_ENV}"
+    eval "make shared LIBCHDR_BUILD_DIR=$(pwd)/build/libchdr/ios ${IOS_ENV}"
     echo "Copying libarmsx.dylib to ios/Frameworks/"
     cp bin/libarmsx.dylib ios/Frameworks/
 
 elif [ "$MODE" = "shared" ]; then
     build_fsui_native
     make clean
-    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" make shared
+    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/native" make shared
 
 elif [ "$MODE" = "android" ]; then
 	    stage_android_runtime_icons
@@ -318,6 +319,7 @@ elif [ "$MODE" = "android" ]; then
         SDL_CFLAGS="${SDL_CFLAGS}" \
         SDL_LIBS_DYNAMIC="${SDL_LIBS}" \
         FSUI_BUILD_DIR="${FSUI_BUILD_ROOT}" \
+        LIBCHDR_BUILD_DIR="${REPO_ROOT}/build/libchdr/android/${ANDROID_ABI}" \
         PLATFORM=Android \
         OS_INFO=Android \
         PLATFORM_EXTRA_LDFLAGS= \
@@ -343,13 +345,14 @@ elif [ "$MODE" = "psvita" ]; then
     build_fsui_psvita
 
     make clean
-    VITASDK="${VITASDK}" PSVITA_TARGET=1 FSUI_BUILD_DIR="$(pwd)/build/fsui/psvita" make psvita-lib
+    VITASDK="${VITASDK}" PSVITA_TARGET=1 FSUI_BUILD_DIR="$(pwd)/build/fsui/psvita" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/psvita" make psvita-lib
 
     export PKG_CONFIG_ALLOW_CROSS=1
     export PKG_CONFIG="${VITASDK}/bin/arm-vita-eabi-pkg-config"
     export CARGO_TARGET_ARMV7_SONY_VITA_NEWLIBEABIHF_LINKER=arm-vita-eabi-g++
     export ARMSX_VITA_NATIVE_DIR="$(pwd)/bin/psvita"
     export ARMSX_VITA_FSUI_DIR="$(pwd)/build/fsui/psvita"
+    export ARMSX_VITA_LIBCHDR_DIR="$(pwd)/build/libchdr/psvita"
 
     cargo build \
         --manifest-path psvita/Cargo.toml \
@@ -393,19 +396,19 @@ elif [ "$MODE" = "wasm" ]; then
     build_fsui_wasm
     make clean
     if command -v emmake >/dev/null 2>&1; then
-        emmake make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm"
+        emmake make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/wasm"
     else
-        make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm"
+        make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/wasm"
     fi
 
 elif [ "$MODE" = "macosapp" ]; then
     build_fsui_native
     make clean
-    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" make
+    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/native" make
     bundle_macos_app
 
 else
     build_fsui_native
     make clean
-    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" make
+    SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/native" make
 fi

@@ -80,7 +80,7 @@ static const char g_default_settings[] =
     "    display_aspect = \"classic\" # classic | square | wide16x9\n"
     "    wide_upscale = \"480p\"      # 480p | 720p | 1080p | 1440p | 2160p\n"
     "\n"
-    "# Library folders used by the FSUI shell\n"
+    "# Library folders used by ARMSX\n"
     "[library]\n"
     "    folders = []\n"
     "    recursive_folders = []\n";
