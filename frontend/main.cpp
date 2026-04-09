@@ -3062,6 +3062,10 @@ class ArmsxApp {
 #endif
 
     bool createManagedRenderer(bool vsync_enabled) {
+#if defined(__ANDROID__)
+        SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
+        psxe_diag_logf("renderer", "Android renderer hint: forcing SDL render driver to opengles2");
+#endif
         renderer_ = SDL_CreateRenderer(window_, -1, managedRendererFlags(vsync_enabled));
         owns_renderer_ = renderer_ != nullptr;
 
@@ -3073,6 +3077,16 @@ class ArmsxApp {
                 SDL_GetError()
             );
             return false;
+        }
+
+        SDL_RendererInfo info{};
+        if (SDL_GetRendererInfo(renderer_, &info) == 0) {
+            psxe_diag_logf(
+                "renderer",
+                "Selected SDL renderer driver=%s flags=%s",
+                info.name ? info.name : "(unknown)",
+                RendererFlagsTitle(info.flags).c_str()
+            );
         }
 
         managed_renderer_vsync_ = vsync_enabled;
