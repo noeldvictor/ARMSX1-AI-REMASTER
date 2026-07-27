@@ -169,6 +169,12 @@ The cases cover source invariants, cached/reference CPU differential execution a
 
 `make test-sdl-runtime` is an optional headed host check that creates an accelerated SDL2 renderer, uploads a BGR555 texture, and presents it. It is intentionally not part of the deterministic matrix because graphical CI runners may not have a display or accelerated SDL driver.
 
+## License
+
+ARMSX-specific material owned by Moon is proprietary and all rights are reserved. No use, copying, modification, redistribution, publication, commercial exploitation, or creation of derivative works is permitted without Moon's prior express written permission.
+
+This proprietary license applies only to material Moon owns or is authorized to license. Upstream psxe code, contributor-owned portions, bundled frameworks, and third-party dependencies retain their existing licenses. See [LICENSE](LICENSE) and [LICENSES/UPSTREAM-MIT.txt](LICENSES/UPSTREAM-MIT.txt).
+
 ## Acknowledgements
 ARMSX uses:
 - `argparse.c`
