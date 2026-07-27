@@ -26,6 +26,7 @@ snap/
 *.rom
 *.o
 psxe.app
+armsx.app/
 .DS_Store
 */.DS_Store
 node_modules
