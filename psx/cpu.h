@@ -10,8 +10,20 @@
 #define PSX_CPU_FREQ 33.868800f // 33.868800 MHz
 
 struct psx_cpu_t;
+struct psx_cpu_cache_t;
 
 typedef struct psx_cpu_t psx_cpu_t;
+
+typedef enum {
+    PSX_CPU_INTERPRETER = 0,
+    PSX_CPU_CACHED_INTERPRETER = 1
+} psx_cpu_execution_mode_t;
+
+typedef struct {
+    uint64_t hits;
+    uint64_t misses;
+    uint64_t invalidations;
+} psx_cpu_cache_stats_t;
 
 typedef void (*psx_cpu_kcall_hook_t)(psx_cpu_t*);
 
@@ -153,6 +165,8 @@ struct __attribute__((__packed__)) psx_cpu_t {
 
     psx_cpu_kcall_hook_t a_function_hook;
     psx_cpu_kcall_hook_t b_function_hook;
+    psx_cpu_execution_mode_t execution_mode;
+    struct psx_cpu_cache_t* cache;
 };
 
 /*
@@ -233,6 +247,11 @@ void psx_cpu_save_state(psx_cpu_t*, FILE*);
 void psx_cpu_fetch(psx_cpu_t*);
 void psx_cpu_set_a_kcall_hook(psx_cpu_t*, psx_cpu_kcall_hook_t);
 void psx_cpu_set_b_kcall_hook(psx_cpu_t*, psx_cpu_kcall_hook_t);
+void psx_cpu_set_execution_mode(psx_cpu_t*, psx_cpu_execution_mode_t);
+psx_cpu_execution_mode_t psx_cpu_get_execution_mode(const psx_cpu_t*);
+void psx_cpu_invalidate_cache(psx_cpu_t*);
+void psx_cpu_invalidate_range(psx_cpu_t*, uint32_t, uint32_t);
+psx_cpu_cache_stats_t psx_cpu_get_cache_stats(const psx_cpu_t*);
 int psx_cpu_execute(psx_cpu_t*);
 
 /*

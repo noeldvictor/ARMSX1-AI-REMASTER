@@ -37,6 +37,8 @@ struct psx_bus_t {
     psx_mdec_t* mdec;
 
     uint32_t access_cycles;
+    psx_bus_write_observer_t write_observer;
+    void* write_observer_udata;
 };
 
 void psx_bus_init_bios(psx_bus_t*, psx_bios_t*);

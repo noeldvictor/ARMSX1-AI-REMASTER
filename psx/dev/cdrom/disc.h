@@ -49,6 +49,7 @@ typedef int (*query_sector_func)(void*, uint32_t);
 typedef int (*get_track_number_func)(void*, uint32_t);
 typedef int (*get_track_count_func)(void*);
 typedef uint32_t (*get_track_lba_func)(void*, int);
+typedef int (*read_subchannel_q_func)(void*, uint32_t, uint8_t*);
 typedef void (*destroy_func)(void*);
 
 typedef struct {
@@ -58,6 +59,7 @@ typedef struct {
     get_track_number_func get_track_number;
     get_track_count_func get_track_count;
     get_track_lba_func get_track_lba;
+    read_subchannel_q_func read_subchannel_q;
     destroy_func destroy;
 } psx_disc_t;
 
@@ -69,6 +71,7 @@ int psx_disc_query(psx_disc_t* disc, uint32_t lba);
 int psx_disc_get_track_number(psx_disc_t* disc, uint32_t lba);
 int psx_disc_get_track_count(psx_disc_t* disc);
 int psx_disc_get_track_lba(psx_disc_t* disc, int track);
+int psx_disc_read_subchannel_q(psx_disc_t* disc, uint32_t lba, uint8_t q[12]);
 void psx_disc_close(psx_disc_t* disc);
 void psx_disc_destroy(psx_disc_t* disc);
 

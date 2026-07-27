@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "bus.h"
 #include "bus_init.h"
@@ -12,12 +13,25 @@ const uint32_t g_psx_bus_region_mask_table[] = {
     0x7fffffff, 0x1fffffff, 0xffffffff, 0xffffffff
 };
 
+uint32_t psx_bus_physical_address(uint32_t addr) {
+    return addr & g_psx_bus_region_mask_table[addr >> 29];
+}
 psx_bus_t* psx_bus_create(void) {
-    return (psx_bus_t*)malloc(sizeof(psx_bus_t));
+    return (psx_bus_t*)calloc(1, sizeof(psx_bus_t));
 }
 
-// Does nothing for now
-void psx_bus_init(psx_bus_t* bus) {}
+void psx_bus_init(psx_bus_t* bus) {
+    if (bus)
+        memset(bus, 0, sizeof(*bus));
+}
+
+void psx_bus_set_write_observer(psx_bus_t* bus, psx_bus_write_observer_t observer, void* udata) {
+    if (!bus)
+        return;
+
+    bus->write_observer = observer;
+    bus->write_observer_udata = udata;
+}
 
 void psx_bus_destroy(psx_bus_t* bus) {
     free(bus);
@@ -32,13 +46,15 @@ void psx_bus_destroy(psx_bus_t* bus) {
     if (RANGE(addr, bus->dev->io_base, (bus->dev->io_base + bus->dev->io_size))) { \
         bus->access_cycles = bus->dev->bus_delay; \
         psx_ ## dev ## _write ## bits (bus->dev, addr - bus->dev->io_base, value); \
+        if (bus->write_observer) \
+            bus->write_observer(bus->write_observer_udata, addr, (bits) / 8); \
         return; \
     }
 
 uint32_t psx_bus_read32(psx_bus_t* bus, uint32_t addr) {
     uint32_t vaddr = addr;
 
-    addr &= g_psx_bus_region_mask_table[addr >> 29];
+    addr = psx_bus_physical_address(addr);
 
     if (addr & 0x3) {
         log_fatal("Unaligned 32-bit read from %08x:%08x", vaddr, addr);
@@ -75,7 +91,7 @@ uint16_t psx_bus_read16(psx_bus_t* bus, uint32_t addr) {
 
     uint32_t vaddr = addr;
 
-    addr &= g_psx_bus_region_mask_table[addr >> 29];
+    addr = psx_bus_physical_address(addr);
 
     if (addr & 0x1) {
         log_fatal("Unaligned 16-bit read from %08x:%08x", vaddr, addr);
@@ -122,7 +138,7 @@ uint8_t psx_bus_read8(psx_bus_t* bus, uint32_t addr) {
 
     // uint32_t vaddr = addr;
 
-    addr &= g_psx_bus_region_mask_table[addr >> 29];
+    addr = psx_bus_physical_address(addr);
 
     HANDLE_READ(bios, 8);
     HANDLE_READ(ram, 8);
@@ -153,7 +169,7 @@ void psx_bus_write32(psx_bus_t* bus, uint32_t addr, uint32_t value) {
 
     uint32_t vaddr = addr;
 
-    addr &= g_psx_bus_region_mask_table[addr >> 29];
+    addr = psx_bus_physical_address(addr);
 
     if (addr & 0x3) {
         log_fatal("Unaligned 32-bit write to %08x:%08x (%08x)", vaddr, addr, value);
@@ -187,7 +203,7 @@ void psx_bus_write16(psx_bus_t* bus, uint32_t addr, uint32_t value) {
 
     uint32_t vaddr = addr;
 
-    addr &= g_psx_bus_region_mask_table[addr >> 29];
+    addr = psx_bus_physical_address(addr);
 
     if (addr & 0x1) {
         log_fatal("Unaligned 16-bit write to %08x:%08x (%04x)", vaddr, addr, value);
@@ -222,7 +238,7 @@ void psx_bus_write8(psx_bus_t* bus, uint32_t addr, uint32_t value) {
 
     uint32_t vaddr = addr;
 
-    addr &= g_psx_bus_region_mask_table[addr >> 29];
+    addr = psx_bus_physical_address(addr);
 
     HANDLE_WRITE(bios, 8);
     HANDLE_WRITE(ram, 8);

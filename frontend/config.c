@@ -50,6 +50,10 @@ static const char g_default_settings[] =
     "[console]\n"
     "    region          = \"auto\"\n"
     "\n"
+    "# CPU settings\n"
+    "[cpu]\n"
+    "    execution_mode  = \"cached\" # cached | interpreter\n"
+    "\n"
     "# Runtime settings\n"
     "[runtime]\n"
     "    display_scale = 3\n"
@@ -72,7 +76,7 @@ static const char g_default_settings[] =
 #endif
     "\n"
 #ifdef USE_HARDWARE
-    "    gpu_backend = \"software\" # software | hardware\n"
+    "    gpu_backend = \"software\" # software | sdl-accelerated\n"
 #endif
     "    texture_scale_mode = false\n"
     "    debug_panel = false\n"
@@ -385,6 +389,7 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
     cfg->help_model = 0;
     cfg->help_region = 0;
     cfg->model = "scph1001";
+    cfg->cpu_engine = 1;
     cfg->scale = 3;
     cfg->psxe_version = STR(REP_VERSION);
     cfg->region = "ntsc";
@@ -431,6 +436,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int log_level = 0;
     int quiet = cfg->quiet;
     int console_source = 0;
+    int cpu_engine = cfg->cpu_engine;
     int scale = 0;
     int vsync_enabled = cfg->vsync_enabled;
 #ifdef USE_HARDWARE
@@ -451,6 +457,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     const char* psxe_version = NULL;
     const char* cd_path = NULL;
     const char* exp_path = NULL;
+    const char* cpu_engine_name = NULL;
 
     static const char *const usages[] = {
         "psxe [options] path-to-cdrom",
@@ -467,6 +474,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
         OPT_STRING  ('b', "bios"          , &bios          , "Specify a BIOS file (ignores -B, -M)", NULL, 0, 0),
         OPT_BOOLEAN ('B', "bios-folder"   , &bios_search   , "Specify a BIOS search folder", NULL, 0, 0),
         OPT_STRING  ('c', "console-source", &console_source, "Select console source (auto, null, kernel, atcons)"),
+        OPT_STRING  (0  , "cpu-engine"    , &cpu_engine_name, "Select CPU engine (cached or interpreter)", NULL, 0, 0),
         OPT_STRING  ('e', "exp-rom"       , &exp_path      , "Specify an expansion ROM file"),
         OPT_INTEGER ('L', "log-level"     , &log_level     , "Set log level"),
         OPT_STRING  ('M', "model"         , &model         , "Specify console model (SPCH-XXXX)", NULL, 0, 0),
@@ -587,6 +595,17 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
                 region = s_console_region.u.s;
         }
 
+        toml_table_t* s_cpu_table = toml_table_in(conf, "cpu");
+
+        if (s_cpu_table && !cpu_engine_name) {
+            toml_datum_t s_cpu_engine = toml_string_in(s_cpu_table, "execution_mode");
+
+            if (s_cpu_engine.ok && s_cpu_engine.u.s) {
+                cpu_engine = !strcasecmp(s_cpu_engine.u.s, "interpreter") ? 0 : 1;
+                free(s_cpu_engine.u.s);
+            }
+        }
+
         toml_table_t* s_video_table = toml_table_in(conf, "video");
 
         if (s_video_table) {
@@ -601,7 +620,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
             if (s_gpu_backend.ok && s_gpu_backend.u.s) {
                 const char* backend = s_gpu_backend.u.s;
 
-                if (!strcasecmp(backend, "hardware") || !strcasecmp(backend, "hardware (experimental)") || !strcasecmp(backend, "hw") || !strcasecmp(backend, "hw-renderer")) {
+                if (!strcasecmp(backend, "sdl-accelerated") || !strcasecmp(backend, "hardware") || !strcasecmp(backend, "hardware (experimental)") || !strcasecmp(backend, "hw") || !strcasecmp(backend, "hw-renderer")) {
                     gpu_backend = 1;
                 } else {
                     gpu_backend = 0;
@@ -719,10 +738,14 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     if (exp_path)
         cfg->exp_path = exp_path;
 
+    if (cpu_engine_name)
+        cpu_engine = !strcasecmp(cpu_engine_name, "interpreter") ? 0 : 1;
+
     if (scale)
         cfg->scale = scale;
 
     cfg->vsync_enabled = vsync_enabled;
+    cfg->cpu_engine = cpu_engine;
 #ifdef USE_HARDWARE
     cfg->gpu_backend = gpu_backend;
 #endif

@@ -68,6 +68,7 @@ extern "C" {
 #include "toml.h"
 }
 
+#include "archive.h"
 #include "IconsFontAwesome5.h"
 #ifdef USE_HARDWARE
 #include "gpu_hw.h"
@@ -103,7 +104,7 @@ constexpr bool DefaultVsyncEnabled() {
 #ifdef USE_HARDWARE
 enum class GpuBackend {
     Software = 0,
-    HardwareExperimental = 1,
+    SDLAccelerated = 1,
 };
 #endif
 
@@ -113,6 +114,7 @@ ArmsxApp* g_active_app = nullptr;
 std::atomic_bool g_crash_reporting{false};
 std::mutex g_pending_launch_lock;
 std::vector<std::string> g_pending_launch_arguments;
+std::vector<std::string> g_pending_web_errors;
 
 constexpr double kUiFrameRate = 60.0;
 
@@ -205,6 +207,32 @@ enum class LaunchKind {
     Exe,
 };
 
+const char* CpuEngineTitle(psx_cpu_execution_mode_t mode) {
+    return mode == PSX_CPU_INTERPRETER ? "Interpreter" : "Cached interpreter";
+}
+
+const char* CpuEngineSettingToken(psx_cpu_execution_mode_t mode) {
+    return mode == PSX_CPU_INTERPRETER ? "interpreter" : "cached";
+}
+
+std::optional<psx_cpu_execution_mode_t> ParseCpuEngine(const char* value) {
+    if (!value || !value[0]) {
+        return std::nullopt;
+    }
+
+    std::string lowered(value);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    if (lowered == "interpreter" || lowered == "reference") {
+        return PSX_CPU_INTERPRETER;
+    }
+    if (lowered == "cached" || lowered == "cached-interpreter") {
+        return PSX_CPU_CACHED_INTERPRETER;
+    }
+    return std::nullopt;
+}
+
 const char* LaunchKindTitle(LaunchKind kind) {
     switch (kind) {
         case LaunchKind::Bios: return "bios";
@@ -228,6 +256,7 @@ struct CliFlags {
     bool exp_rom = false;
     bool exe = false;
     bool cdrom = false;
+    bool cpu_engine = false;
     bool has_boot_request = false;
 };
 
@@ -253,6 +282,21 @@ std::vector<std::string> DrainPendingLaunchArguments() {
     return pending;
 }
 
+void EnqueueWebError(std::string message) {
+    if (message.empty()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_pending_launch_lock);
+    g_pending_web_errors.push_back(std::move(message));
+}
+
+std::vector<std::string> DrainWebErrors() {
+    std::lock_guard<std::mutex> lock(g_pending_launch_lock);
+    std::vector<std::string> pending;
+    pending.swap(g_pending_web_errors);
+    return pending;
+}
+
 struct FrontendSettings {
     std::string settings_path;
     std::string bios_override;
@@ -266,6 +310,7 @@ struct FrontendSettings {
     bool quiet = true;
     bool logging_enabled = false;
     bool vsync_enabled = DefaultVsyncEnabled();
+    psx_cpu_execution_mode_t cpu_engine = PSX_CPU_CACHED_INTERPRETER;
 #ifdef USE_HARDWARE
     GpuBackend gpu_backend = GpuBackend::Software;
 #endif
@@ -641,6 +686,10 @@ bool IsExePath(const std::filesystem::path& path) {
     return ext == ".exe" || ext == ".ps-exe" || ext == ".psexe";
 }
 
+bool IsZipPath(const std::filesystem::path& path) {
+    return armsx::IsZipPath(path);
+}
+
 std::string StemToTitle(const std::filesystem::path& path) {
     std::string value = path.stem().string();
 
@@ -715,27 +764,23 @@ std::string RendererValueTitle(const FrontendSettings& settings) {
 
 #ifdef USE_HARDWARE
 constexpr bool SupportsHardwareGpuBackend() {
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || defined(IOS_TARGET) || defined(UWP_TARGET) || defined(PSVITA_TARGET)
-    return false;
-#else
     return true;
-#endif
 }
 
 const char* GpuBackendTitle(GpuBackend backend) {
     switch (backend) {
-        case GpuBackend::HardwareExperimental:
-            return "Hardware (experimental)";
+        case GpuBackend::SDLAccelerated:
+            return "SDL accelerated";
         case GpuBackend::Software:
         default:
-            return "Software";
+            return "SDL software";
     }
 }
 
 const char* GpuBackendSettingToken(GpuBackend backend) {
     switch (backend) {
-        case GpuBackend::HardwareExperimental:
-            return "hardware";
+        case GpuBackend::SDLAccelerated:
+            return "sdl-accelerated";
         case GpuBackend::Software:
         default:
             return "software";
@@ -748,8 +793,8 @@ std::optional<GpuBackend> ParseGpuBackendOverride(const char* value) {
     }
 
     const std::string lowered = ToLower(value);
-    if (lowered == "hardware" || lowered == "hardware (experimental)" || lowered == "hw" || lowered == "hw-renderer") {
-        return GpuBackend::HardwareExperimental;
+    if (lowered == "sdl-accelerated" || lowered == "hardware" || lowered == "hardware (experimental)" || lowered == "hw" || lowered == "hw-renderer") {
+        return GpuBackend::SDLAccelerated;
     }
 
     if (lowered == "software" || lowered == "sw" || lowered == "sw-renderer") {
@@ -970,7 +1015,26 @@ LaunchRequest LaunchForArgument(std::string_view argument, std::optional<LaunchK
     if (StartsWithCaseInsensitive(trimmed, "armsx:")) {
         request = LaunchForUri(trimmed);
     } else {
-        request = LaunchForPath(std::filesystem::path(trimmed));
+        const std::filesystem::path path(trimmed);
+#ifdef USE_CHD
+        if (IsZipPath(path)) {
+            std::string archive_error;
+            const auto extracted = armsx::ExtractZipLaunchCandidate(path, archive_error);
+            if (!extracted.has_value()) {
+                psxe_diag_logf(
+                    "launch",
+                    "ZIP launch failed path=%s error=%s",
+                    path.string().c_str(),
+                    archive_error.c_str()
+                );
+                return request;
+            }
+            request = LaunchForPath(*extracted);
+        } else
+#endif
+        {
+            request = LaunchForPath(path);
+        }
     }
 
     if (request.kind == LaunchKind::None) {
@@ -1002,11 +1066,18 @@ std::vector<fsui::SettingsChoiceOption> BuildChoices(const std::vector<std::stri
     return options;
 }
 
+std::vector<fsui::SettingsChoiceOption> BuildCpuEngineChoices(psx_cpu_execution_mode_t mode) {
+    return BuildChoices(
+        {"Cached interpreter", "Reference interpreter"},
+        mode == PSX_CPU_INTERPRETER ? 1 : 0
+    );
+}
+
 #ifdef USE_HARDWARE
 std::vector<fsui::SettingsChoiceOption> BuildGpuBackendChoices(GpuBackend current_backend) {
     return BuildChoices(
-        {"Software", "Hardware (experimental)"},
-        static_cast<int>(current_backend == GpuBackend::HardwareExperimental ? 1 : 0)
+        {"SDL software", "SDL accelerated"},
+        static_cast<int>(current_backend == GpuBackend::SDLAccelerated ? 1 : 0)
     );
 }
 #endif
@@ -1172,6 +1243,7 @@ CliFlags ScanCliFlags(int argc, const char* argv[]) {
             mark_value_opt("-L", "--log-level", &flags.log_level) ||
             mark_value_opt("-e", "--exp-rom", &flags.exp_rom) ||
             mark_value_opt("-x", "--exe", &flags.exe) ||
+            mark_value_opt("", "--cpu-engine", &flags.cpu_engine) ||
             mark_value_opt("", "--cdrom", &flags.cdrom)) {
             continue;
         }
@@ -1372,8 +1444,14 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
     settings.quiet = cfg ? (cfg->quiet != 0) : true;
     settings.logging_enabled = !settings.quiet;
     settings.vsync_enabled = cfg ? (cfg->vsync_enabled != 0) : DefaultVsyncEnabled();
+    settings.cpu_engine = cfg && !cfg->cpu_engine ? PSX_CPU_INTERPRETER : PSX_CPU_CACHED_INTERPRETER;
+    if (const char* env_cpu_engine = std::getenv("ARMSX_CPU_ENGINE")) {
+        if (std::optional<psx_cpu_execution_mode_t> parsed = ParseCpuEngine(env_cpu_engine)) {
+            settings.cpu_engine = *parsed;
+        }
+    }
 #if defined(USE_HARDWARE)
-    settings.gpu_backend = cfg && cfg->gpu_backend ? GpuBackend::HardwareExperimental : GpuBackend::Software;
+    settings.gpu_backend = cfg && cfg->gpu_backend ? GpuBackend::SDLAccelerated : GpuBackend::Software;
     if (const char* env_backend = std::getenv("ARMSX_GPU_BACKEND")) {
         env_gpu_backend = ParseGpuBackendOverride(env_backend);
     }
@@ -1453,6 +1531,8 @@ bool SaveSettings(const FrontendSettings& settings) {
         << "    override_file   = \"" << EscapeTomlString(settings.bios_override) << "\"\n\n"
         << "[console]\n"
         << "    region          = \"" << EscapeTomlString(settings.region) << "\"\n\n"
+        << "[cpu]\n"
+        << "    execution_mode  = \"" << CpuEngineSettingToken(settings.cpu_engine) << "\"\n\n"
         << "[runtime]\n"
         << "    display_scale = " << settings.scale << "\n"
         << "    logging_enabled = " << (settings.logging_enabled ? "true" : "false") << "\n"
@@ -1582,6 +1662,9 @@ class ArmsxSession {
             return false;
         }
 
+        psx_cpu_set_execution_mode(psx_get_cpu(psx_), settings.cpu_engine);
+        psxe_diag_logf("cpu", "execution engine=%s", CpuEngineSettingToken(settings.cpu_engine));
+
         psx_gpu_t* gpu = psx_get_gpu(psx_);
         psx_gpu_set_event_callback(gpu, GPU_EVENT_DMODE, nullptr);
         psx_gpu_set_event_callback(gpu, GPU_EVENT_VBLANK, SessionVblankEvent);
@@ -1593,21 +1676,19 @@ class ArmsxSession {
         psx_gpu_set_udata(gpu, 2, nullptr);
 
 #ifdef USE_HARDWARE
-        hardware_backend_active_ = settings.gpu_backend == GpuBackend::HardwareExperimental;
+        hardware_backend_active_ = settings.gpu_backend == GpuBackend::SDLAccelerated;
         if (hardware_backend_active_) {
-            if (!SupportsHardwareGpuBackend()) {
-                psxe_diag_logf("renderer", "Hardware GPU backend requested but not supported on this platform; falling back to software.");
+            SDL_RendererInfo renderer_info{};
+            if (SDL_GetRendererInfo(renderer_, &renderer_info) != 0 ||
+                !(renderer_info.flags & SDL_RENDERER_ACCELERATED)) {
+                psxe_diag_logf("renderer", "SDL acceleration requested but unavailable; using SDL software presentation.");
                 hardware_backend_active_ = false;
             } else {
-                hw_renderer_ = armsx_hw_renderer_create(renderer_);
-                if (!hw_renderer_) {
-                    psxe_diag_logf("renderer", "Hardware GPU backend requested but failed to initialize; falling back to software.");
-                    hardware_backend_active_ = false;
-                } else {
-                    psx_gpu_set_udata(gpu, 2, hw_renderer_);
-                    gpu->renderer.render_triangle = gpu_hw_render_triangle;
-                    psxe_diag_logf("renderer", "Hardware GPU backend enabled (experimental).");
-                }
+                psxe_diag_logf(
+                    "renderer",
+                    "SDL accelerated presentation enabled driver=%s; PlayStation VRAM remains software-authoritative.",
+                    renderer_info.name ? renderer_info.name : "(unknown)"
+                );
             }
         }
 #endif
@@ -1756,6 +1837,7 @@ class ArmsxSession {
             SDL_DestroyTexture(texture_);
             texture_ = nullptr;
         }
+        texture_snapshot_.clear();
 
 #ifdef USE_HARDWARE
         if (hw_renderer_) {
@@ -1821,6 +1903,7 @@ class ArmsxSession {
             SDL_DestroyTexture(texture_);
             texture_ = nullptr;
         }
+        texture_snapshot_.clear();
         texture_width_ = 0;
         texture_height_ = 0;
         texture_format_ = SDL_PIXELFORMAT_UNKNOWN;
@@ -2041,6 +2124,7 @@ class ArmsxSession {
             texture_width_ = next_width;
             texture_height_ = next_height;
             texture_format_ = next_format;
+            texture_snapshot_.clear();
 
 #ifdef USE_HARDWARE
             if (hw_renderer_) {
@@ -2064,8 +2148,41 @@ class ArmsxSession {
         }
 
         void* display_buffer = use_vram_source ? psx_get_vram(psx_) : psx_get_display_buffer(psx_);
+        const int bytes_per_pixel = SDL_BYTESPERPIXEL(texture_format_);
+        const size_t row_bytes = static_cast<size_t>(texture_width_) * static_cast<size_t>(bytes_per_pixel);
+        const size_t snapshot_size = static_cast<size_t>(PSX_GPU_FB_STRIDE) * static_cast<size_t>(texture_height_);
+        const auto* source = static_cast<const uint8_t*>(display_buffer);
 
-        SDL_UpdateTexture(texture_, nullptr, display_buffer, PSX_GPU_FB_STRIDE);
+        int first_dirty_row = 0;
+        int last_dirty_row = texture_height_ - 1;
+        if (texture_snapshot_.size() == snapshot_size) {
+            first_dirty_row = texture_height_;
+            last_dirty_row = -1;
+            for (int row = 0; row < texture_height_; ++row) {
+                const size_t offset = static_cast<size_t>(row) * static_cast<size_t>(PSX_GPU_FB_STRIDE);
+                if (std::memcmp(source + offset, texture_snapshot_.data() + offset, row_bytes) != 0) {
+                    first_dirty_row = std::min(first_dirty_row, row);
+                    last_dirty_row = row;
+                }
+            }
+        } else {
+            texture_snapshot_.assign(snapshot_size, 0);
+        }
+
+        if (last_dirty_row >= first_dirty_row) {
+            SDL_Rect dirty_rect{
+                0,
+                first_dirty_row,
+                texture_width_,
+                last_dirty_row - first_dirty_row + 1,
+            };
+            const size_t first_offset = static_cast<size_t>(first_dirty_row) * static_cast<size_t>(PSX_GPU_FB_STRIDE);
+            SDL_UpdateTexture(texture_, &dirty_rect, source + first_offset, PSX_GPU_FB_STRIDE);
+            for (int row = first_dirty_row; row <= last_dirty_row; ++row) {
+                const size_t offset = static_cast<size_t>(row) * static_cast<size_t>(PSX_GPU_FB_STRIDE);
+                std::memcpy(texture_snapshot_.data() + offset, source + offset, row_bytes);
+            }
+        }
     }
 
     void draw(const FrontendSettings& settings) {
@@ -2422,6 +2539,7 @@ class ArmsxSession {
     psx_input_t* input_ = nullptr;
     psxi_sda_t* pad_device_ = nullptr;
     SDL_Texture* texture_ = nullptr;
+    std::vector<uint8_t> texture_snapshot_;
 #ifdef USE_HARDWARE
     armsx_hw_renderer_t* hw_renderer_ = nullptr;
 #endif
@@ -2982,6 +3100,18 @@ class ArmsxApp {
 #endif
     }
 
+    void requestWebFiles(bool directory) {
+#if defined(__EMSCRIPTEN__)
+        if (directory) {
+            EM_ASM({ window.ARMSXWebFiles.openDirectory(); });
+        } else {
+            EM_ASM({ window.ARMSXWebFiles.openFiles(); });
+        }
+#else
+        (void)directory;
+#endif
+    }
+
     void queueLaunchArgument(std::string_view argument, bool close_ui, const char* error_message = "Unsupported launch path or URI.") {
         const LaunchRequest request = LaunchForArgument(argument);
         psxe_diag_logf("launch", "Launch argument=%s kind=%s", std::string(argument).c_str(), LaunchKindTitle(request.kind));
@@ -2997,6 +3127,12 @@ class ArmsxApp {
     }
 
     void consumePendingLaunchArguments() {
+        for (const std::string& message : DrainWebErrors()) {
+            pending_error_dialog_ = message;
+            if (!session_.valid()) {
+                showLandingWindow();
+            }
+        }
         for (const std::string& argument : DrainPendingLaunchArguments()) {
             queueLaunchArgument(argument, true);
         }
@@ -3033,7 +3169,9 @@ class ArmsxApp {
     }
 
     Uint32 managedRendererFlags(bool vsync_enabled) const {
-        Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
+        Uint32 renderer_flags = settings_.gpu_backend == GpuBackend::SDLAccelerated
+            ? SDL_RENDERER_ACCELERATED
+            : SDL_RENDERER_SOFTWARE;
 #if !defined(__EMSCRIPTEN__)
         if (vsync_enabled) {
             renderer_flags |= SDL_RENDERER_PRESENTVSYNC;
@@ -3044,30 +3182,32 @@ class ArmsxApp {
 
 #ifdef USE_HARDWARE
     bool hardwareRendererAvailable() const {
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || defined(IOS_TARGET) || defined(UWP_TARGET) || defined(PSVITA_TARGET)
-        return false;
-#else
-        if (!owns_renderer_ || external_renderer_ || !renderer_ || !armsx_hw_renderer_is_supported()) {
+        if (!owns_renderer_ || external_renderer_ || !renderer_) {
             return false;
         }
-
-        SDL_RendererInfo info{};
-        if (SDL_GetRendererInfo(renderer_, &info) != 0) {
-            return false;
-        }
-
-        return (info.flags & SDL_RENDERER_ACCELERATED) && (info.flags & SDL_RENDERER_TARGETTEXTURE);
-#endif
+        return SupportsHardwareGpuBackend();
     }
 #endif
 
     bool createManagedRenderer(bool vsync_enabled) {
-#if defined(__ANDROID__)
-        SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengles2");
-        psxe_diag_logf("renderer", "Android renderer hint: forcing SDL render driver to opengles2");
-#endif
         renderer_ = SDL_CreateRenderer(window_, -1, managedRendererFlags(vsync_enabled));
         owns_renderer_ = renderer_ != nullptr;
+
+        if (!renderer_ && settings_.gpu_backend == GpuBackend::SDLAccelerated) {
+            psxe_diag_logf(
+                "renderer",
+                "SDL accelerated renderer unavailable error=%s; retrying software renderer.",
+                SDL_GetError()
+            );
+            Uint32 fallback_flags = SDL_RENDERER_SOFTWARE;
+#if !defined(__EMSCRIPTEN__)
+            if (vsync_enabled) {
+                fallback_flags |= SDL_RENDERER_PRESENTVSYNC;
+            }
+#endif
+            renderer_ = SDL_CreateRenderer(window_, -1, fallback_flags);
+            owns_renderer_ = renderer_ != nullptr;
+        }
 
         if (!renderer_) {
             psxe_diag_logf(
@@ -3116,39 +3256,8 @@ class ArmsxApp {
             },
         };
 
-#ifdef USE_CONNECTIVITY
-        if (ftp_connected_ && !ftp_root_path_.empty()) {
-            roots.push_back(ImGuiFullscreen::FileSelectorRootEntry{
-                .title = "FTP Root",
-                .path = ftp_root_path_.string(),
-            });
-        }
-#endif
-
         ImGuiFullscreen::SetFileSelectorExtraRoots(std::move(roots));
     }
-
-#ifdef USE_CONNECTIVITY
-    void connectFtpRoot(const std::filesystem::path& root_path) {
-        std::error_code ec;
-        if (root_path.empty() || !std::filesystem::exists(root_path, ec) || !std::filesystem::is_directory(root_path, ec)) {
-            pending_error_dialog_ = "Choose a valid folder to expose as FTP Root.";
-            return;
-        }
-
-        ftp_root_path_ = root_path;
-        ftp_connected_ = true;
-        refreshFileSelectorRoots();
-        psxe_diag_breadcrumbf("FTP root connected path=%s", ftp_root_path_.string().c_str());
-    }
-
-    void disconnectFtpRoot() {
-        ftp_connected_ = false;
-        ftp_root_path_.clear();
-        refreshFileSelectorRoots();
-        psxe_diag_breadcrumbf("FTP root disconnected");
-    }
-#endif
 
     void showLandingWindow() {
         ui_window_state_ = FsuiWindowState::Landing;
@@ -4296,6 +4405,9 @@ class ArmsxApp {
         start_file.title = "Start File";
         start_file.summary = "Choose a disc image or PS-X EXE from your files.";
         start_file.on_activate = [this, default_dir]() {
+#if defined(__EMSCRIPTEN__)
+            requestWebFiles(false);
+#else
             ImGuiFullscreen::OpenFileSelector(
                 "Start File",
                 false,
@@ -4309,6 +4421,7 @@ class ArmsxApp {
                  ".exe", ".ps-exe", ".psexe"},
                 default_dir.string()
             );
+#endif
         };
         items.push_back(std::move(start_file));
 
@@ -4335,6 +4448,9 @@ class ArmsxApp {
         start_disc.title = "Start Disc";
         start_disc.summary = "Pick a disc image directly.";
         start_disc.on_activate = [this, default_dir]() {
+#if defined(__EMSCRIPTEN__)
+            requestWebFiles(false);
+#else
             ImGuiFullscreen::OpenFileSelector(
                 "Start Disc",
                 false,
@@ -4348,8 +4464,19 @@ class ArmsxApp {
                 },
                 default_dir.string()
             );
+#endif
         };
         items.push_back(std::move(start_disc));
+
+#if defined(__EMSCRIPTEN__)
+        fsui::MenuItemDescriptor start_folder;
+        start_folder.id = "start-web-folder";
+        start_folder.icon_path = fsui::GetBuiltInStartupIconPath(fsui::BuiltInStartupIcon::StartFile);
+        start_folder.title = "Open Game Folder";
+        start_folder.summary = "Grant temporary access to a folder and start a discovered game.";
+        start_folder.on_activate = [this]() { requestWebFiles(true); };
+        items.push_back(std::move(start_folder));
+#endif
 
         fsui::MenuItemDescriptor start_bios;
         start_bios.id = "start-bios";
@@ -4590,6 +4717,20 @@ class ArmsxApp {
         emulation_page.build_rows = [this]() {
             std::vector<fsui::SettingsRowDescriptor> rows;
 
+            fsui::SettingsRowDescriptor cpu_engine;
+            cpu_engine.kind = fsui::SettingsRowKind::Choice;
+            cpu_engine.id = "cpu-engine";
+            cpu_engine.title = ICON_FA_MICROCHIP " CPU Engine";
+            cpu_engine.summary = "Use the cached interpreter for normal play or the reference interpreter for compatibility diagnostics. Applies on the next launch.";
+            cpu_engine.value = CpuEngineTitle(settings_.cpu_engine);
+            cpu_engine.dialog_title = cpu_engine.title;
+            cpu_engine.choices = BuildCpuEngineChoices(settings_.cpu_engine);
+            cpu_engine.on_choice = [this](int index) {
+                settings_.cpu_engine = index == 1 ? PSX_CPU_INTERPRETER : PSX_CPU_CACHED_INTERPRETER;
+                SaveSettings(settings_);
+            };
+            rows.push_back(std::move(cpu_engine));
+
             fsui::SettingsRowDescriptor region;
             region.kind = fsui::SettingsRowKind::Choice;
             region.id = "region";
@@ -4727,40 +4868,6 @@ class ArmsxApp {
             refresh.summary = "Rescan every configured library folder.";
             refresh.on_activate = [this]() { refreshGameList(true); };
             rows.push_back(std::move(refresh));
-
-#ifdef USE_CONNECTIVITY
-            fsui::SettingsRowDescriptor connect_ftp;
-            connect_ftp.kind = fsui::SettingsRowKind::Action;
-            connect_ftp.id = "connect-ftp";
-            connect_ftp.title = ICON_FA_PLUG " Connect FTP";
-            connect_ftp.summary = ftp_connected_
-                ? ("FTP Root is available in the file picker: " + ftp_root_path_.string())
-                : "Choose a folder to expose as FTP Root in the file picker.";
-            connect_ftp.on_activate = [this]() {
-                ImGuiFullscreen::OpenFileSelector(
-                    "Connect FTP",
-                    true,
-                    [this](const std::string& path) {
-                        if (const std::optional<std::string> selection = NormalizedPickerSelection(path)) {
-                            connectFtpRoot(std::filesystem::path(*selection));
-                        }
-                    },
-                    {},
-                    initialBrowseDirectory().string()
-                );
-            };
-            rows.push_back(std::move(connect_ftp));
-
-            if (ftp_connected_) {
-                fsui::SettingsRowDescriptor disconnect_ftp;
-                disconnect_ftp.kind = fsui::SettingsRowKind::Action;
-                disconnect_ftp.id = "disconnect-ftp";
-                disconnect_ftp.title = ICON_FA_UNLINK " Disconnect FTP";
-                disconnect_ftp.summary = "Remove FTP Root from the file picker.";
-                disconnect_ftp.on_activate = [this]() { disconnectFtpRoot(); };
-                rows.push_back(std::move(disconnect_ftp));
-            }
-#endif
 
             auto append_folder_rows = [&](const std::vector<std::filesystem::path>& folders, bool recursive) {
                 for (size_t index = 0; index < folders.size(); index++) {
@@ -4952,8 +5059,8 @@ class ArmsxApp {
             gpu_backend.id = "gpu-backend";
             gpu_backend.title = ICON_FA_TACHOMETER_ALT " GPU Backend";
             gpu_backend.summary = hardwareRendererAvailable()
-                ? "Choose how ARMSX draws the picture. The hardware backend is experimental and applies on the next launch."
-                : "Choose how ARMSX draws the picture. The hardware backend is unavailable in this display mode.";
+                ? "Choose SDL software or accelerated presentation. PlayStation GPU rasterization remains accuracy-first in software. Applies on the next launch."
+                : "SDL renderer selection is controlled by the embedding host in this display mode.";
             gpu_backend.value = GpuBackendTitle(settings_.gpu_backend);
             gpu_backend.dialog_title = gpu_backend.title;
             gpu_backend.choices = BuildGpuBackendChoices(settings_.gpu_backend);
@@ -4961,10 +5068,10 @@ class ArmsxApp {
             if (!gpu_backend.enabled) {
                 gpu_backend.availability = fsui::AvailabilityMode::Disabled;
                 gpu_backend.unavailable_title = gpu_backend.title;
-                gpu_backend.unavailable_message = "This display mode does not support the experimental hardware backend.";
+                gpu_backend.unavailable_message = "This embedding host owns the SDL renderer.";
             }
             gpu_backend.on_choice = [this](int index) {
-                settings_.gpu_backend = (index == 1) ? GpuBackend::HardwareExperimental : GpuBackend::Software;
+                settings_.gpu_backend = (index == 1) ? GpuBackend::SDLAccelerated : GpuBackend::Software;
                 SaveSettings(settings_);
             };
             rows.push_back(std::move(gpu_backend));
@@ -5218,10 +5325,6 @@ class ArmsxApp {
     bool managed_renderer_vsync_ = DefaultVsyncEnabled();
     uint64_t next_frame_deadline_ = 0;
     uint64_t frame_period_ticks_ = 0;
-#ifdef USE_CONNECTIVITY
-    std::filesystem::path ftp_root_path_{};
-    bool ftp_connected_ = false;
-#endif
 };
 
 std::string ModuleNameFromPath(const char* path) {
@@ -5366,6 +5469,12 @@ extern "C" PSXE_API void psxe_wasm_on_file(const char* path) {
     }
 
     psxe_enqueue_launch_argument(path);
+}
+
+extern "C" PSXE_API void psxe_wasm_on_error(const char* message) {
+    const char* text = message && *message ? message : "Unknown browser file error.";
+    psxe_diag_logf("web", "Browser file access failed: %s", text);
+    EnqueueWebError(text);
 }
 
 #if defined(__ANDROID__)

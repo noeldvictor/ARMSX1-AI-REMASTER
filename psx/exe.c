@@ -27,6 +27,8 @@ int psx_exe_load(psx_cpu_t* cpu, const char* path) {
     if (!fread(cpu->bus->ram->buf + offset, 1, hdr.filesz, file))
         return 3;
 
+    psx_cpu_invalidate_range(cpu, offset, hdr.filesz);
+
     // Load initial register values
     cpu->pc = hdr.ipc;
     cpu->next_pc = cpu->pc + 4;

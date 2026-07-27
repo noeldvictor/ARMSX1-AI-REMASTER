@@ -14,6 +14,7 @@ typedef struct {
     int log_level;
     int quiet;
     int console_source;
+    int cpu_engine;
     int scale;
     int vsync_enabled;
 #ifdef USE_HARDWARE

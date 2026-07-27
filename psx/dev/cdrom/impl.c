@@ -417,12 +417,26 @@ void cdrom_cmd_getlocl(psx_cdrom_t* cdrom) {
 
 void cdrom_cmd_getlocp(psx_cdrom_t* cdrom) {
     int lba = cdrom->lba;
-
     int track = psx_disc_get_track_number(cdrom->disc, lba);
     int track_lba = psx_disc_get_track_lba(cdrom->disc, track);
 
     if (!cdrom->seek_precision)
         lba -= 25;
+
+    uint8_t subq[12];
+    if (lba >= 0 && psx_disc_read_subchannel_q(cdrom->disc, (uint32_t)lba, subq)) {
+        cdrom_set_int(cdrom, 3);
+        queue_push(cdrom->response, subq[1]);
+        queue_push(cdrom->response, subq[2]);
+        queue_push(cdrom->response, subq[3]);
+        queue_push(cdrom->response, subq[4]);
+        queue_push(cdrom->response, subq[5]);
+        queue_push(cdrom->response, subq[7]);
+        queue_push(cdrom->response, subq[8]);
+        queue_push(cdrom->response, subq[9]);
+        cdrom_restore_state(cdrom);
+        return;
+    }
 
     int32_t diff = lba - track_lba;
 

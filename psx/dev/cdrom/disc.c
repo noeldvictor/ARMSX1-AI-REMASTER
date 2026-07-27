@@ -203,6 +203,7 @@ int psx_disc_open_as(psx_disc_t* disc, const char* path, int type) {
             disc->get_track_number = (get_track_number_func)chd_get_track_number;
             disc->get_track_count = (get_track_count_func)chd_get_track_count;
             disc->get_track_lba = (get_track_lba_func)chd_get_track_lba;
+            disc->read_subchannel_q = (read_subchannel_q_func)chd_read_subchannel_q;
             disc->destroy = (destroy_func)chd_destroy;
         } break;
 #endif
@@ -240,6 +241,13 @@ int psx_disc_get_track_count(psx_disc_t* disc) {
 
 int psx_disc_get_track_lba(psx_disc_t* disc, int track) {
     return disc->get_track_lba(disc->udata, track);
+}
+
+int psx_disc_read_subchannel_q(psx_disc_t* disc, uint32_t lba, uint8_t q[12]) {
+    if (!disc || !disc->read_subchannel_q || !q)
+        return 0;
+
+    return disc->read_subchannel_q(disc->udata, lba, q);
 }
 
 void psx_disc_destroy(psx_disc_t* disc) {

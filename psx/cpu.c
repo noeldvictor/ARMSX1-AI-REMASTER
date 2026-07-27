@@ -2,10 +2,37 @@
 #include "bus.h"
 #include "log.h"
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include "cpu_debug.h"
+
+#define PSX_CPU_CACHE_ENTRY_COUNT 16384u
+#define PSX_CPU_CACHE_ENTRY_MASK (PSX_CPU_CACHE_ENTRY_COUNT - 1u)
+
+typedef int (*psx_cpu_cached_handler_t)(psx_cpu_t*);
+
+typedef struct {
+    uint32_t address;
+    uint32_t opcode;
+    psx_cpu_cached_handler_t handler;
+    uint8_t valid;
+} psx_cpu_cache_entry_t;
+
+struct psx_cpu_cache_t {
+    psx_cpu_cache_entry_t entries[PSX_CPU_CACHE_ENTRY_COUNT];
+    psx_cpu_cache_stats_t stats;
+};
+
+static int psx_cpu_execute_cached(psx_cpu_t*);
+
+static uint32_t psx_cpu_cache_index(uint32_t address) {
+    return (address >> 2) & PSX_CPU_CACHE_ENTRY_MASK;
+}
+
+static void psx_cpu_bus_write_observer(void* udata, uint32_t address, uint32_t size) {
+    psx_cpu_invalidate_range((psx_cpu_t*)udata, address, size);
+}
 
 static const uint32_t g_psx_cpu_cop0_write_mask_table[] = {
     0x00000000, // cop0r0   - N/A
@@ -155,13 +182,29 @@ void cpu_b_kcall_hook(psx_cpu_t* cpu) {
 }
 
 psx_cpu_t* psx_cpu_create(void) {
-    return (psx_cpu_t*)malloc(sizeof(psx_cpu_t));
+    psx_cpu_t* cpu = (psx_cpu_t*)calloc(1, sizeof(*cpu));
+
+    if (!cpu)
+        return NULL;
+
+    cpu->cache = (struct psx_cpu_cache_t*)calloc(1, sizeof(*cpu->cache));
+    if (!cpu->cache) {
+        free(cpu);
+        return NULL;
+    }
+
+    cpu->execution_mode = PSX_CPU_CACHED_INTERPRETER;
+    return cpu;
 }
 
 void cpu_a_kcall_hook(psx_cpu_t*);
 void cpu_b_kcall_hook(psx_cpu_t*);
 
 void psx_cpu_destroy(psx_cpu_t* cpu) {
+    if (!cpu)
+        return;
+
+    free(cpu->cache);
     free(cpu);
 }
 
@@ -174,29 +217,102 @@ void psx_cpu_set_b_kcall_hook(psx_cpu_t* cpu, psx_cpu_kcall_hook_t hook) {
 }
 
 void psx_cpu_save_state(psx_cpu_t* cpu, FILE* file) {
-    fwrite((char*)cpu, sizeof(*cpu) - sizeof(psx_bus_t*), 1, file);
+    fwrite((char*)cpu, offsetof(psx_cpu_t, bus), 1, file);
 }
 
 void psx_cpu_load_state(psx_cpu_t* cpu, FILE* file) {
-    if (!fread((char*)cpu, sizeof(*cpu) - sizeof(psx_bus_t*), 1, file)) {
+    psx_bus_t* bus = cpu->bus;
+    psx_cpu_kcall_hook_t a_hook = cpu->a_function_hook;
+    psx_cpu_kcall_hook_t b_hook = cpu->b_function_hook;
+    psx_cpu_execution_mode_t execution_mode = cpu->execution_mode;
+    struct psx_cpu_cache_t* cache = cpu->cache;
+
+    if (!fread((char*)cpu, offsetof(psx_cpu_t, bus), 1, file)) {
         perror("Error reading CPU state");
 
         exit(1);
     }
+
+    cpu->bus = bus;
+    cpu->a_function_hook = a_hook;
+    cpu->b_function_hook = b_hook;
+    cpu->execution_mode = execution_mode;
+    cpu->cache = cache;
+    psx_cpu_invalidate_cache(cpu);
 }
 
 void psx_cpu_init(psx_cpu_t* cpu, psx_bus_t* bus) {
+    struct psx_cpu_cache_t* cache = cpu->cache;
+    psx_cpu_execution_mode_t execution_mode = cpu->execution_mode;
+
     memset(cpu, 0, sizeof(psx_cpu_t));
+
+    cpu->cache = cache;
+    cpu->execution_mode = execution_mode == PSX_CPU_INTERPRETER
+        ? PSX_CPU_INTERPRETER
+        : PSX_CPU_CACHED_INTERPRETER;
 
     psx_cpu_set_a_kcall_hook(cpu, cpu_a_kcall_hook);
     psx_cpu_set_b_kcall_hook(cpu, cpu_b_kcall_hook);
 
     cpu->bus = bus;
+    psx_bus_set_write_observer(bus, psx_cpu_bus_write_observer, cpu);
+    psx_cpu_invalidate_cache(cpu);
     cpu->pc = 0xbfc00000;
     cpu->next_pc = cpu->pc + 4;
 
     cpu->cop0_r[COP0_SR] = 0x10900000;
     cpu->cop0_r[COP0_PRID] = 0x00000002;
+}
+
+void psx_cpu_set_execution_mode(psx_cpu_t* cpu, psx_cpu_execution_mode_t mode) {
+    if (!cpu)
+        return;
+
+    cpu->execution_mode = mode == PSX_CPU_INTERPRETER
+        ? PSX_CPU_INTERPRETER
+        : PSX_CPU_CACHED_INTERPRETER;
+}
+
+psx_cpu_execution_mode_t psx_cpu_get_execution_mode(const psx_cpu_t* cpu) {
+    return cpu ? cpu->execution_mode : PSX_CPU_CACHED_INTERPRETER;
+}
+
+void psx_cpu_invalidate_cache(psx_cpu_t* cpu) {
+    if (!cpu || !cpu->cache)
+        return;
+
+    memset(cpu->cache->entries, 0, sizeof(cpu->cache->entries));
+    cpu->cache->stats.invalidations++;
+}
+
+void psx_cpu_invalidate_range(psx_cpu_t* cpu, uint32_t address, uint32_t size) {
+    if (!cpu || !cpu->cache || !size)
+        return;
+
+    uint32_t first = psx_bus_physical_address(address) & ~3u;
+    uint32_t last = psx_bus_physical_address(address + size - 1u) & ~3u;
+
+    if (last < first) {
+        psx_cpu_invalidate_cache(cpu);
+        return;
+    }
+
+    for (uint32_t current = first;; current += 4u) {
+        psx_cpu_cache_entry_t* entry = &cpu->cache->entries[psx_cpu_cache_index(current)];
+        if (entry->valid && entry->address == current) {
+            entry->valid = 0;
+            cpu->cache->stats.invalidations++;
+        }
+
+        if (current == last)
+            break;
+    }
+}
+
+psx_cpu_cache_stats_t psx_cpu_get_cache_stats(const psx_cpu_t* cpu) {
+    psx_cpu_cache_stats_t empty = {0, 0, 0};
+    return (cpu && cpu->cache) ? cpu->cache->stats : empty;
 }
 
 static inline int psx_cpu_check_irq(psx_cpu_t* cpu) {
@@ -295,7 +411,9 @@ void psx_cpu_cycle(psx_cpu_t* cpu) {
         return;
     }
 
-    int cyc = psx_cpu_execute(cpu);
+    int cyc = cpu->execution_mode == PSX_CPU_INTERPRETER
+        ? psx_cpu_execute(cpu)
+        : psx_cpu_execute_cached(cpu);
 
     if (!cyc) {
         printf("psxe: Illegal instruction %08x at %08x (next=%08x, saved=%08x)\n", cpu->opcode, cpu->pc, cpu->next_pc, cpu->saved_pc);
@@ -2167,6 +2285,278 @@ static inline void psx_gte_i_ncct(psx_cpu_t* cpu) {
     NCCS(0);
     NCCS(1);
     NCCS(2);
+}
+
+#define PSX_CPU_CACHED_WRAPPER(name, cycles) \
+    static int psx_cpu_cached_##name(psx_cpu_t* cpu) { \
+        psx_cpu_i_##name(cpu); \
+        return (cycles); \
+    }
+
+PSX_CPU_CACHED_WRAPPER(sll, 2)
+PSX_CPU_CACHED_WRAPPER(srl, 2)
+PSX_CPU_CACHED_WRAPPER(sra, 2)
+PSX_CPU_CACHED_WRAPPER(sllv, 2)
+PSX_CPU_CACHED_WRAPPER(srlv, 2)
+PSX_CPU_CACHED_WRAPPER(srav, 2)
+PSX_CPU_CACHED_WRAPPER(jr, 2)
+PSX_CPU_CACHED_WRAPPER(jalr, 2)
+PSX_CPU_CACHED_WRAPPER(syscall, 2)
+PSX_CPU_CACHED_WRAPPER(break, 2)
+PSX_CPU_CACHED_WRAPPER(mfhi, 2)
+PSX_CPU_CACHED_WRAPPER(mthi, 2)
+PSX_CPU_CACHED_WRAPPER(mflo, 2)
+PSX_CPU_CACHED_WRAPPER(mtlo, 2)
+PSX_CPU_CACHED_WRAPPER(mult, 2)
+PSX_CPU_CACHED_WRAPPER(multu, 2)
+PSX_CPU_CACHED_WRAPPER(div, 2)
+PSX_CPU_CACHED_WRAPPER(divu, 2)
+PSX_CPU_CACHED_WRAPPER(add, 2)
+PSX_CPU_CACHED_WRAPPER(addu, 2)
+PSX_CPU_CACHED_WRAPPER(sub, 2)
+PSX_CPU_CACHED_WRAPPER(subu, 2)
+PSX_CPU_CACHED_WRAPPER(and, 2)
+PSX_CPU_CACHED_WRAPPER(or, 2)
+PSX_CPU_CACHED_WRAPPER(xor, 2)
+PSX_CPU_CACHED_WRAPPER(nor, 2)
+PSX_CPU_CACHED_WRAPPER(slt, 2)
+PSX_CPU_CACHED_WRAPPER(sltu, 2)
+PSX_CPU_CACHED_WRAPPER(j, 2)
+PSX_CPU_CACHED_WRAPPER(jal, 2)
+PSX_CPU_CACHED_WRAPPER(beq, 2)
+PSX_CPU_CACHED_WRAPPER(bne, 2)
+PSX_CPU_CACHED_WRAPPER(blez, 2)
+PSX_CPU_CACHED_WRAPPER(bgtz, 2)
+PSX_CPU_CACHED_WRAPPER(addi, 2)
+PSX_CPU_CACHED_WRAPPER(addiu, 2)
+PSX_CPU_CACHED_WRAPPER(slti, 2)
+PSX_CPU_CACHED_WRAPPER(sltiu, 2)
+PSX_CPU_CACHED_WRAPPER(andi, 2)
+PSX_CPU_CACHED_WRAPPER(ori, 2)
+PSX_CPU_CACHED_WRAPPER(xori, 2)
+PSX_CPU_CACHED_WRAPPER(lui, 2)
+PSX_CPU_CACHED_WRAPPER(mfc0, 2)
+PSX_CPU_CACHED_WRAPPER(mtc0, 2)
+PSX_CPU_CACHED_WRAPPER(rfe, 2)
+PSX_CPU_CACHED_WRAPPER(mfc2, 2)
+PSX_CPU_CACHED_WRAPPER(cfc2, 2)
+PSX_CPU_CACHED_WRAPPER(mtc2, 2)
+PSX_CPU_CACHED_WRAPPER(ctc2, 2)
+PSX_CPU_CACHED_WRAPPER(lb, 2)
+PSX_CPU_CACHED_WRAPPER(lh, 2)
+PSX_CPU_CACHED_WRAPPER(lwl, 2)
+PSX_CPU_CACHED_WRAPPER(lw, 2)
+PSX_CPU_CACHED_WRAPPER(lbu, 2)
+PSX_CPU_CACHED_WRAPPER(lhu, 2)
+PSX_CPU_CACHED_WRAPPER(lwr, 2)
+PSX_CPU_CACHED_WRAPPER(sb, 2)
+PSX_CPU_CACHED_WRAPPER(sh, 2)
+PSX_CPU_CACHED_WRAPPER(swl, 2)
+PSX_CPU_CACHED_WRAPPER(sw, 2)
+PSX_CPU_CACHED_WRAPPER(swr, 2)
+PSX_CPU_CACHED_WRAPPER(lwc0, 2)
+PSX_CPU_CACHED_WRAPPER(lwc1, 2)
+PSX_CPU_CACHED_WRAPPER(lwc2, 2)
+PSX_CPU_CACHED_WRAPPER(lwc3, 2)
+PSX_CPU_CACHED_WRAPPER(swc0, 2)
+PSX_CPU_CACHED_WRAPPER(swc1, 2)
+PSX_CPU_CACHED_WRAPPER(swc2, 2)
+PSX_CPU_CACHED_WRAPPER(swc3, 2)
+
+#define PSX_CPU_CACHED_BXX_WRAPPER(name) \
+    static int psx_cpu_cached_##name(psx_cpu_t* cpu) { \
+        cpu->branch = 1; \
+        cpu->branch_taken = 0; \
+        psx_cpu_i_##name(cpu); \
+        return 2; \
+    }
+
+PSX_CPU_CACHED_BXX_WRAPPER(bltz)
+PSX_CPU_CACHED_BXX_WRAPPER(bgez)
+PSX_CPU_CACHED_BXX_WRAPPER(bltzal)
+PSX_CPU_CACHED_BXX_WRAPPER(bgezal)
+
+#define PSX_CPU_CACHED_GTE_WRAPPER(name, cycles) \
+    static int psx_cpu_cached_gte_##name(psx_cpu_t* cpu) { \
+        DO_PENDING_LOAD; \
+        cpu->gte_sf = ((cpu->opcode & 0x80000) != 0) * 12; \
+        cpu->gte_lm = (cpu->opcode & 0x400) != 0; \
+        cpu->gte_cv = (cpu->opcode >> 13) & 3; \
+        cpu->gte_v = (cpu->opcode >> 15) & 3; \
+        cpu->gte_mx = (cpu->opcode >> 17) & 3; \
+        psx_gte_i_##name(cpu); \
+        return (cycles); \
+    }
+
+PSX_CPU_CACHED_GTE_WRAPPER(rtps, 15)
+PSX_CPU_CACHED_GTE_WRAPPER(nclip, 8)
+PSX_CPU_CACHED_GTE_WRAPPER(op, 6)
+PSX_CPU_CACHED_GTE_WRAPPER(dpcs, 8)
+PSX_CPU_CACHED_GTE_WRAPPER(intpl, 8)
+PSX_CPU_CACHED_GTE_WRAPPER(mvmva, 8)
+PSX_CPU_CACHED_GTE_WRAPPER(ncds, 19)
+PSX_CPU_CACHED_GTE_WRAPPER(cdp, 13)
+PSX_CPU_CACHED_GTE_WRAPPER(ncdt, 44)
+PSX_CPU_CACHED_GTE_WRAPPER(nccs, 17)
+PSX_CPU_CACHED_GTE_WRAPPER(cc, 11)
+PSX_CPU_CACHED_GTE_WRAPPER(ncs, 14)
+PSX_CPU_CACHED_GTE_WRAPPER(nct, 30)
+PSX_CPU_CACHED_GTE_WRAPPER(sqr, 5)
+PSX_CPU_CACHED_GTE_WRAPPER(dcpl, 8)
+PSX_CPU_CACHED_GTE_WRAPPER(dpct, 17)
+PSX_CPU_CACHED_GTE_WRAPPER(avsz3, 5)
+PSX_CPU_CACHED_GTE_WRAPPER(avsz4, 6)
+PSX_CPU_CACHED_GTE_WRAPPER(rtpt, 23)
+PSX_CPU_CACHED_GTE_WRAPPER(gpf, 5)
+PSX_CPU_CACHED_GTE_WRAPPER(gpl, 5)
+PSX_CPU_CACHED_GTE_WRAPPER(ncct, 39)
+
+static int psx_cpu_cached_gte_invalid(psx_cpu_t* cpu) {
+    DO_PENDING_LOAD;
+    psx_gte_i_invalid(cpu);
+    return 0;
+}
+
+static psx_cpu_cached_handler_t psx_cpu_decode(uint32_t opcode) {
+    switch (opcode >> 26) {
+        case 0x00:
+            switch (opcode & 0x3f) {
+                case 0x00: return psx_cpu_cached_sll;
+                case 0x02: return psx_cpu_cached_srl;
+                case 0x03: return psx_cpu_cached_sra;
+                case 0x04: return psx_cpu_cached_sllv;
+                case 0x06: return psx_cpu_cached_srlv;
+                case 0x07: return psx_cpu_cached_srav;
+                case 0x08: return psx_cpu_cached_jr;
+                case 0x09: return psx_cpu_cached_jalr;
+                case 0x0c: return psx_cpu_cached_syscall;
+                case 0x0d: return psx_cpu_cached_break;
+                case 0x10: return psx_cpu_cached_mfhi;
+                case 0x11: return psx_cpu_cached_mthi;
+                case 0x12: return psx_cpu_cached_mflo;
+                case 0x13: return psx_cpu_cached_mtlo;
+                case 0x18: return psx_cpu_cached_mult;
+                case 0x19: return psx_cpu_cached_multu;
+                case 0x1a: return psx_cpu_cached_div;
+                case 0x1b: return psx_cpu_cached_divu;
+                case 0x20: return psx_cpu_cached_add;
+                case 0x21: return psx_cpu_cached_addu;
+                case 0x22: return psx_cpu_cached_sub;
+                case 0x23: return psx_cpu_cached_subu;
+                case 0x24: return psx_cpu_cached_and;
+                case 0x25: return psx_cpu_cached_or;
+                case 0x26: return psx_cpu_cached_xor;
+                case 0x27: return psx_cpu_cached_nor;
+                case 0x2a: return psx_cpu_cached_slt;
+                case 0x2b: return psx_cpu_cached_sltu;
+                default: return NULL;
+            }
+        case 0x01:
+            switch ((opcode >> 16) & 0x1f) {
+                case 0x00: return psx_cpu_cached_bltz;
+                case 0x01: return psx_cpu_cached_bgez;
+                case 0x10: return psx_cpu_cached_bltzal;
+                case 0x11: return psx_cpu_cached_bgezal;
+                default: return (opcode & 0x00010000)
+                    ? psx_cpu_cached_bgez
+                    : psx_cpu_cached_bltz;
+            }
+        case 0x02: return psx_cpu_cached_j;
+        case 0x03: return psx_cpu_cached_jal;
+        case 0x04: return psx_cpu_cached_beq;
+        case 0x05: return psx_cpu_cached_bne;
+        case 0x06: return psx_cpu_cached_blez;
+        case 0x07: return psx_cpu_cached_bgtz;
+        case 0x08: return psx_cpu_cached_addi;
+        case 0x09: return psx_cpu_cached_addiu;
+        case 0x0a: return psx_cpu_cached_slti;
+        case 0x0b: return psx_cpu_cached_sltiu;
+        case 0x0c: return psx_cpu_cached_andi;
+        case 0x0d: return psx_cpu_cached_ori;
+        case 0x0e: return psx_cpu_cached_xori;
+        case 0x0f: return psx_cpu_cached_lui;
+        case 0x10:
+            switch ((opcode >> 21) & 0x1f) {
+                case 0x00: return psx_cpu_cached_mfc0;
+                case 0x04: return psx_cpu_cached_mtc0;
+                case 0x10: return psx_cpu_cached_rfe;
+                default: return NULL;
+            }
+        case 0x12:
+            switch ((opcode >> 21) & 0x1f) {
+                case 0x00: return psx_cpu_cached_mfc2;
+                case 0x02: return psx_cpu_cached_cfc2;
+                case 0x04: return psx_cpu_cached_mtc2;
+                case 0x06: return psx_cpu_cached_ctc2;
+                default:
+                    switch (opcode & 0x3f) {
+                        case 0x01: return psx_cpu_cached_gte_rtps;
+                        case 0x06: return psx_cpu_cached_gte_nclip;
+                        case 0x0c: return psx_cpu_cached_gte_op;
+                        case 0x10: return psx_cpu_cached_gte_dpcs;
+                        case 0x11: return psx_cpu_cached_gte_intpl;
+                        case 0x12: return psx_cpu_cached_gte_mvmva;
+                        case 0x13: return psx_cpu_cached_gte_ncds;
+                        case 0x14: return psx_cpu_cached_gte_cdp;
+                        case 0x16: return psx_cpu_cached_gte_ncdt;
+                        case 0x1b: return psx_cpu_cached_gte_nccs;
+                        case 0x1c: return psx_cpu_cached_gte_cc;
+                        case 0x1e: return psx_cpu_cached_gte_ncs;
+                        case 0x20: return psx_cpu_cached_gte_nct;
+                        case 0x28: return psx_cpu_cached_gte_sqr;
+                        case 0x29: return psx_cpu_cached_gte_dcpl;
+                        case 0x2a: return psx_cpu_cached_gte_dpct;
+                        case 0x2d: return psx_cpu_cached_gte_avsz3;
+                        case 0x2e: return psx_cpu_cached_gte_avsz4;
+                        case 0x30: return psx_cpu_cached_gte_rtpt;
+                        case 0x3d: return psx_cpu_cached_gte_gpf;
+                        case 0x3e: return psx_cpu_cached_gte_gpl;
+                        case 0x3f: return psx_cpu_cached_gte_ncct;
+                        default: return psx_cpu_cached_gte_invalid;
+                    }
+            }
+        case 0x20: return psx_cpu_cached_lb;
+        case 0x21: return psx_cpu_cached_lh;
+        case 0x22: return psx_cpu_cached_lwl;
+        case 0x23: return psx_cpu_cached_lw;
+        case 0x24: return psx_cpu_cached_lbu;
+        case 0x25: return psx_cpu_cached_lhu;
+        case 0x26: return psx_cpu_cached_lwr;
+        case 0x28: return psx_cpu_cached_sb;
+        case 0x29: return psx_cpu_cached_sh;
+        case 0x2a: return psx_cpu_cached_swl;
+        case 0x2b: return psx_cpu_cached_sw;
+        case 0x2e: return psx_cpu_cached_swr;
+        case 0x30: return psx_cpu_cached_lwc0;
+        case 0x31: return psx_cpu_cached_lwc1;
+        case 0x32: return psx_cpu_cached_lwc2;
+        case 0x33: return psx_cpu_cached_lwc3;
+        case 0x38: return psx_cpu_cached_swc0;
+        case 0x39: return psx_cpu_cached_swc1;
+        case 0x3a: return psx_cpu_cached_swc2;
+        case 0x3b: return psx_cpu_cached_swc3;
+        default: return NULL;
+    }
+}
+
+static int psx_cpu_execute_cached(psx_cpu_t* cpu) {
+    if (!cpu->cache)
+        return psx_cpu_execute(cpu);
+
+    const uint32_t address = psx_bus_physical_address(cpu->saved_pc);
+    psx_cpu_cache_entry_t* entry = &cpu->cache->entries[psx_cpu_cache_index(address)];
+
+    if (entry->valid && entry->address == address && entry->opcode == cpu->opcode) {
+        cpu->cache->stats.hits++;
+    } else {
+        cpu->cache->stats.misses++;
+        entry->address = address;
+        entry->opcode = cpu->opcode;
+        entry->handler = psx_cpu_decode(cpu->opcode);
+        entry->valid = 1;
+    }
+
+    return entry->handler ? entry->handler(cpu) : 0;
 }
 
 int psx_cpu_execute(psx_cpu_t* cpu) {

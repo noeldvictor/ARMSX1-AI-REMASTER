@@ -18,13 +18,29 @@ Disc image support is:
 - `BIN/CUE`
 - single-track `BIN`
 - `ISO`
+- `CHD`, including mixed-mode metadata, pregaps/postgaps, audio byte order, and Q subchannel data
+- `ZIP` archives containing a supported game image and its companion files
 
 Not implemented yet:
 - save states
 - netplay
 - texture packs
-- a separate hardware renderer backend
-- CHD support, which is still stubbed in-tree
+
+## Accuracy and Acceleration
+
+ARMSX has two portable CPU engines:
+
+- `cached` is the default. It caches decoded instruction handlers, but still performs a real bus fetch and opcode check for every emulated instruction. Writes invalidate matching entries, including cached/uncached address aliases.
+- `interpreter` is the reference path and remains selectable for diagnostics.
+
+Neither engine emits native code, uses executable memory, or relies on host threading behavior. Select the engine in Settings, with `--cpu-engine=cached|interpreter`, or with `ARMSX_CPU_ENGINE`.
+
+The GPU always uses the accurate software PlayStation rasterizer and keeps its 16-bit VRAM authoritative. Presentation has two SDL2 modes:
+
+- `SDL software`, the default
+- `SDL accelerated`, opt-in through Settings or `ARMSX_GPU_BACKEND=sdl-accelerated`
+
+The accelerated mode uploads only changed VRAM scanlines to an SDL texture. It does not replace PS1 rasterization with host triangles, so switching presentation modes does not change emulated GPU results. If an accelerated SDL renderer is unavailable, ARMSX falls back to SDL software rendering.
 
 ## Supported Targets
 - Desktop: macOS, Linux, Windows
@@ -54,6 +70,8 @@ armsx:///absolute/path/to/game.cue
 The app opens an FSUI shell where you can choose BIOS files, start discs, change settings, take screenshots, and toggle fast forward or VSync.
 
 Settings are stored under SDL's pref path, usually `SDL_GetPrefPath("nanodata", "armsx")`, in `settings.toml`.
+
+On WebAssembly, **Start File**, **Start Disc**, and **Open Game Folder** use the browser's permission-gated file and directory pickers. Selected files are copied into the Emscripten virtual filesystem for the current session. Directory access falls back to a multi-file directory input where the File System Access API is unavailable. USB mass-storage drives are intentionally handled through these file pickers; WebUSB does not expose protected mass-storage-class devices as a general filesystem.
 
 ## Building
 ### Linux Desktop
@@ -115,6 +133,8 @@ Requires Emscripten:
 ./build.sh wasm
 ```
 
+Serve the generated `bin/wasm` directory over HTTP(S); browser file APIs are not available from a raw `file://` URL.
+
 ### PSVita
 Requires VITASDK:
 
@@ -125,6 +145,30 @@ Requires VITASDK:
 ## Configuration
 `settings.toml` is generated on first run. CLI flags always override file settings for the current session. Some internal fields still use historical `psxe_*` names for compatibility.
 
+The generated defaults are:
+
+```toml
+[cpu]
+execution_mode = "cached"
+
+[gpu]
+backend = "software"
+```
+
+Legacy renderer names such as `hardware` are accepted when reading old settings and normalize to `sdl-accelerated` when saved.
+
+## Validation
+
+Run the deterministic source and subsystem matrix:
+
+```sh
+python3 tests/run_validation.py
+```
+
+The cases cover source invariants, cached/reference CPU differential execution and self-modifying code, GPU VRAM parity, CHD layout/subchannel logic, ZIP extraction and traversal rejection, and browser file-selection rules. `make disc-probe IMAGE=/path/to/game.cue` performs a read-only disc-open and sector-read smoke test.
+
+`make test-sdl-runtime` is an optional headed host check that creates an accelerated SDL2 renderer, uploads a BGR555 texture, and presents it. It is intentionally not part of the deterministic matrix because graphical CI runners may not have a display or accelerated SDL driver.
+
 ## Acknowledgements
 ARMSX uses:
 - `argparse.c`
@@ -132,3 +176,4 @@ ARMSX uses:
 - `tomlc99`
 - SDL2
 - FSUI donor / ImGui
+- libchdr
