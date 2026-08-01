@@ -6,6 +6,7 @@
 #include "disc.h"
 #include "cue.h"
 #include "chd.h"
+#include "frontend/platform_file.h"
 #include "../../log.h"
 
 #define MSF_TO_LBA(m, s, f) ((m * 4500) + (s * 75) + f)
@@ -161,7 +162,7 @@ int psx_disc_open_as(psx_disc_t* disc, const char* path, int type) {
 
         case CD_EXT_BIN:
         case CD_EXT_ISO: {
-            FILE* f = fopen(path, "rb");
+            FILE* f = psxe_platform_fopen(path, "rb");
 
             if (!f)
                 return CDT_ERROR;

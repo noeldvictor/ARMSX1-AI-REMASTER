@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <SDL_gamecontroller.h>
 #include <SDL_render.h>
+#include <SDL_system.h>
 
 #include <algorithm>
 #include <array>
@@ -25,6 +26,10 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#if defined(__ANDROID__)
+#include <unistd.h>
+#endif
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -70,6 +75,7 @@ extern "C" {
 
 #include "archive.h"
 #include "IconsFontAwesome5.h"
+#include "platform_file.h"
 #ifdef USE_HARDWARE
 #include "gpu_hw.h"
 #endif
@@ -101,6 +107,14 @@ constexpr bool DefaultVsyncEnabled() {
 #endif
 }
 
+constexpr bool DefaultMobileControlsEnabled() {
+#if defined(__ANDROID__) || defined(IOS_TARGET)
+    return true;
+#else
+    return false;
+#endif
+}
+
 #ifdef USE_HARDWARE
 enum class GpuBackend {
     Software = 0,
@@ -116,7 +130,33 @@ std::mutex g_pending_launch_lock;
 std::vector<std::string> g_pending_launch_arguments;
 std::vector<std::string> g_pending_web_errors;
 
+struct PlatformLibraryRoot {
+    std::string path;
+    std::string label;
+    bool recursive = true;
+};
+
+struct PlatformLibraryGame {
+    std::string path;
+    std::string label;
+    std::uint64_t size = 0;
+    std::time_t modified = 0;
+};
+
+using PlatformDirectoryPickerCallback = void (*)(int recursive, void* userdata);
+using PlatformDirectoryRemovedCallback = void (*)(const char* path, void* userdata);
+
+std::mutex g_platform_library_lock;
+std::vector<PlatformLibraryRoot> g_platform_library_roots;
+std::vector<PlatformLibraryGame> g_platform_library_games;
+std::uint64_t g_platform_library_version = 0;
+PlatformDirectoryPickerCallback g_platform_directory_picker_callback = nullptr;
+void* g_platform_directory_picker_userdata = nullptr;
+PlatformDirectoryRemovedCallback g_platform_directory_removed_callback = nullptr;
+void* g_platform_directory_removed_userdata = nullptr;
+
 constexpr double kUiFrameRate = 60.0;
+constexpr Uint32 kMobileControlsAutoHideMs = 3000;
 
 const char* LogLevelTitle(int level) {
     switch (level) {
@@ -297,6 +337,192 @@ std::vector<std::string> DrainWebErrors() {
     return pending;
 }
 
+bool IsAndroidVirtualPath(std::string_view path) {
+    return path.rfind("armsx-android:///", 0) == 0;
+}
+
+bool PlatformPathBelongsToRoot(std::string_view path, std::string_view root, bool recursive) {
+    if (path.size() <= root.size() || path.substr(0, root.size()) != root || path[root.size()] != '/') {
+        return false;
+    }
+
+    const std::string_view relative = path.substr(root.size() + 1);
+    return recursive || relative.find('/') == std::string_view::npos;
+}
+
+void SetPlatformLibrarySnapshot(
+    std::vector<PlatformLibraryRoot> roots,
+    std::vector<PlatformLibraryGame> games
+) {
+    std::lock_guard<std::mutex> lock(g_platform_library_lock);
+    g_platform_library_roots = std::move(roots);
+    g_platform_library_games = std::move(games);
+    g_platform_library_version++;
+}
+
+void RegisterPlatformLibraryRoot(std::string path, std::string label, bool recursive) {
+    if (path.empty()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_platform_library_lock);
+    const auto found = std::find_if(g_platform_library_roots.begin(), g_platform_library_roots.end(), [&](const auto& root) {
+        return root.path == path;
+    });
+    if (found == g_platform_library_roots.end()) {
+        g_platform_library_roots.push_back(PlatformLibraryRoot{
+            .path = std::move(path),
+            .label = std::move(label),
+            .recursive = recursive,
+        });
+    } else {
+        found->label = std::move(label);
+        found->recursive = recursive;
+    }
+    g_platform_library_version++;
+}
+
+std::uint64_t CopyPlatformLibrarySnapshot(
+    std::vector<PlatformLibraryRoot>& roots,
+    std::vector<PlatformLibraryGame>& games
+) {
+    std::lock_guard<std::mutex> lock(g_platform_library_lock);
+    roots = g_platform_library_roots;
+    games = g_platform_library_games;
+    return g_platform_library_version;
+}
+
+#if defined(__ANDROID__)
+bool CallAndroidActivityVoidMethod(const char* name, const char* signature, jvalue* args = nullptr) {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
+    if (!env || !activity) {
+        return false;
+    }
+
+    jclass cls = env->GetObjectClass(activity);
+    if (!cls) {
+        env->DeleteLocalRef(activity);
+        return false;
+    }
+
+    jmethodID method = env->GetMethodID(cls, name, signature);
+    if (!method) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(cls);
+        env->DeleteLocalRef(activity);
+        return false;
+    }
+
+    env->CallVoidMethodA(activity, method, args);
+    const bool succeeded = !env->ExceptionCheck();
+    if (!succeeded) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+    }
+    env->DeleteLocalRef(cls);
+    env->DeleteLocalRef(activity);
+    return succeeded;
+}
+
+bool RequestAndroidLibraryDirectory(bool recursive) {
+    jvalue args[1]{};
+    args[0].z = recursive ? JNI_TRUE : JNI_FALSE;
+    return CallAndroidActivityVoidMethod("openLibraryDirectoryPicker", "(Z)V", args);
+}
+
+void RemoveAndroidLibraryDirectory(std::string_view path) {
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
+    if (!env || !activity) {
+        return;
+    }
+
+    jclass cls = env->GetObjectClass(activity);
+    jmethodID method = cls ? env->GetMethodID(cls, "removeLibraryDirectory", "(Ljava/lang/String;)V") : nullptr;
+    if (method) {
+        jstring value = env->NewStringUTF(std::string(path).c_str());
+        env->CallVoidMethod(activity, method, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->ExceptionClear();
+    }
+    if (cls) {
+        env->DeleteLocalRef(cls);
+    }
+    env->DeleteLocalRef(activity);
+}
+
+FILE* AndroidPlatformFopen(const char* path, const char* mode, void*) {
+    if (!path || !mode || !IsAndroidVirtualPath(path)) {
+        return fopen(path, mode);
+    }
+    if (mode[0] != 'r') {
+        return nullptr;
+    }
+
+    JNIEnv* env = static_cast<JNIEnv*>(SDL_AndroidGetJNIEnv());
+    jobject activity = static_cast<jobject>(SDL_AndroidGetActivity());
+    if (!env || !activity) {
+        return nullptr;
+    }
+
+    int fd = -1;
+    jclass cls = env->GetObjectClass(activity);
+    jmethodID method = cls ? env->GetMethodID(cls, "openVirtualFileDescriptor", "(Ljava/lang/String;)I") : nullptr;
+    if (method) {
+        jstring value = env->NewStringUTF(path);
+        fd = env->CallIntMethod(activity, method, value);
+        env->DeleteLocalRef(value);
+    } else {
+        env->ExceptionClear();
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        fd = -1;
+    }
+    if (cls) {
+        env->DeleteLocalRef(cls);
+    }
+    env->DeleteLocalRef(activity);
+
+    if (fd < 0) {
+        return nullptr;
+    }
+
+    FILE* file = fdopen(fd, mode);
+    if (!file) {
+        close(fd);
+    }
+    return file;
+}
+#endif
+
+bool RequestPlatformLibraryDirectory(bool recursive) {
+#if defined(__ANDROID__)
+    if (RequestAndroidLibraryDirectory(recursive)) {
+        return true;
+    }
+#endif
+    if (g_platform_directory_picker_callback) {
+        g_platform_directory_picker_callback(recursive ? 1 : 0, g_platform_directory_picker_userdata);
+        return true;
+    }
+    return false;
+}
+
+void NotifyPlatformLibraryDirectoryRemoved(std::string_view path) {
+#if defined(__ANDROID__)
+    if (IsAndroidVirtualPath(path)) {
+        RemoveAndroidLibraryDirectory(path);
+    }
+#endif
+    if (g_platform_directory_removed_callback) {
+        g_platform_directory_removed_callback(std::string(path).c_str(), g_platform_directory_removed_userdata);
+    }
+}
+
 struct FrontendSettings {
     std::string settings_path;
     std::string bios_override;
@@ -319,6 +545,8 @@ struct FrontendSettings {
     bool stretch_mode = false;
     int display_aspect = 0;
     int upscale_height = 480;
+    int presentation_upscale = 1;
+    bool mobile_controls = DefaultMobileControlsEnabled();
     fsui::UiState ui_state{
         .theme = "Dark",
         .prompt_icon_pack = fsui::PromptIconPack::Auto,
@@ -1117,6 +1345,15 @@ std::vector<fsui::SettingsChoiceOption> BuildScaleChoices(int current_scale) {
     return BuildChoices(labels, selected);
 }
 
+std::vector<fsui::SettingsChoiceOption> BuildPresentationUpscaleChoices(int current_scale) {
+    std::vector<std::string> labels;
+    labels.reserve(8);
+    for (int scale = 1; scale <= 8; scale++) {
+        labels.push_back(std::to_string(scale) + "x");
+    }
+    return BuildChoices(labels, std::clamp(current_scale, 1, 8) - 1);
+}
+
 std::vector<fsui::SettingsChoiceOption> BuildRegionChoices(const std::string& current_region) {
     const std::vector<std::string> values = {"auto", "ntsc", "pal"};
     const std::vector<std::string> labels = {"Auto", "NTSC", "PAL"};
@@ -1367,6 +1604,11 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
             settings.texture_scale_mode = texture_scale_mode.u.b != 0;
         }
 
+        toml_datum_t presentation_upscale = toml_int_in(video, "presentation_upscale");
+        if (presentation_upscale.ok) {
+            settings.presentation_upscale = std::clamp(static_cast<int>(presentation_upscale.u.i), 1, 8);
+        }
+
         toml_datum_t debug_panel = toml_bool_in(video, "debug_panel");
         if (debug_panel.ok) {
             settings.debug_panel = debug_panel.u.b != 0;
@@ -1399,6 +1641,13 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
             else if (value == "2160p") settings.upscale_height = 2160;
             else settings.upscale_height = 480;
             free(wide_upscale.u.s);
+        }
+    }
+
+    if (toml_table_t* input = toml_table_in(root, "input")) {
+        toml_datum_t mobile_controls = toml_bool_in(input, "mobile_controls");
+        if (mobile_controls.ok) {
+            settings.mobile_controls = mobile_controls.u.b != 0;
         }
     }
 
@@ -1461,6 +1710,8 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
     settings.stretch_mode = cfg ? (cfg->stretch_mode != 0) : false;
     settings.display_aspect = cfg ? cfg->display_aspect : 0;
     settings.upscale_height = cfg ? cfg->upscale_height : 480;
+    settings.presentation_upscale = 1;
+    settings.mobile_controls = DefaultMobileControlsEnabled();
     settings.ui_state.show_settings_overlay = settings.debug_panel;
     settings.ui_state.show_performance_overlay = settings.debug_panel;
 
@@ -1478,8 +1729,20 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
         settings.gpu_backend = *env_gpu_backend;
     }
 #endif
+    if (const char* env_upscale = std::getenv("ARMSX_PRESENTATION_UPSCALE")) {
+        char* end = nullptr;
+        const long scale = std::strtol(env_upscale, &end, 10);
+        if (end && *end == '\0') {
+            settings.presentation_upscale = std::clamp(static_cast<int>(scale), 1, 8);
+        }
+    }
+    if (const char* env_mobile_controls = std::getenv("ARMSX_MOBILE_CONTROLS")) {
+        const std::string value = ToLower(env_mobile_controls);
+        settings.mobile_controls = value == "1" || value == "true" || value == "on" || value == "yes";
+    }
 
     settings.scale = std::max(1, settings.scale);
+    settings.presentation_upscale = std::clamp(settings.presentation_upscale, 1, 8);
     settings.log_level = std::clamp(settings.log_level, static_cast<int>(LOG_TRACE), static_cast<int>(LOG_FATAL));
     settings.logging_enabled = !settings.quiet;
     settings.ui_state.show_settings_overlay = settings.debug_panel;
@@ -1547,10 +1810,13 @@ bool SaveSettings(const FrontendSettings& settings) {
         << "    gpu_backend = \"" << GpuBackendSettingToken(settings.gpu_backend) << "\"\n"
 #endif
         << "    texture_scale_mode = " << (settings.texture_scale_mode ? "true" : "false") << "\n"
+        << "    presentation_upscale = " << settings.presentation_upscale << "\n"
         << "    debug_panel = " << (settings.debug_panel ? "true" : "false") << "\n"
         << "    stretch_mode = " << (settings.stretch_mode ? "true" : "false") << "\n"
         << "    display_aspect = \"" << AspectToString(settings.display_aspect) << "\"\n"
         << "    wide_upscale = \"" << UpscaleToString(settings.upscale_height) << "\"\n\n"
+        << "[input]\n"
+        << "    mobile_controls = " << (settings.mobile_controls ? "true" : "false") << "\n\n"
         << "[library]\n"
         << "    folders = ";
     write_path_array(settings.ui_state.game_list_paths);
@@ -1792,9 +2058,9 @@ class ArmsxSession {
         desired.freq = 44100;
         desired.format = AUDIO_S16SYS;
         desired.channels = 2;
-        desired.samples = CD_SECTOR_SIZE >> 2;
-        desired.callback = AudioUpdate;
-        desired.userdata = this;
+        desired.samples = 1024;
+        desired.callback = nullptr;
+        desired.userdata = nullptr;
 
         audio_dev_ = SDL_OpenAudioDevice(nullptr, 0, &desired, &obtained, 0);
         paused_ = false;
@@ -1805,8 +2071,16 @@ class ArmsxSession {
         texture_format_ = SDL_PIXELFORMAT_UNKNOWN;
         if (audio_dev_) {
             audio_sample_accumulator_ = 0.0;
-            audio_queue_.clear();
-            audio_queue_read_offset_ = 0;
+            audio_playback_started_ = false;
+            psxe_diag_logf(
+                "audio",
+                "SDL queued audio opened frequency=%d channels=%u samples=%u prime_bytes=%zu max_bytes=%zu",
+                obtained.freq,
+                static_cast<unsigned>(obtained.channels),
+                static_cast<unsigned>(obtained.samples),
+                kAudioPrimeBytes,
+                kMaxQueuedAudioBytes
+            );
             updateAudioPlaybackState();
         }
         updateTexture(settings);
@@ -1825,10 +2099,8 @@ class ArmsxSession {
         }
 
         if (audio_dev_) {
-            SDL_LockAudioDevice(audio_dev_);
-            resetAudioQueueLocked();
-            SDL_UnlockAudioDevice(audio_dev_);
             SDL_PauseAudioDevice(audio_dev_, 1);
+            SDL_ClearQueuedAudio(audio_dev_);
             SDL_CloseAudioDevice(audio_dev_);
             audio_dev_ = 0;
         }
@@ -1837,6 +2109,7 @@ class ArmsxSession {
             SDL_DestroyTexture(texture_);
             texture_ = nullptr;
         }
+        destroyPresentationTexture();
         texture_snapshot_.clear();
 
 #ifdef USE_HARDWARE
@@ -1903,6 +2176,7 @@ class ArmsxSession {
             SDL_DestroyTexture(texture_);
             texture_ = nullptr;
         }
+        destroyPresentationTexture();
         texture_snapshot_.clear();
         texture_width_ = 0;
         texture_height_ = 0;
@@ -1914,9 +2188,7 @@ class ArmsxSession {
         paused_ = paused;
         if (audio_dev_) {
             if (paused || fast_forward_enabled_) {
-                SDL_LockAudioDevice(audio_dev_);
-                resetAudioQueueLocked();
-                SDL_UnlockAudioDevice(audio_dev_);
+                clearQueuedAudio();
             }
             updateAudioPlaybackState();
         }
@@ -2183,6 +2455,8 @@ class ArmsxSession {
                 std::memcpy(texture_snapshot_.data() + offset, source + offset, row_bytes);
             }
         }
+
+        updatePresentationTexture(settings);
     }
 
     void draw(const FrontendSettings& settings) {
@@ -2252,8 +2526,9 @@ class ArmsxSession {
         );
 #endif
         draw_list->AddRectFilled(ImVec2(0.0f, 0.0f), display, IM_COL32(0, 0, 0, 255));
+        SDL_Texture* presentation = presentation_texture_ ? presentation_texture_ : texture_;
         draw_list->AddImage(
-            reinterpret_cast<ImTextureID>(texture_),
+            reinterpret_cast<ImTextureID>(presentation),
             ImVec2(offset_x, offset_y),
             ImVec2(offset_x + target_width, offset_y + target_height)
         );
@@ -2399,6 +2674,135 @@ class ArmsxSession {
     }
 
   private:
+    void destroyPresentationTexture() {
+        if (presentation_texture_) {
+            SDL_DestroyTexture(presentation_texture_);
+            presentation_texture_ = nullptr;
+        }
+        presentation_width_ = 0;
+        presentation_height_ = 0;
+        presentation_scale_ = 1;
+    }
+
+    void updatePresentationTexture(const FrontendSettings& settings) {
+        const int requested_scale = std::clamp(settings.presentation_upscale, 1, 8);
+        if (!renderer_ || !texture_ || requested_scale == 1) {
+            destroyPresentationTexture();
+            return;
+        }
+
+        SDL_RendererInfo info{};
+        if (SDL_GetRendererInfo(renderer_, &info) != 0 || (info.flags & SDL_RENDERER_TARGETTEXTURE) == 0) {
+            destroyPresentationTexture();
+            return;
+        }
+
+        int actual_scale = requested_scale;
+        if (info.max_texture_width > 0) {
+            actual_scale = std::min(actual_scale, info.max_texture_width / std::max(texture_width_, 1));
+        }
+        if (info.max_texture_height > 0) {
+            actual_scale = std::min(actual_scale, info.max_texture_height / std::max(texture_height_, 1));
+        }
+        actual_scale = std::max(actual_scale, 1);
+        if (actual_scale == 1) {
+            destroyPresentationTexture();
+            return;
+        }
+
+        const int target_width = texture_width_ * actual_scale;
+        const int target_height = texture_height_ * actual_scale;
+        if (!presentation_texture_ || presentation_width_ != target_width ||
+            presentation_height_ != target_height || presentation_scale_ != actual_scale) {
+            destroyPresentationTexture();
+            presentation_texture_ = SDL_CreateTexture(
+                renderer_,
+                SDL_PIXELFORMAT_ARGB8888,
+                SDL_TEXTUREACCESS_TARGET,
+                target_width,
+                target_height
+            );
+            if (!presentation_texture_) {
+                psxe_diag_logf(
+                    "renderer",
+                    "SDL presentation upscale unavailable requested=%dx target=%dx%d error=%s",
+                    requested_scale,
+                    target_width,
+                    target_height,
+                    SDL_GetError()
+                );
+                return;
+            }
+            presentation_width_ = target_width;
+            presentation_height_ = target_height;
+            presentation_scale_ = actual_scale;
+            psxe_diag_logf(
+                "renderer",
+                "SDL presentation upscale created requested=%dx actual=%dx target=%dx%d",
+                requested_scale,
+                actual_scale,
+                target_width,
+                target_height
+            );
+            SDL_SetTextureBlendMode(presentation_texture_, SDL_BLENDMODE_NONE);
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+            SDL_SetTextureScaleMode(presentation_texture_, SDL_ScaleModeBest);
+#endif
+        }
+
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+        if (SDL_SetTextureScaleMode(texture_, SDL_ScaleModeBest) != 0) {
+            SDL_SetTextureScaleMode(texture_, SDL_ScaleModeLinear);
+        }
+#endif
+
+        SDL_Texture* previous_target = SDL_GetRenderTarget(renderer_);
+        SDL_Rect previous_viewport{};
+        SDL_Rect previous_clip{};
+        float previous_scale_x = 1.0f;
+        float previous_scale_y = 1.0f;
+        Uint8 previous_r = 0;
+        Uint8 previous_g = 0;
+        Uint8 previous_b = 0;
+        Uint8 previous_a = 0;
+        SDL_BlendMode previous_blend = SDL_BLENDMODE_NONE;
+        const SDL_bool clip_enabled = SDL_RenderIsClipEnabled(renderer_);
+        SDL_RenderGetViewport(renderer_, &previous_viewport);
+        SDL_RenderGetClipRect(renderer_, &previous_clip);
+        SDL_RenderGetScale(renderer_, &previous_scale_x, &previous_scale_y);
+        SDL_GetRenderDrawColor(renderer_, &previous_r, &previous_g, &previous_b, &previous_a);
+        SDL_GetRenderDrawBlendMode(renderer_, &previous_blend);
+
+        bool rendered = false;
+        if (SDL_SetRenderTarget(renderer_, presentation_texture_) == 0) {
+            SDL_RenderSetViewport(renderer_, nullptr);
+            SDL_RenderSetClipRect(renderer_, nullptr);
+            SDL_RenderSetScale(renderer_, 1.0f, 1.0f);
+            SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+            SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
+            rendered = SDL_RenderClear(renderer_) == 0 &&
+                SDL_RenderCopy(renderer_, texture_, nullptr, nullptr) == 0;
+        }
+
+        SDL_SetRenderTarget(renderer_, previous_target);
+        SDL_RenderSetViewport(renderer_, &previous_viewport);
+        SDL_RenderSetScale(renderer_, previous_scale_x, previous_scale_y);
+        SDL_RenderSetClipRect(renderer_, clip_enabled ? &previous_clip : nullptr);
+        SDL_SetRenderDrawBlendMode(renderer_, previous_blend);
+        SDL_SetRenderDrawColor(renderer_, previous_r, previous_g, previous_b, previous_a);
+
+        if (!rendered) {
+            psxe_diag_logf(
+                "renderer",
+                "SDL presentation upscale render failed requested=%dx actual=%dx error=%s",
+                requested_scale,
+                actual_scale,
+                SDL_GetError()
+            );
+            destroyPresentationTexture();
+        }
+    }
+
     static void SessionVblankEvent(psx_gpu_t* gpu) {
         if (gpu) {
             if (auto* session = static_cast<ArmsxSession*>(gpu->udata[0])) {
@@ -2409,27 +2813,13 @@ class ArmsxSession {
         }
     }
 
-    static void AudioUpdate(void* userdata, uint8_t* buffer, int size) {
-        if (!buffer || size <= 0) {
-            return;
-        }
-
-        std::memset(buffer, 0, static_cast<size_t>(size));
-
-        auto* session = static_cast<ArmsxSession*>(userdata);
-        if (!session) {
-            return;
-        }
-
-        session->consumeQueuedAudio(buffer, static_cast<size_t>(size));
-    }
-
     void updateAudioPlaybackState() {
         if (!audio_dev_) {
             return;
         }
 
-        SDL_PauseAudioDevice(audio_dev_, (paused_ || fast_forward_enabled_) ? 1 : 0);
+        const bool should_pause = paused_ || fast_forward_enabled_ || !audio_playback_started_;
+        SDL_PauseAudioDevice(audio_dev_, should_pause ? 1 : 0);
     }
 
     void queueAudioForFrame() {
@@ -2450,18 +2840,35 @@ class ArmsxSession {
             return;
         }
 
-        const size_t queue_before = audio_queue_.size() - audio_queue_read_offset_;
         std::vector<uint8_t> frame_audio(byte_count);
         MixPsxAudio(psx_, frame_audio.data(), static_cast<int>(frame_audio.size()));
 
-        SDL_LockAudioDevice(audio_dev_);
-        compactAudioQueueLocked();
-        if ((audio_queue_.size() - audio_queue_read_offset_) > kMaxQueuedAudioBytes) {
-            resetAudioQueueLocked();
+        size_t queue_before = static_cast<size_t>(SDL_GetQueuedAudioSize(audio_dev_));
+        if (queue_before > kMaxQueuedAudioBytes) {
+            SDL_PauseAudioDevice(audio_dev_, 1);
+            SDL_ClearQueuedAudio(audio_dev_);
+            audio_playback_started_ = false;
+            queue_before = 0;
+            audio_sample_accumulator_ = 0.0;
         }
-        audio_queue_.insert(audio_queue_.end(), frame_audio.begin(), frame_audio.end());
-        const size_t queue_after = audio_queue_.size() - audio_queue_read_offset_;
-        SDL_UnlockAudioDevice(audio_dev_);
+
+        if (SDL_QueueAudio(audio_dev_, frame_audio.data(), static_cast<Uint32>(frame_audio.size())) != 0) {
+            psxe_diag_logf("audio", "SDL_QueueAudio failed: %s", SDL_GetError());
+            return;
+        }
+
+        const size_t queue_after = static_cast<size_t>(SDL_GetQueuedAudioSize(audio_dev_));
+        if (!audio_playback_started_ && queue_after >= kAudioPrimeBytes) {
+            audio_playback_started_ = true;
+            psxe_diag_logf(
+                "audio",
+                "SDL queued audio primed bytes=%zu target=%zu frame=%llu",
+                queue_after,
+                kAudioPrimeBytes,
+                static_cast<unsigned long long>(vblank_counter_)
+            );
+            updateAudioPlaybackState();
+        }
 
 #if defined(USE_HARDWARE) && defined(HW_DEBUG)
         if (hardware_backend_active_) {
@@ -2482,56 +2889,23 @@ class ArmsxSession {
 #endif
     }
 
-    void consumeQueuedAudio(uint8_t* buffer, size_t size) {
-        const size_t available = audio_queue_.size() - audio_queue_read_offset_;
-        const size_t to_copy = std::min(size, available);
-
-        if (to_copy > 0) {
-            std::memcpy(buffer, audio_queue_.data() + audio_queue_read_offset_, to_copy);
-            audio_queue_read_offset_ += to_copy;
-        }
-
-        if (audio_queue_read_offset_ >= audio_queue_.size()) {
-            resetAudioQueueLocked();
-        } else if (audio_queue_read_offset_ >= kAudioQueueCompactThreshold) {
-            compactAudioQueueLocked();
-        }
-    }
-
     void clearQueuedAudio() {
-        if (!audio_dev_) {
-            resetAudioQueueLocked();
-            return;
-        }
-
-        SDL_LockAudioDevice(audio_dev_);
-        resetAudioQueueLocked();
-        SDL_UnlockAudioDevice(audio_dev_);
-    }
-
-    void resetAudioQueueLocked() {
         audio_sample_accumulator_ = 0.0;
-        audio_queue_.clear();
-        audio_queue_read_offset_ = 0;
-    }
-
-    void compactAudioQueueLocked() {
-        if (audio_queue_read_offset_ == 0) {
+        audio_playback_started_ = false;
+        if (!audio_dev_) {
             return;
         }
 
-        if (audio_queue_read_offset_ >= audio_queue_.size()) {
-            resetAudioQueueLocked();
-            return;
-        }
-
-        audio_queue_.erase(audio_queue_.begin(), audio_queue_.begin() + static_cast<std::ptrdiff_t>(audio_queue_read_offset_));
-        audio_queue_read_offset_ = 0;
+        SDL_PauseAudioDevice(audio_dev_, 1);
+        SDL_ClearQueuedAudio(audio_dev_);
     }
 
     static constexpr int kAudioMixRate = 44100;
-    static constexpr size_t kMaxQueuedAudioBytes = static_cast<size_t>(kAudioMixRate * sizeof(int16_t) * 2 / 2);
-    static constexpr size_t kAudioQueueCompactThreshold = 4096;
+    static constexpr size_t kAudioBytesPerSampleFrame = sizeof(int16_t) * 2;
+    static constexpr size_t kAudioPrimeBytes =
+        static_cast<size_t>(kAudioMixRate * kAudioBytesPerSampleFrame * 50 / 1000);
+    static constexpr size_t kMaxQueuedAudioBytes =
+        static_cast<size_t>(kAudioMixRate * kAudioBytesPerSampleFrame * 200 / 1000);
     static constexpr std::uint32_t kMaxFrameSteps = PSX_CPU_CPS / 8u;
 
     SDL_Renderer* renderer_ = nullptr;
@@ -2539,14 +2913,14 @@ class ArmsxSession {
     psx_input_t* input_ = nullptr;
     psxi_sda_t* pad_device_ = nullptr;
     SDL_Texture* texture_ = nullptr;
+    SDL_Texture* presentation_texture_ = nullptr;
     std::vector<uint8_t> texture_snapshot_;
 #ifdef USE_HARDWARE
     armsx_hw_renderer_t* hw_renderer_ = nullptr;
 #endif
     SDL_AudioDeviceID audio_dev_ = 0;
-    std::vector<uint8_t> audio_queue_;
-    size_t audio_queue_read_offset_ = 0;
     double audio_sample_accumulator_ = 0.0;
+    bool audio_playback_started_ = false;
     std::filesystem::path disc_path_;
     std::filesystem::path exe_path_;
     std::string title_;
@@ -2560,6 +2934,9 @@ class ArmsxSession {
     std::uint64_t vblank_counter_ = 0;
     int texture_width_ = 0;
     int texture_height_ = 0;
+    int presentation_width_ = 0;
+    int presentation_height_ = 0;
+    int presentation_scale_ = 1;
     Uint32 texture_format_ = SDL_PIXELFORMAT_UNKNOWN;
 };
 
@@ -2596,6 +2973,30 @@ class GameplayInputRouter {
         const bool requested = pause_requested_;
         pause_requested_ = false;
         return requested;
+    }
+
+    bool takeControllerActivity() {
+        const bool active = controller_activity_;
+        controller_activity_ = false;
+        return active;
+    }
+
+    bool takeControllerDisconnected() {
+        const bool disconnected = controller_disconnected_;
+        controller_disconnected_ = false;
+        return disconnected;
+    }
+
+    void setVirtualDigitalMask(uint32_t mask) {
+        if (virtual_digital_mask_ == mask) {
+            return;
+        }
+        virtual_digital_mask_ = mask;
+        syncDigitalMask();
+    }
+
+    uint32_t activeDigitalMask() const {
+        return active_digital_mask_;
     }
 
     void tick(bool fsui_active) {
@@ -2677,6 +3078,9 @@ class GameplayInputRouter {
 
             const bool pressed = event.type == SDL_CONTROLLERBUTTONDOWN;
             const SDL_GameControllerButton button = static_cast<SDL_GameControllerButton>(event.cbutton.button);
+            if (pressed && !fsui_active && !fsui_owns_input_) {
+                controller_activity_ = true;
+            }
 
             if (button == SDL_CONTROLLER_BUTTON_START || button == SDL_CONTROLLER_BUTTON_BACK ||
                 button == SDL_CONTROLLER_BUTTON_GUIDE || button == SDL_CONTROLLER_BUTTON_MISC1) {
@@ -2704,6 +3108,9 @@ class GameplayInputRouter {
                 return;
             }
 
+            if (std::abs(static_cast<int>(event.caxis.value)) > 8000) {
+                controller_activity_ = true;
+            }
             const uint16_t mapped = static_cast<uint16_t>((static_cast<int>(event.caxis.value) + INT16_MAX + 1) / 0x100);
             switch (event.caxis.axis) {
                 case SDL_CONTROLLER_AXIS_RIGHTX:
@@ -2746,6 +3153,7 @@ class GameplayInputRouter {
             if (joystick && SDL_JoystickInstanceID(joystick) == event.cdevice.which) {
                 SDL_GameControllerClose(controller_);
                 controller_ = nullptr;
+                controller_disconnected_ = true;
                 start_button_ = {};
                 select_button_ = {};
                 trigger_left_down_ = false;
@@ -2832,29 +3240,43 @@ class GameplayInputRouter {
     }
 
     void press(uint32_t mask) {
-        if (!pad_ || !mask) {
+        if (!mask) {
             return;
         }
-
-        if ((active_digital_mask_ & mask) == 0) {
-            psx_pad_button_press(pad_, 0, mask);
-            active_digital_mask_ |= mask;
-        }
+        physical_digital_mask_ |= mask;
+        syncDigitalMask();
     }
 
     void release(uint32_t mask) {
-        if (!pad_ || !mask) {
+        if (!mask) {
+            return;
+        }
+        physical_digital_mask_ &= ~mask;
+        syncDigitalMask();
+    }
+
+    void syncDigitalMask() {
+        const uint32_t desired_mask = physical_digital_mask_ | virtual_digital_mask_;
+        if (!pad_) {
+            active_digital_mask_ = desired_mask;
             return;
         }
 
-        if ((active_digital_mask_ & mask) != 0) {
-            psx_pad_button_release(pad_, 0, mask);
-            active_digital_mask_ &= ~mask;
+        const uint32_t pressed = desired_mask & ~active_digital_mask_;
+        const uint32_t released = active_digital_mask_ & ~desired_mask;
+        if (pressed) {
+            psx_pad_button_press(pad_, 0, pressed);
         }
+        if (released) {
+            psx_pad_button_release(pad_, 0, released);
+        }
+        active_digital_mask_ = desired_mask;
     }
 
     void clearAll() {
         if (!pad_) {
+            physical_digital_mask_ = 0;
+            virtual_digital_mask_ = 0;
             active_digital_mask_ = 0;
             return;
         }
@@ -2873,6 +3295,8 @@ class GameplayInputRouter {
             }
         }
 
+        physical_digital_mask_ = 0;
+        virtual_digital_mask_ = 0;
         active_digital_mask_ = 0;
         psx_pad_analog_change(pad_, 0, PSXI_AX_SDA_RIGHT_HORZ, 0x80);
         psx_pad_analog_change(pad_, 0, PSXI_AX_SDA_RIGHT_VERT, 0x80);
@@ -2939,6 +3363,8 @@ class GameplayInputRouter {
 
     psx_pad_t* pad_ = nullptr;
     SDL_GameController* controller_ = nullptr;
+    uint32_t physical_digital_mask_ = 0;
+    uint32_t virtual_digital_mask_ = 0;
     uint32_t active_digital_mask_ = 0;
     PendingChordButton start_button_{};
     PendingChordButton select_button_{};
@@ -2947,6 +3373,336 @@ class GameplayInputRouter {
     bool fsui_owns_input_ = false;
     bool trigger_left_down_ = false;
     bool trigger_right_down_ = false;
+    bool controller_activity_ = false;
+    bool controller_disconnected_ = false;
+};
+
+class ImGuiMobileControls {
+  public:
+    void processEvent(const SDL_Event& event) {
+        if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+            if (!visible_) {
+                showNow();
+                suppress_mouse_until_up_ = true;
+            } else {
+                last_activity_ms_ = SDL_GetTicks();
+            }
+            return;
+        }
+        if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
+            suppress_mouse_until_up_ = false;
+            return;
+        }
+        if (event.type != SDL_FINGERDOWN && event.type != SDL_FINGERMOTION && event.type != SDL_FINGERUP) {
+            return;
+        }
+
+        const auto suppressed = std::find(suppressed_touches_.begin(), suppressed_touches_.end(), event.tfinger.fingerId);
+        if (suppressed != suppressed_touches_.end()) {
+            if (event.type == SDL_FINGERUP) {
+                suppressed_touches_.erase(suppressed);
+            }
+            return;
+        }
+
+        if (event.type == SDL_FINGERDOWN && !visible_) {
+            showNow();
+            suppressed_touches_.push_back(event.tfinger.fingerId);
+            return;
+        }
+
+        last_activity_ms_ = SDL_GetTicks();
+        const auto found = std::find_if(touches_.begin(), touches_.end(), [&](const Touch& touch) {
+            return touch.id == event.tfinger.fingerId;
+        });
+
+        if (event.type == SDL_FINGERUP) {
+            if (found != touches_.end()) {
+                touches_.erase(found);
+            }
+            return;
+        }
+
+        const Touch next{
+            .id = event.tfinger.fingerId,
+            .x = std::clamp(event.tfinger.x, 0.0f, 1.0f),
+            .y = std::clamp(event.tfinger.y, 0.0f, 1.0f),
+        };
+        if (found == touches_.end()) {
+            touches_.push_back(next);
+        } else {
+            *found = next;
+        }
+    }
+
+    void reset(GameplayInputRouter& input) {
+        touches_.clear();
+        routed_mask_ = 0;
+        input.setVirtualDigitalMask(0);
+    }
+
+    void showNow() {
+        visible_ = true;
+        controller_in_use_ = false;
+        last_activity_ms_ = SDL_GetTicks();
+    }
+
+    void onControllerActivity(GameplayInputRouter& input) {
+        controller_in_use_ = true;
+        visible_ = false;
+        reset(input);
+    }
+
+    void onControllerDisconnected() {
+        showNow();
+    }
+
+    void drawAndRoute(GameplayInputRouter& input) {
+        const Uint32 now = SDL_GetTicks();
+        if (last_activity_ms_ == 0) {
+            last_activity_ms_ = now;
+        }
+        if (visible_ && touches_.empty() && !suppress_mouse_until_up_ &&
+            (now - last_activity_ms_) >= kMobileControlsAutoHideMs) {
+            visible_ = false;
+            reset(input);
+        }
+        if (!visible_) {
+            input.setVirtualDigitalMask(0);
+            return;
+        }
+
+        const ImVec2 display = ImGui::GetIO().DisplaySize;
+        if (display.x <= 0.0f || display.y <= 0.0f) {
+            input.setVirtualDigitalMask(0);
+            return;
+        }
+
+        const Layout layout = makeLayout(display);
+        uint32_t mask = 0;
+        for (const Touch& touch : touches_) {
+            mask |= maskForPoint(layout, ImVec2(touch.x * display.x, touch.y * display.y));
+        }
+
+        ImGuiIO& io = ImGui::GetIO();
+        if (touches_.empty() && io.MouseDown[0] && !io.WantCaptureMouse && !suppress_mouse_until_up_) {
+            mask |= maskForPoint(layout, io.MousePos);
+        }
+
+        routed_mask_ = mask;
+        input.setVirtualDigitalMask(mask);
+        draw(layout, input.activeDigitalMask());
+    }
+
+  private:
+    struct Touch {
+        SDL_FingerID id = 0;
+        float x = 0.0f;
+        float y = 0.0f;
+    };
+
+    struct Button {
+        ImVec2 center{};
+        float radius = 0.0f;
+        uint32_t mask = 0;
+    };
+
+    struct RectButton {
+        ImVec2 min{};
+        ImVec2 max{};
+        uint32_t mask = 0;
+        const char* label = "";
+    };
+
+    struct Layout {
+        ImVec2 display{};
+        ImVec2 stick_center{};
+        float stick_radius = 0.0f;
+        float stick_deadzone = 0.0f;
+        std::array<Button, 4> face{};
+        std::array<RectButton, 6> utility{};
+    };
+
+    static Layout makeLayout(const ImVec2& display) {
+        const float unit = std::max(std::min(display.x, display.y), 1.0f);
+        const float bottom_margin = unit * 0.075f;
+        const float stick_radius = unit * 0.135f;
+        const float face_radius = unit * 0.066f;
+        const float face_offset = unit * 0.125f;
+        const ImVec2 stick_center(unit * 0.21f, display.y - bottom_margin - stick_radius);
+        const ImVec2 face_center(display.x - unit * 0.21f, display.y - bottom_margin - stick_radius);
+
+        Layout layout;
+        layout.display = display;
+        layout.stick_center = stick_center;
+        layout.stick_radius = stick_radius;
+        layout.stick_deadzone = stick_radius * 0.27f;
+        layout.face = {
+            Button{ImVec2(face_center.x, face_center.y - face_offset), face_radius, PSXI_SW_SDA_TRIANGLE},
+            Button{ImVec2(face_center.x + face_offset, face_center.y), face_radius, PSXI_SW_SDA_CIRCLE},
+            Button{ImVec2(face_center.x, face_center.y + face_offset), face_radius, PSXI_SW_SDA_CROSS},
+            Button{ImVec2(face_center.x - face_offset, face_center.y), face_radius, PSXI_SW_SDA_SQUARE},
+        };
+
+        const float shoulder_width = unit * 0.23f;
+        const float shoulder_height = unit * 0.075f;
+        const float edge = unit * 0.035f;
+        const float shoulder_gap = unit * 0.025f;
+        const float pill_width = unit * 0.17f;
+        const float pill_height = unit * 0.065f;
+        const float pill_y = display.y - bottom_margin - pill_height;
+        layout.utility = {
+            RectButton{ImVec2(edge, edge), ImVec2(edge + shoulder_width, edge + shoulder_height), PSXI_SW_SDA_L2, "L2"},
+            RectButton{ImVec2(edge, edge + shoulder_height + shoulder_gap), ImVec2(edge + shoulder_width, edge + shoulder_height * 2.0f + shoulder_gap), PSXI_SW_SDA_L1, "L1"},
+            RectButton{ImVec2(display.x - edge - shoulder_width, edge), ImVec2(display.x - edge, edge + shoulder_height), PSXI_SW_SDA_R2, "R2"},
+            RectButton{ImVec2(display.x - edge - shoulder_width, edge + shoulder_height + shoulder_gap), ImVec2(display.x - edge, edge + shoulder_height * 2.0f + shoulder_gap), PSXI_SW_SDA_R1, "R1"},
+            RectButton{ImVec2(display.x * 0.5f - pill_width - shoulder_gap * 0.5f, pill_y), ImVec2(display.x * 0.5f - shoulder_gap * 0.5f, pill_y + pill_height), PSXI_SW_SDA_SELECT, "SELECT"},
+            RectButton{ImVec2(display.x * 0.5f + shoulder_gap * 0.5f, pill_y), ImVec2(display.x * 0.5f + pill_width + shoulder_gap * 0.5f, pill_y + pill_height), PSXI_SW_SDA_START, "START"},
+        };
+        return layout;
+    }
+
+    static float distanceSquared(const ImVec2& lhs, const ImVec2& rhs) {
+        const float dx = lhs.x - rhs.x;
+        const float dy = lhs.y - rhs.y;
+        return dx * dx + dy * dy;
+    }
+
+    static bool pointInRect(const ImVec2& point, const RectButton& button) {
+        return point.x >= button.min.x && point.x <= button.max.x &&
+            point.y >= button.min.y && point.y <= button.max.y;
+    }
+
+    static uint32_t maskForPoint(const Layout& layout, const ImVec2& point) {
+        uint32_t mask = 0;
+        const float stick_hit_radius = layout.stick_radius * 1.35f;
+        if (distanceSquared(point, layout.stick_center) <= stick_hit_radius * stick_hit_radius) {
+            const float dx = point.x - layout.stick_center.x;
+            const float dy = point.y - layout.stick_center.y;
+            if (dx <= -layout.stick_deadzone) mask |= PSXI_SW_SDA_PAD_LEFT;
+            if (dx >= layout.stick_deadzone) mask |= PSXI_SW_SDA_PAD_RIGHT;
+            if (dy <= -layout.stick_deadzone) mask |= PSXI_SW_SDA_PAD_UP;
+            if (dy >= layout.stick_deadzone) mask |= PSXI_SW_SDA_PAD_DOWN;
+        }
+
+        for (const Button& button : layout.face) {
+            const float hit_radius = button.radius * 1.35f;
+            if (distanceSquared(point, button.center) <= hit_radius * hit_radius) {
+                mask |= button.mask;
+            }
+        }
+        for (const RectButton& button : layout.utility) {
+            if (pointInRect(point, button)) {
+                mask |= button.mask;
+            }
+        }
+        return mask;
+    }
+
+    static void drawCenteredText(ImDrawList* draw_list, const ImVec2& center, ImU32 color, const char* text) {
+        const ImVec2 size = ImGui::CalcTextSize(text);
+        draw_list->AddText(ImVec2(center.x - size.x * 0.5f, center.y - size.y * 0.5f), color, text);
+    }
+
+    static void drawFaceSymbol(ImDrawList* draw_list, const Button& button, uint32_t active_mask) {
+        const bool active = (active_mask & button.mask) != 0;
+        ImU32 accent = IM_COL32(225, 225, 235, 220);
+        if (button.mask == PSXI_SW_SDA_TRIANGLE) accent = IM_COL32(70, 220, 150, 235);
+        if (button.mask == PSXI_SW_SDA_CIRCLE) accent = IM_COL32(245, 90, 105, 235);
+        if (button.mask == PSXI_SW_SDA_CROSS) accent = IM_COL32(95, 150, 255, 235);
+        if (button.mask == PSXI_SW_SDA_SQUARE) accent = IM_COL32(225, 105, 220, 235);
+        draw_list->AddCircleFilled(
+            button.center,
+            button.radius,
+            active ? IM_COL32(255, 255, 255, 105) : IM_COL32(18, 20, 28, 112),
+            32
+        );
+        draw_list->AddCircle(button.center, button.radius, accent, 32, active ? 4.0f : 2.5f);
+
+        const float symbol = button.radius * 0.48f;
+        if (button.mask == PSXI_SW_SDA_TRIANGLE) {
+            draw_list->AddTriangle(
+                ImVec2(button.center.x, button.center.y - symbol),
+                ImVec2(button.center.x + symbol, button.center.y + symbol),
+                ImVec2(button.center.x - symbol, button.center.y + symbol),
+                accent,
+                3.0f
+            );
+        } else if (button.mask == PSXI_SW_SDA_CIRCLE) {
+            draw_list->AddCircle(button.center, symbol, accent, 24, 3.0f);
+        } else if (button.mask == PSXI_SW_SDA_CROSS) {
+            draw_list->AddLine(
+                ImVec2(button.center.x - symbol, button.center.y - symbol),
+                ImVec2(button.center.x + symbol, button.center.y + symbol),
+                accent,
+                3.0f
+            );
+            draw_list->AddLine(
+                ImVec2(button.center.x + symbol, button.center.y - symbol),
+                ImVec2(button.center.x - symbol, button.center.y + symbol),
+                accent,
+                3.0f
+            );
+        } else {
+            draw_list->AddRect(
+                ImVec2(button.center.x - symbol, button.center.y - symbol),
+                ImVec2(button.center.x + symbol, button.center.y + symbol),
+                accent,
+                1.0f,
+                0,
+                3.0f
+            );
+        }
+    }
+
+    static void draw(const Layout& layout, uint32_t active_mask) {
+        ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+        const ImU32 panel = IM_COL32(18, 20, 28, 112);
+        const ImU32 outline = IM_COL32(235, 238, 246, 185);
+        const ImU32 active = IM_COL32(255, 255, 255, 105);
+
+        draw_list->AddCircleFilled(layout.stick_center, layout.stick_radius, panel, 40);
+        draw_list->AddCircle(layout.stick_center, layout.stick_radius, outline, 40, 2.5f);
+        ImVec2 knob = layout.stick_center;
+        const float knob_offset = layout.stick_radius * 0.43f;
+        if (active_mask & PSXI_SW_SDA_PAD_LEFT) knob.x -= knob_offset;
+        if (active_mask & PSXI_SW_SDA_PAD_RIGHT) knob.x += knob_offset;
+        if (active_mask & PSXI_SW_SDA_PAD_UP) knob.y -= knob_offset;
+        if (active_mask & PSXI_SW_SDA_PAD_DOWN) knob.y += knob_offset;
+        const bool stick_active = (active_mask &
+            (PSXI_SW_SDA_PAD_LEFT | PSXI_SW_SDA_PAD_RIGHT | PSXI_SW_SDA_PAD_UP | PSXI_SW_SDA_PAD_DOWN)) != 0;
+        draw_list->AddCircleFilled(
+            knob,
+            layout.stick_radius * 0.42f,
+            stick_active ? IM_COL32(165, 185, 255, 180) : IM_COL32(105, 115, 140, 160),
+            32
+        );
+        draw_list->AddCircle(knob, layout.stick_radius * 0.42f, outline, 32, 2.0f);
+
+        for (const Button& button : layout.face) {
+            drawFaceSymbol(draw_list, button, active_mask);
+        }
+
+        for (const RectButton& button : layout.utility) {
+            const bool is_active = (active_mask & button.mask) != 0;
+            draw_list->AddRectFilled(button.min, button.max, is_active ? active : panel, 10.0f);
+            draw_list->AddRect(button.min, button.max, outline, 10.0f, 0, is_active ? 3.5f : 2.0f);
+            drawCenteredText(
+                draw_list,
+                ImVec2((button.min.x + button.max.x) * 0.5f, (button.min.y + button.max.y) * 0.5f),
+                IM_COL32(245, 247, 252, 225),
+                button.label
+            );
+        }
+    }
+
+    std::vector<Touch> touches_;
+    std::vector<SDL_FingerID> suppressed_touches_;
+    uint32_t routed_mask_ = 0;
+    Uint32 last_activity_ms_ = 0;
+    bool visible_ = true;
+    bool controller_in_use_ = false;
+    bool suppress_mouse_until_up_ = false;
 };
 
 class ArmsxApp {
@@ -2977,6 +3733,7 @@ class ArmsxApp {
         psxe_cfg_load(cfg, argc_, const_cast<const char**>(argv_));
         settings_ = BuildSettings(cfg, cli_);
         psxe_cfg_destroy(cfg);
+        syncPlatformLibraries(false, false);
 
         applyLoggingSettings("startup");
 #if defined(USE_HARDWARE)
@@ -3792,6 +4549,9 @@ class ArmsxApp {
             if (SupportsManagedWindowSizing()) {
                 flags |= SDL_WINDOW_RESIZABLE;
             }
+#if defined(__ANDROID__) || defined(IOS_TARGET)
+            flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+#endif
             window_ = SDL_CreateWindow(
                 "ARMSX",
                 SDL_WINDOWPOS_CENTERED,
@@ -3956,6 +4716,7 @@ class ArmsxApp {
 
     void handleEvent(const SDL_Event& event) {
         imgui_backend_.processEvent(event);
+        mobile_controls_.processEvent(event);
 
         if (event.type == SDL_QUIT) {
             running_ = false;
@@ -3976,6 +4737,12 @@ class ArmsxApp {
 
         const bool fsui_active = fsui::HasActiveWindow();
         input_router_.processEvent(event, session_.valid() ? &session_ : nullptr, fsui_active);
+        if (input_router_.takeControllerDisconnected()) {
+            mobile_controls_.onControllerDisconnected();
+        }
+        if (input_router_.takeControllerActivity()) {
+            mobile_controls_.onControllerActivity(input_router_);
+        }
 
         if (event.type == SDL_KEYDOWN && !fsui_active && session_.valid() && event.key.repeat == 0 && event.key.keysym.sym == SDLK_RETURN) {
             psx_exp2_atcons_put(session_.psx()->exp2, 13);
@@ -3989,6 +4756,7 @@ class ArmsxApp {
     void runFrame() {
         const bool fsui_was_active = fsui::HasActiveWindow();
         input_router_.tick(fsui_was_active);
+        syncPlatformLibraries(true, true);
 
         if (deferred_vsync_.has_value()) {
             const bool desired_vsync = *deferred_vsync_;
@@ -4042,6 +4810,12 @@ class ArmsxApp {
             session_.draw(settings_);
         }
 
+        if (session_.valid() && settings_.mobile_controls && !fsui::HasActiveWindow()) {
+            mobile_controls_.drawAndRoute(input_router_);
+        } else {
+            mobile_controls_.reset(input_router_);
+        }
+
         if (pending_error_dialog_.has_value()) {
             ImGuiFullscreen::OpenInfoMessageDialog("ARMSX", *pending_error_dialog_);
             pending_error_dialog_.reset();
@@ -4083,7 +4857,7 @@ class ArmsxApp {
 
         switch (command.type) {
             case fsui::CommandType::LaunchPath:
-                queueLaunchRequest(LaunchForPath(command.path), true);
+                queueLaunchArgument(command.path.string(), true);
                 break;
 
             case fsui::CommandType::RequestQuit:
@@ -4216,6 +4990,7 @@ class ArmsxApp {
         }
 
         input_router_.attach(session_.pad());
+        mobile_controls_.showNow();
         resetFramePacing("launch-session");
         applyWindowMetrics();
         logRendererBootstrap("session-launch", session_.frameRate());
@@ -4247,6 +5022,49 @@ class ArmsxApp {
         showPauseMenuWindow();
     }
 
+    bool syncPlatformLibraries(bool persist, bool refresh) {
+        std::vector<PlatformLibraryRoot> roots;
+        std::vector<PlatformLibraryGame> games;
+        const std::uint64_t version = CopyPlatformLibrarySnapshot(roots, games);
+        if (version == 0 || version == platform_library_version_) {
+            return false;
+        }
+
+#if defined(__ANDROID__)
+        auto remove_virtual_roots = [](std::vector<std::filesystem::path>& paths) {
+            paths.erase(
+                std::remove_if(paths.begin(), paths.end(), [](const std::filesystem::path& path) {
+                    return IsAndroidVirtualPath(path.string());
+                }),
+                paths.end()
+            );
+        };
+        remove_virtual_roots(settings_.ui_state.game_list_paths);
+        remove_virtual_roots(settings_.ui_state.game_list_recursive_paths);
+#endif
+
+        platform_roots_ = std::move(roots);
+        platform_games_ = std::move(games);
+        for (const PlatformLibraryRoot& root : platform_roots_) {
+            auto& paths = root.recursive
+                ? settings_.ui_state.game_list_recursive_paths
+                : settings_.ui_state.game_list_paths;
+            const std::filesystem::path path(root.path);
+            if (!PathListContains(paths, path)) {
+                paths.push_back(path);
+            }
+        }
+        platform_library_version_ = version;
+
+        if (refresh) {
+            refreshGameList(true);
+        }
+        if (persist) {
+            SaveSettings(settings_);
+        }
+        return true;
+    }
+
     void refreshGameList(bool full_rescan) {
         (void)full_rescan;
         game_list_.clear();
@@ -4254,7 +5072,7 @@ class ArmsxApp {
         std::vector<std::pair<std::filesystem::path, bool>> scan_roots;
 
         auto add_scan_root = [&](const std::filesystem::path& root, bool recursive) {
-            if (root.empty()) {
+            if (root.empty() || IsAndroidVirtualPath(root.string())) {
                 return;
             }
 
@@ -4346,6 +5164,46 @@ class ArmsxApp {
 
         for (const auto& [root, recursive] : scan_roots) {
             scan_root(root, recursive);
+        }
+
+        for (const PlatformLibraryGame& game : platform_games_) {
+            const auto root = std::find_if(platform_roots_.begin(), platform_roots_.end(), [&](const PlatformLibraryRoot& candidate) {
+                return PlatformPathBelongsToRoot(game.path, candidate.path, candidate.recursive);
+            });
+            if (root == platform_roots_.end()) {
+                continue;
+            }
+
+            const std::filesystem::path path(game.path);
+            if ((!IsDiscPath(path) && !IsExePath(path) && !IsZipPath(path)) ||
+                IsLikelyBiosImagePath(path, settings_) ||
+                PathListContains(seen_game_paths, path)) {
+                continue;
+            }
+            seen_game_paths.push_back(path);
+
+            fsui::GameEntry entry;
+            entry.path = path;
+            entry.type = IsExePath(path) ? fsui::GameEntryType::Homebrew : fsui::GameEntryType::Application;
+            entry.title = game.label.empty() ? StemToTitle(path) : game.label;
+            entry.title_sort = ToLower(entry.title);
+            entry.english_title = entry.title;
+            entry.title_id = NormalizeModel(entry.title);
+            entry.file_size = game.size;
+            entry.modified_time = game.modified;
+
+            const int region = RegionFromSettings(settings_);
+            if (region == CDR_REGION_EUROPE) {
+                entry.region = "Europe";
+                entry.region_flag_path = "icons/flags/eu.png";
+            } else if (region == CDR_REGION_JAPAN) {
+                entry.region = "Japan";
+                entry.region_flag_path = "icons/flags/jp.png";
+            } else {
+                entry.region = "North America";
+                entry.region_flag_path = "icons/flags/us.png";
+            }
+            game_list_.push_back(std::move(entry));
         }
 
         std::sort(game_list_.begin(), game_list_.end(), [](const fsui::GameEntry& left, const fsui::GameEntry& right) {
@@ -4821,8 +5679,15 @@ class ArmsxApp {
             add_folder.kind = fsui::SettingsRowKind::Action;
             add_folder.id = "add-folder";
             add_folder.title = ICON_FA_FOLDER_PLUS " Add Library Folder";
+#if defined(__ANDROID__) || defined(IOS_TARGET)
+            add_folder.summary = "Grant persistent access to one game directory using the system folder picker.";
+#else
             add_folder.summary = AppendBrowseRootHint("Scan only the selected directory.");
+#endif
             add_folder.on_activate = [this]() {
+                if (RequestPlatformLibraryDirectory(false)) {
+                    return;
+                }
                 ImGuiFullscreen::OpenFileSelector(
                     "Add Library Folder",
                     true,
@@ -4843,8 +5708,15 @@ class ArmsxApp {
             add_recursive.kind = fsui::SettingsRowKind::Action;
             add_recursive.id = "add-recursive-folder";
             add_recursive.title = ICON_FA_FOLDER_PLUS " Add Recursive Folder";
+#if defined(__ANDROID__) || defined(IOS_TARGET)
+            add_recursive.summary = "Grant persistent access to a game directory and scan all of its subfolders.";
+#else
             add_recursive.summary = AppendBrowseRootHint("Scan the selected directory and its children.");
+#endif
             add_recursive.on_activate = [this]() {
+                if (RequestPlatformLibraryDirectory(true)) {
+                    return;
+                }
                 ImGuiFullscreen::OpenFileSelector(
                     "Add Recursive Library Folder",
                     true,
@@ -4878,11 +5750,19 @@ class ArmsxApp {
                         recursive ? ICON_FA_FOLDER_OPEN " Recursive Folder" : ICON_FA_FOLDER " Library Folder",
                         row.id
                     );
-                    row.summary = folders[index].string();
+                    const std::string configured_path = folders[index].string();
+                    const auto platform_root = std::find_if(platform_roots_.begin(), platform_roots_.end(), [&](const PlatformLibraryRoot& root) {
+                        return root.path == configured_path;
+                    });
+                    row.summary = platform_root != platform_roots_.end() && !platform_root->label.empty()
+                        ? platform_root->label + "\n" + configured_path
+                        : configured_path;
                     row.on_activate = [this, index, recursive]() {
                         auto& list = recursive ? settings_.ui_state.game_list_recursive_paths : settings_.ui_state.game_list_paths;
                         if (index < list.size()) {
+                            const std::string removed_path = list[index].string();
                             list.erase(list.begin() + static_cast<std::ptrdiff_t>(index));
+                            NotifyPlatformLibraryDirectoryRemoved(removed_path);
                             refreshGameList(true);
                             SaveSettings(settings_);
                         }
@@ -4918,6 +5798,24 @@ class ArmsxApp {
                 SaveSettings(settings_);
             };
             rows.push_back(std::move(logging_enabled));
+
+            fsui::SettingsRowDescriptor mobile_controls;
+            mobile_controls.kind = fsui::SettingsRowKind::Toggle;
+            mobile_controls.id = "mobile-controls";
+            mobile_controls.title = ICON_FA_GAMEPAD " ImGui Mobile Controls";
+            mobile_controls.summary =
+                "Show the multitouch PlayStation controls during play. They hide after three seconds idle or when a controller is used, and reappear on touch.";
+            mobile_controls.toggle_value = settings_.mobile_controls;
+            mobile_controls.on_toggle = [this](bool value) {
+                settings_.mobile_controls = value;
+                if (!value) {
+                    mobile_controls_.reset(input_router_);
+                } else {
+                    mobile_controls_.showNow();
+                }
+                SaveSettings(settings_);
+            };
+            rows.push_back(std::move(mobile_controls));
 
             if (settings_.logging_enabled) {
                 fsui::SettingsRowDescriptor log_level;
@@ -5131,6 +6029,23 @@ class ArmsxApp {
         };
         rows.push_back(std::move(filter));
 
+        fsui::SettingsRowDescriptor presentation_upscale;
+        presentation_upscale.kind = fsui::SettingsRowKind::Choice;
+        presentation_upscale.id = "presentation-upscale";
+        presentation_upscale.title = ICON_FA_MAGIC " SDL Quality Upscale";
+        presentation_upscale.summary =
+            "Build a higher-resolution SDL presentation texture without changing PlayStation rasterization.";
+        presentation_upscale.value = std::to_string(settings_.presentation_upscale) + "x";
+        presentation_upscale.dialog_title = presentation_upscale.title;
+        presentation_upscale.choices = BuildPresentationUpscaleChoices(settings_.presentation_upscale);
+        presentation_upscale.on_choice = [this](int index) {
+            if (index >= 0 && index < 8) {
+                settings_.presentation_upscale = index + 1;
+                SaveSettings(settings_);
+            }
+        };
+        rows.push_back(std::move(presentation_upscale));
+
         fsui::SettingsRowDescriptor stretch;
         stretch.kind = fsui::SettingsRowKind::Toggle;
         stretch.id = "stretch";
@@ -5307,7 +6222,11 @@ class ArmsxApp {
     fsui::SdlImGuiBackend imgui_backend_{};
     ArmsxSession session_{};
     GameplayInputRouter input_router_{};
+    ImGuiMobileControls mobile_controls_{};
     std::vector<fsui::GameEntry> game_list_{};
+    std::vector<PlatformLibraryRoot> platform_roots_{};
+    std::vector<PlatformLibraryGame> platform_games_{};
+    std::uint64_t platform_library_version_ = 0;
     std::optional<std::string> pending_error_dialog_{};
     std::optional<LaunchRequest> deferred_launch_{};
     std::optional<std::filesystem::path> deferred_change_disc_{};
@@ -5477,6 +6396,34 @@ extern "C" PSXE_API void psxe_wasm_on_error(const char* message) {
     EnqueueWebError(text);
 }
 
+extern "C" PSXE_API void psxe_set_library_directory_picker_callback(
+    PlatformDirectoryPickerCallback callback,
+    void* userdata
+) {
+    g_platform_directory_picker_callback = callback;
+    g_platform_directory_picker_userdata = userdata;
+}
+
+extern "C" PSXE_API void psxe_set_library_directory_removed_callback(
+    PlatformDirectoryRemovedCallback callback,
+    void* userdata
+) {
+    g_platform_directory_removed_callback = callback;
+    g_platform_directory_removed_userdata = userdata;
+}
+
+extern "C" PSXE_API void psxe_register_platform_library_directory(
+    const char* path,
+    const char* label,
+    int recursive
+) {
+    RegisterPlatformLibraryRoot(
+        path ? path : "",
+        label ? label : "",
+        recursive != 0
+    );
+}
+
 #if defined(__ANDROID__)
 extern "C" JNIEXPORT void JNICALL Java_com_nanodata_armsx_EmulatorActivity_nativeEnqueueLaunchArgument(
     JNIEnv* env,
@@ -5495,11 +6442,98 @@ extern "C" JNIEXPORT void JNICALL Java_com_nanodata_armsx_EmulatorActivity_nativ
     psxe_enqueue_launch_argument(utf);
     env->ReleaseStringUTFChars(argument, utf);
 }
+
+extern "C" JNIEXPORT void JNICALL Java_com_nanodata_armsx_EmulatorActivity_nativeSetPlatformLibrarySnapshot(
+    JNIEnv* env,
+    jclass,
+    jobjectArray root_paths,
+    jobjectArray root_labels,
+    jbooleanArray root_recursive,
+    jobjectArray game_paths,
+    jobjectArray game_labels,
+    jlongArray game_sizes,
+    jlongArray game_modified
+) {
+    if (!env) {
+        return;
+    }
+
+    auto array_string = [&](jobjectArray values, jsize index) -> std::string {
+        if (!values || index < 0 || index >= env->GetArrayLength(values)) {
+            return {};
+        }
+        auto value = static_cast<jstring>(env->GetObjectArrayElement(values, index));
+        if (!value) {
+            return {};
+        }
+        const char* utf = env->GetStringUTFChars(value, nullptr);
+        std::string result = utf ? utf : "";
+        if (utf) {
+            env->ReleaseStringUTFChars(value, utf);
+        }
+        env->DeleteLocalRef(value);
+        return result;
+    };
+
+    std::vector<PlatformLibraryRoot> roots;
+    const jsize root_count = root_paths ? env->GetArrayLength(root_paths) : 0;
+    std::vector<jboolean> recursive(static_cast<size_t>(root_count), JNI_TRUE);
+    if (root_recursive && root_count > 0) {
+        const jsize count = std::min(root_count, env->GetArrayLength(root_recursive));
+        env->GetBooleanArrayRegion(root_recursive, 0, count, recursive.data());
+    }
+    roots.reserve(static_cast<size_t>(root_count));
+    for (jsize index = 0; index < root_count; index++) {
+        std::string path = array_string(root_paths, index);
+        if (!path.empty()) {
+            roots.push_back(PlatformLibraryRoot{
+                .path = std::move(path),
+                .label = array_string(root_labels, index),
+                .recursive = recursive[static_cast<size_t>(index)] == JNI_TRUE,
+            });
+        }
+    }
+
+    std::vector<PlatformLibraryGame> games;
+    const jsize game_count = game_paths ? env->GetArrayLength(game_paths) : 0;
+    std::vector<jlong> sizes(static_cast<size_t>(game_count), 0);
+    std::vector<jlong> modified(static_cast<size_t>(game_count), 0);
+    if (game_sizes && game_count > 0) {
+        env->GetLongArrayRegion(game_sizes, 0, std::min(game_count, env->GetArrayLength(game_sizes)), sizes.data());
+    }
+    if (game_modified && game_count > 0) {
+        env->GetLongArrayRegion(game_modified, 0, std::min(game_count, env->GetArrayLength(game_modified)), modified.data());
+    }
+    games.reserve(static_cast<size_t>(game_count));
+    for (jsize index = 0; index < game_count; index++) {
+        std::string path = array_string(game_paths, index);
+        if (!path.empty()) {
+            games.push_back(PlatformLibraryGame{
+                .path = std::move(path),
+                .label = array_string(game_labels, index),
+                .size = sizes[static_cast<size_t>(index)] > 0
+                    ? static_cast<std::uint64_t>(sizes[static_cast<size_t>(index)])
+                    : 0,
+                .modified = modified[static_cast<size_t>(index)] > 0
+                    ? static_cast<std::time_t>(modified[static_cast<size_t>(index)] / 1000)
+                    : 0,
+            });
+        }
+    }
+    SetPlatformLibrarySnapshot(std::move(roots), std::move(games));
+}
 #endif
 
 extern "C" PSXE_API int external_main(int argc, const char* argv[], void* external_window, void* external_renderer) {
     return psxe_run(argc, argv, external_window, external_renderer);
 }
+
+#if defined(__ANDROID__)
+extern "C" PSXE_API int armsx_android_main(int argc, char* argv[]) {
+    psxe_platform_set_fopen_callback(AndroidPlatformFopen, nullptr);
+    return psxe_run(argc, const_cast<const char**>(argv), nullptr, nullptr);
+}
+#endif
 
 #ifndef __DLL_BUILD
 int main(int argc, const char* argv[]) {

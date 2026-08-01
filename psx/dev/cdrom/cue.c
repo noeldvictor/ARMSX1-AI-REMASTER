@@ -5,6 +5,7 @@
 #include <ctype.h>
 
 #include "cue.h"
+#include "frontend/platform_file.h"
 
 static const char* cue_keywords[] = {
     "4CH",
@@ -266,7 +267,7 @@ void cue_init(cue_t* cue) {
 }
 
 int cue_parse(cue_t* cue, const char* path) {
-    cue->file = fopen(path, "rb");
+    cue->file = psxe_platform_fopen(path, "rb");
 
     if (!cue->file)
         return CUE_FILE_NOT_FOUND;
@@ -396,7 +397,7 @@ int cue_load(cue_t* cue, int mode) {
     while (node) {
         cue_file_t* data = node->data;
 
-        FILE* file = fopen(data->name, "rb");
+        FILE* file = psxe_platform_fopen(data->name, "rb");
 
         if (!file)
             return CUE_TRACK_FILE_NOT_FOUND;

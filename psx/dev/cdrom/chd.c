@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include "chd.h"
+#include "frontend/platform_file.h"
 #include "../../log.h"
 #include "libchdr/chd.h"
 #include "libchdr/cdrom.h"
@@ -241,7 +242,7 @@ int chd_load(chd_t* chd, const char* path) {
     chd_reset(chd);
     chd_init(chd);
 
-    chd->file = fopen(path, "rb");
+    chd->file = psxe_platform_fopen(path, "rb");
     if (!chd->file) {
         log_error("Failed to open CHD file: %s", path);
         chd_reset(chd);

@@ -23,6 +23,10 @@
 #define PSX_GPU_CLOCK_NTSC 53693175 // 53.693175 MHz
 #define PSX_GPU_CLOCK_FREQ_NTSC 53.693175f // 53.693175 MHz
 #define PSX_GPU_CLOCK_FREQ_PAL 53.203425f // 53.203425 MHz
+#define PSX_GPU_CYCLES_PER_SCANLINE_NTSC 3413.0f
+#define PSX_GPU_CYCLES_PER_SCANLINE_PAL 3406.0f
+#define PSX_GPU_SCANS_PER_FRAME_NTSC 263
+#define PSX_GPU_SCANS_PER_FRAME_PAL 314
 
 enum {
     GPU_EVENT_DMODE,
@@ -181,7 +185,15 @@ static inline float psx_gpu_clock_frequency(const psx_gpu_t* gpu) {
 }
 
 static inline float psx_gpu_frame_rate(const psx_gpu_t* gpu) {
-    return psx_gpu_is_pal_mode(gpu) ? 49.76f : 59.29f;
+    const float clock_hz = psx_gpu_clock_frequency(gpu) * 1000000.0f;
+    const float cycles_per_scanline = psx_gpu_is_pal_mode(gpu)
+        ? PSX_GPU_CYCLES_PER_SCANLINE_PAL
+        : PSX_GPU_CYCLES_PER_SCANLINE_NTSC;
+    const int scans_per_frame = psx_gpu_is_pal_mode(gpu)
+        ? PSX_GPU_SCANS_PER_FRAME_PAL
+        : PSX_GPU_SCANS_PER_FRAME_NTSC;
+
+    return clock_hz / (cycles_per_scanline * (float)scans_per_frame);
 }
 
 psx_gpu_t* psx_gpu_create(void);

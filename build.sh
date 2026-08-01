@@ -15,6 +15,30 @@ MODE="$1"
 BUILD_JOBS="${BUILD_JOBS:-4}"
 export USE_CHD="${USE_CHD:-1}"
 
+resolve_fsui_python() {
+    if [ -n "${FSUI_PYTHON_EXECUTABLE:-}" ]; then
+        if [ ! -x "${FSUI_PYTHON_EXECUTABLE}" ] ||
+            ! "${FSUI_PYTHON_EXECUTABLE}" -c "import jinja2" >/dev/null 2>&1; then
+            echo "FSUI_PYTHON_EXECUTABLE must name an executable Python with jinja2 installed." >&2
+            return 1
+        fi
+        printf '%s\n' "${FSUI_PYTHON_EXECUTABLE}"
+        return 0
+    fi
+
+    for candidate_name in python3 python; do
+        candidate="$(command -v "${candidate_name}" 2>/dev/null || true)"
+        if [ -n "${candidate}" ] &&
+            "${candidate}" -c "import jinja2" >/dev/null 2>&1; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    done
+
+    echo "fsui requires a Python with jinja2. Set FSUI_PYTHON_EXECUTABLE to an existing interpreter." >&2
+    return 1
+}
+
 build_fsui_native() {
     if [ "$(uname -s)" = "Darwin" ]; then
         MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}"
@@ -153,6 +177,7 @@ if [ "$MODE" = "ios" ]; then
     fi
 
     IOS_SDL2_DIR="$(prepare_ios_sdl_package "${IOS_SDL_FRAMEWORK}")"
+    FSUI_PYTHON="$(resolve_fsui_python)"
 
     echo "Building iOS dylib with SDK ${IOS_SDK} (${IOS_SDKROOT})"
     cmake -S third_party/fsui-lib -B build/fsui/ios \
@@ -163,6 +188,7 @@ if [ "$MODE" = "ios" ]; then
         -DCMAKE_OSX_ARCHITECTURES=arm64 \
         -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
         -DCMAKE_OSX_SYSROOT="${IOS_SDKROOT}" \
+        -DPython_EXECUTABLE="${FSUI_PYTHON}" \
         -DSDL2_DIR="${IOS_SDL2_DIR}"
     cmake --build build/fsui/ios -j"${BUILD_JOBS}"
     make clean
@@ -261,10 +287,12 @@ elif [ "$MODE" = "android" ]; then
         -DANDROID_ABI="${ANDROID_ABI}" \
         -DANDROID_PLATFORM="${ANDROID_PLATFORM}" \
         -DANDROID_STL=c++_shared \
+        -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DSDL_STATIC=OFF \
         -DSDL_TEST=OFF \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,common-page-size=16384" \
         -DCMAKE_INSTALL_PREFIX="${SDL_INSTALL_DIR}"
 
     cmake --build "${SDL_BUILD_ROOT}" --config Release
@@ -293,21 +321,30 @@ elif [ "$MODE" = "android" ]; then
     TOOLCHAIN_BIN="${TOOLCHAIN_DIR}/bin"
     CC="${TOOLCHAIN_BIN}/${ANDROID_TRIPLE}${ANDROID_API}-clang"
     CXX="${TOOLCHAIN_BIN}/${ANDROID_TRIPLE}${ANDROID_API}-clang++"
+    AR="${TOOLCHAIN_BIN}/llvm-ar"
+    RANLIB="${TOOLCHAIN_BIN}/llvm-ranlib"
     export CC
     export CXX
+    export AR
+    export RANLIB
 
-    SDL_CFLAGS="-D_REENTRANT -DANDROID -I${SDL_INCLUDE_PATH}"
+    SDL_CFLAGS="-D_REENTRANT -DANDROID -D__BIONIC_NO_PAGE_SIZE_MACRO -I${SDL_INCLUDE_PATH}"
     SDL_LIBS="-L${SDL_LIB_PATH} -lSDL2 -llog -landroid -lGLESv3 -lEGL -lOpenSLES -lm -lc++_shared"
+    ANDROID_FLEXIBLE_PAGE_LDFLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
 
     FSUI_BUILD_ROOT="${REPO_ROOT}/build/fsui/android/${ANDROID_ABI}"
+    FSUI_PYTHON="$(resolve_fsui_python)"
     cmake -S third_party/fsui-lib -B "${FSUI_BUILD_ROOT}" \
         -DFSUI_BUILD_SAMPLES=OFF \
         -DFSUI_PLATFORM_BACKEND=SDL2 \
         -DFSUI_USE_SYSTEM_SDL2=ON \
+        -DFSUI_IMGUI_OPENGL_ES3=ON \
+        -DPython_EXECUTABLE="${FSUI_PYTHON}" \
         -DCMAKE_TOOLCHAIN_FILE="${ANDROID_TOOLCHAIN_FILE}" \
         -DANDROID_ABI="${ANDROID_ABI}" \
         -DANDROID_PLATFORM="${ANDROID_PLATFORM}" \
         -DANDROID_STL=c++_shared \
+        -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH="${SDL_INSTALL_DIR}" \
         -DSDL2_DIR="${SDL_INSTALL_DIR}/lib/cmake/SDL2"
@@ -320,9 +357,13 @@ elif [ "$MODE" = "android" ]; then
         SDL_LIBS_DYNAMIC="${SDL_LIBS}" \
         FSUI_BUILD_DIR="${FSUI_BUILD_ROOT}" \
         LIBCHDR_BUILD_DIR="${REPO_ROOT}/build/libchdr/android/${ANDROID_ABI}" \
+        LIBCHDR_CMAKE_TOOLCHAIN_FILE="${ANDROID_TOOLCHAIN_FILE}" \
+        LIBCHDR_ANDROID_ABI="${ANDROID_ABI}" \
+        LIBCHDR_ANDROID_PLATFORM="${ANDROID_PLATFORM}" \
+        LIBCHDR_ANDROID_FLEXIBLE_PAGE_SIZES=ON \
         PLATFORM=Android \
         OS_INFO=Android \
-        PLATFORM_EXTRA_LDFLAGS= \
+        PLATFORM_EXTRA_LDFLAGS="${ANDROID_FLEXIBLE_PAGE_LDFLAGS}" \
         PLATFORM_EXTRA_LIBS= \
         shared
 

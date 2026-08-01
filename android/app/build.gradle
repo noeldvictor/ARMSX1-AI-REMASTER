@@ -71,10 +71,6 @@ android {
     }
 }
 
-dependencies {
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-}
-
 def repoRootDir = rootProject.projectDir.parentFile
 def nativeOutput = file("$projectDir/src/main/jniLibs/arm64-v8a/libarmsx.so")
 def skipNativePrepare = System.getenv("ARMSX_SKIP_NATIVE_PREPARE") == "1"

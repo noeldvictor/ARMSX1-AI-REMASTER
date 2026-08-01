@@ -1,4 +1,5 @@
 .vscode/
+.claude/
 bin/
 build-win32/
 res/
@@ -35,6 +36,9 @@ ios/HostApp/build/*
 helpers/*
 android/app/src/main/jniLibs/
 android/native-deps/
+android/.gradle/
+android/app/build
+android/build
 mobile/temp/*
 ios/HostApp/ARMSX.xcodeproj/
 ios/HostApp/ARMSX.xcworkspace/

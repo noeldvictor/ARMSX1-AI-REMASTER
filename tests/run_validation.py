@@ -12,6 +12,8 @@ CASES = {
     "source": ([sys.executable, str(ROOT / "tests" / "validate_sources.py")], 30.0),
     "cpu": (["make", "test-cpu"], 180.0),
     "gpu": (["make", "test-gpu"], 120.0),
+    "audio": (["make", "test-audio"], 30.0),
+    "sdl-audio": (["make", "test-sdl-audio"], 30.0),
     "chd": (["make", "test-chd"], 180.0),
     "zip": (["make", "test-zip"], 180.0),
     "web": ([sys.executable, str(ROOT / "tests" / "validate_web.py")], 30.0),

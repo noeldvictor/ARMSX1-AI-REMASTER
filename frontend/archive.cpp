@@ -1,4 +1,5 @@
 #include "archive.h"
+#include "platform_file.h"
 
 #include <algorithm>
 #include <chrono>
@@ -63,16 +64,39 @@ std::optional<std::filesystem::path> ExtractZipLaunchCandidate(
     const std::filesystem::path& archive_path,
     std::string& error
 ) {
+    FILE* archive_file = psxe_platform_fopen(archive_path.string().c_str(), "rb");
+    if (!archive_file) {
+        error = "The ZIP archive could not be opened.";
+        return std::nullopt;
+    }
+
+    if (fseek(archive_file, 0, SEEK_END) != 0) {
+        fclose(archive_file);
+        error = "The ZIP archive is not seekable.";
+        return std::nullopt;
+    }
+    const long long archive_size = ftell(archive_file);
+    if (archive_size < 0 || fseek(archive_file, 0, SEEK_SET) != 0) {
+        fclose(archive_file);
+        error = "The ZIP archive size could not be read.";
+        return std::nullopt;
+    }
+
     mz_zip_archive archive{};
-    if (!mz_zip_reader_init_file(&archive, archive_path.string().c_str(), 0)) {
+    if (!mz_zip_reader_init_cfile(&archive, archive_file, static_cast<mz_uint64>(archive_size), 0)) {
+        fclose(archive_file);
         error = "The ZIP archive could not be opened.";
         return std::nullopt;
     }
 
     struct ArchiveGuard {
         mz_zip_archive* archive;
-        ~ArchiveGuard() { mz_zip_reader_end(archive); }
-    } guard{&archive};
+        FILE* file;
+        ~ArchiveGuard() {
+            mz_zip_reader_end(archive);
+            fclose(file);
+        }
+    } guard{&archive, archive_file};
 
 #if defined(__EMSCRIPTEN__)
     constexpr mz_uint64 kMaxArchiveBytes = 1536ull * 1024ull * 1024ull;

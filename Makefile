@@ -99,6 +99,10 @@ LIBCHDR_ARCHIVE :=
 LIBCHDR_LIBS :=
 LIBCHDR_CONFIGURE :=
 LIBCHDR_CMAKE_ARGS :=
+LIBCHDR_CMAKE_TOOLCHAIN_FILE ?=
+LIBCHDR_ANDROID_ABI ?=
+LIBCHDR_ANDROID_PLATFORM ?=
+LIBCHDR_ANDROID_FLEXIBLE_PAGE_SIZES ?=
 CHD_COMPILE_DEFS :=
 CHD_BUILD_DEPS :=
 CHD_LINK_LIBS :=
@@ -127,6 +131,18 @@ ifeq ($(USE_CHD),1)
 	endif
 
 	LIBCHDR_CMAKE_ARGS := -S $(LIBCHDR_DIR) -B $(LIBCHDR_BUILD_DIR) -DBUILD_SHARED_LIBS=OFF -DCHDR_WANT_RAW_DATA_SECTOR=ON -DCHDR_WANT_SUBCODE=ON -DMINIZ_ARCHIVE_APIS=ON -DMINIZ_STDIO=ON -DCMAKE_BUILD_TYPE=Release
+	ifneq ($(strip $(LIBCHDR_CMAKE_TOOLCHAIN_FILE)),)
+		LIBCHDR_CMAKE_ARGS += -DCMAKE_TOOLCHAIN_FILE=$(LIBCHDR_CMAKE_TOOLCHAIN_FILE)
+	endif
+	ifneq ($(strip $(LIBCHDR_ANDROID_ABI)),)
+		LIBCHDR_CMAKE_ARGS += -DANDROID_ABI=$(LIBCHDR_ANDROID_ABI)
+	endif
+	ifneq ($(strip $(LIBCHDR_ANDROID_PLATFORM)),)
+		LIBCHDR_CMAKE_ARGS += -DANDROID_PLATFORM=$(LIBCHDR_ANDROID_PLATFORM)
+	endif
+	ifneq ($(strip $(LIBCHDR_ANDROID_FLEXIBLE_PAGE_SIZES)),)
+		LIBCHDR_CMAKE_ARGS += -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=$(LIBCHDR_ANDROID_FLEXIBLE_PAGE_SIZES)
+	endif
 	ifneq ($(strip $(CC)),)
 		LIBCHDR_CMAKE_ARGS += -DCMAKE_C_COMPILER=$(CC)
 	endif
@@ -261,6 +277,7 @@ C_SOURCES := $(wildcard psx/*.c) \
              frontend/argparse.c \
              frontend/config.c \
              frontend/diagnostics.c \
+             frontend/platform_file.c \
              frontend/toml.c
 C_SOURCES := $(filter-out psx/dev/cdrom/chd.c,$(C_SOURCES))
 C_SOURCES += frontend/gpu_hw.c
@@ -343,7 +360,7 @@ endif
 SDL_LIBS := $(if $(filter 1,$(SDL_STATIC)),$(SDL_LIBS_STATIC),$(SDL_LIBS_DYNAMIC))
 SDL_LIBS_SHARED := $(SDL_LIBS_DYNAMIC)
 
-.PHONY: all clean shared wasm psvita-lib test test-cpu test-gpu test-chd test-zip test-sdl-runtime disc-probe
+.PHONY: all clean shared wasm psvita-lib test test-cpu test-gpu test-audio test-sdl-audio test-chd test-zip test-sdl-runtime disc-probe
 
 all: $(BIN)
 
@@ -360,12 +377,19 @@ TEST_CORE_SOURCES := $(wildcard psx/*.c) \
 TEST_CORE_SOURCES := $(filter-out psx/dev/cdrom/chd.c,$(TEST_CORE_SOURCES))
 TEST_CPU_BIN := build/tests/cpu_differential
 TEST_GPU_BIN := build/tests/gpu_renderer_parity
+TEST_AUDIO_BIN := build/tests/audio_timing
+TEST_SDL_AUDIO_BIN := build/tests/sdl_audio_queue_smoke
 TEST_CHD_BIN := build/tests/chd_logic
 TEST_ZIP_BIN := build/tests/zip_integration
 TEST_SDL_BIN := build/tests/sdl_renderer_smoke
 DISC_PROBE_BIN := build/tests/disc_probe
+TEST_PLATFORM_FILE_OBJ := build/tests/platform_file.o
 
-$(TEST_CPU_BIN): tests/cpu_differential.c $(TEST_CORE_SOURCES)
+$(TEST_PLATFORM_FILE_OBJ): frontend/platform_file.c frontend/platform_file.h
+	mkdir -p $(dir $@)
+	$(CC) -std=c11 -O2 -g -I. -c frontend/platform_file.c -o $@
+
+$(TEST_CPU_BIN): tests/cpu_differential.c $(TEST_CORE_SOURCES) $(TEST_PLATFORM_FILE_OBJ)
 	mkdir -p $(dir $@)
 	$(CC) -std=c11 -O2 -g -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $^ -lm -o $@
 
@@ -379,17 +403,31 @@ $(TEST_GPU_BIN): tests/gpu_renderer_parity.c psx/dev/gpu.c frontend/gpu_hw.c
 test-gpu: $(TEST_GPU_BIN)
 	./$(TEST_GPU_BIN)
 
-$(TEST_CHD_BIN): tests/chd_logic.c $(CHD_BUILD_DEPS)
+$(TEST_AUDIO_BIN): tests/audio_timing.c
 	mkdir -p $(dir $@)
-	$(CC) -std=c11 -O2 -g -DUSE_CHD -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $(LIBCHDR_INCLUDE_FLAGS) $< $(CHD_LINK_LIBS) -lm -o $@
+	$(CC) -std=c11 -O2 -g -I. -Ipsx $< -lm -o $@
+
+test-audio: $(TEST_AUDIO_BIN)
+	./$(TEST_AUDIO_BIN)
+
+$(TEST_SDL_AUDIO_BIN): tests/sdl_audio_queue_smoke.c
+	mkdir -p $(dir $@)
+	$(CC) -std=c11 -O2 -g $(SDL_CFLAGS) $< $(SDL_LIBS) -o $@
+
+test-sdl-audio: $(TEST_SDL_AUDIO_BIN)
+	./$(TEST_SDL_AUDIO_BIN)
+
+$(TEST_CHD_BIN): tests/chd_logic.c $(TEST_PLATFORM_FILE_OBJ) $(CHD_BUILD_DEPS)
+	mkdir -p $(dir $@)
+	$(CC) -std=c11 -O2 -g -DUSE_CHD -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $(LIBCHDR_INCLUDE_FLAGS) $< $(TEST_PLATFORM_FILE_OBJ) $(CHD_LINK_LIBS) -lm -o $@
 
 test-chd: $(TEST_CHD_BIN)
 	./$(TEST_CHD_BIN)
 
-$(TEST_ZIP_BIN): tests/zip_integration.cpp frontend/archive.cpp $(CHD_BUILD_DEPS)
+$(TEST_ZIP_BIN): tests/zip_integration.cpp frontend/archive.cpp $(TEST_PLATFORM_FILE_OBJ) $(CHD_BUILD_DEPS)
 	mkdir -p $(dir $@)
 	$(CXX) -std=c++20 -O0 -DUSE_CHD -I. $(LIBCHDR_INCLUDE_FLAGS) \
-		tests/zip_integration.cpp frontend/archive.cpp $(CHD_LINK_LIBS) -o $@
+		tests/zip_integration.cpp frontend/archive.cpp $(TEST_PLATFORM_FILE_OBJ) $(CHD_LINK_LIBS) -o $@
 
 test-zip: $(TEST_ZIP_BIN)
 	python3 tests/validate_zip.py ./$(TEST_ZIP_BIN)
