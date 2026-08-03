@@ -1,8 +1,8 @@
-# ARMSX
-ARMSX is a fork of `psxe`, rebuilt around a native FSUI donor shell and SDL2-hosted frontends for desktop, Android, iOS, UWP, web, and PSVita.
+# ARMSX1
+ARMSX1 is a fork of `psxe`, rebuilt around a native FSUI donor shell and SDL2-hosted frontends for desktop, Android, iOS, UWP, web, and PSVita.
 
 ## What It Supports
-ARMSX currently has the following emulator pieces wired up:
+ARMSX1 currently has the following emulator pieces wired up:
 - CPU, DMA, GPU, SPU, MDEC, GTE, and timers
 - CD-ROM loading
 - memory cards
@@ -21,14 +21,9 @@ Disc image support is:
 - `CHD`, including mixed-mode metadata, pregaps/postgaps, audio byte order, and Q subchannel data
 - `ZIP` archives containing a supported game image and its companion files
 
-Not implemented yet:
-- save states
-- netplay
-- texture packs
-
 ## Accuracy and Acceleration
 
-ARMSX has two portable CPU engines:
+ARMSX1 has two portable CPU engines:
 
 - `cached` is the default. It caches decoded instruction handlers, but still performs a real bus fetch and opcode check for every emulated instruction. Writes invalidate matching entries, including cached/uncached address aliases.
 - `interpreter` is the reference path and remains selectable for diagnostics.
