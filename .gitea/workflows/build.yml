@@ -48,7 +48,7 @@ jobs:
           set -euo pipefail
           token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fuse-lib submodule." >&2
             exit 1
           fi
 
@@ -104,7 +104,7 @@ jobs:
           set -euo pipefail
           token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fuse-lib submodule." >&2
             exit 1
           fi
 
@@ -183,7 +183,7 @@ jobs:
           set -euo pipefail
           token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fuse-lib submodule." >&2
             exit 1
           fi
 
@@ -282,7 +282,7 @@ jobs:
           set -euo pipefail
           token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fuse-lib submodule." >&2
             exit 1
           fi
 
@@ -349,7 +349,7 @@ jobs:
           set -euo pipefail
           token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fuse-lib submodule." >&2
             exit 1
           fi
 
@@ -408,7 +408,7 @@ jobs:
           set -euo pipefail
           token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fuse-lib submodule." >&2
             exit 1
           fi
 
@@ -501,7 +501,7 @@ jobs:
           set -euo pipefail
           token="${GIT_TOKEN:-${FSUI_SUBMODULE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fsui-lib submodule." >&2
+            echo "GIT_TOKEN (or FSUI_SUBMODULE_TOKEN) is required to fetch the private fuse-lib submodule." >&2
             exit 1
           fi
 
