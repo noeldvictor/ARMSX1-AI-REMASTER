@@ -1,0 +1,31 @@
+{
+  "bios_candidates": [
+    "bios/PSX - SCPH1001.BIN",
+    "bios/SCPH1001.BIN",
+    "bios/scph1001.bin"
+  ],
+  "games": [
+    {
+      "id": "SCUS-942.54",
+      "name": "Legend of Legaia (USA)",
+      "cue": "roms/Legend of Legaia (USA)/Legend of Legaia (USA).cue",
+      "script": "tests/qa/scus-942.54-title.qa",
+      "confirmed_runs": 2,
+      "expect": [
+        {"frame": 240, "w": 640, "h": 480, "hash": "de6e29fed86fac80", "note": "SCPH-1001 Sony logo"},
+        {"frame": 840, "w": 320, "h": 228, "hash": "1c859cc02ebe806e", "note": "title: New Game / Continue"}
+      ]
+    },
+    {
+      "id": "SLUS-007.26",
+      "name": "Brave Fencer Musashi (USA)",
+      "cue": "roms/Brave Fencer Musashi (USA)/Brave Fencer Musashi (USA).cue",
+      "script": "tests/qa/slus-007.26-title.qa",
+      "confirmed_runs": 2,
+      "expect": [
+        {"frame": 240, "w": 640, "h": 480, "hash": "de6e29fed86fac80", "note": "SCPH-1001 Sony logo"},
+        {"frame": 960, "w": 640, "h": 480, "hash": "ba1d94ecce2c4ac2", "note": "title: PUSH START BUTTON"}
+      ]
+    }
+  ]
+}

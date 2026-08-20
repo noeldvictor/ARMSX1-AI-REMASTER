@@ -263,13 +263,20 @@ verify anything visual instead of guessing.
 ```sh
 make qa
 
-# boot a game, capture the title screen, hash it
-./build/tools/armsx-qa --bios=BIOS.bin --cdrom=game.cue \
-    --script=script.qa --capture-dir=/tmp/caps --json
+# boot both local titles and check golden hashes (~40s each)
+make test-boot
 
-# does it still boot at all?
-./build/tools/armsx-qa --bios=BIOS.bin --cdrom=game.cue \
-    --frames=1800 --stuck-frames=300 --json
+# one game, capture the title screen
+./build/tools/armsx-qa --bios="bios/PSX - SCPH1001.BIN" \
+    --cdrom="roms/Legend of Legaia (USA)/Legend of Legaia (USA).cue" \
+    --script=tests/qa/scus-942.54-title.qa --capture-dir=/tmp/caps --json
+
+# same boot with the enhancement layer on (presentation only; VRAM unchanged)
+./build/tools/armsx-qa --bios="bios/PSX - SCPH1001.BIN" \
+    --cdrom="roms/Legend of Legaia (USA)/Legend of Legaia (USA).cue" \
+    --script=tests/qa/scus-942.54-title.qa --enhance --enhance-dir=cache --json
+
+make test-see   # replacement on/off/user + pack export (no media)
 ```
 
 Script grammar (`#` comments; frames absolute, any order):
@@ -296,9 +303,15 @@ gate. Do not introduce wall-clock or thread-dependent behaviour into `psx/`; it
 would silently destroy this property.
 
 `--selftest=PATH` exercises the capture path with no BIOS and no disc, and runs
-in the gate as the `qa` case.
+in the gate as the `qa` case. `make test-boot` is the functional counterpart:
+it is **not** in the default gate (needs local media, ~40s/title) and skips
+cleanly when `bios/` or `roms/` are empty.
+
+Do **not** use `--stuck-frames` against a title screen. The Legaia menu sits
+unchanged for 600+ frames; a stuck detector would flag a working boot.
 
 Design notes: [`docs/research/20260820_1645_ai-qa-harness.md`](docs/research/20260820_1645_ai-qa-harness.md).
+Functional boot (serials, golden hashes): [`docs/research/20260820_1719_qa-functional-boot.md`](docs/research/20260820_1719_qa-functional-boot.md).
 
 ## Build and verify
 
@@ -331,16 +344,25 @@ make test-sdl-runtime
 make disc-probe IMAGE=/path/to/game.cue
 ```
 
-The gate covers source invariants, cached-vs-reference CPU differential
-execution, self-modifying code, GPU VRAM parity, CHD layout and subchannel
-logic, ZIP extraction and traversal rejection, and browser file-selection rules.
+The gate covers source invariants, CPU differential execution, audio timing,
+the QA selftest, SEE replacement/pack unit tests, and (when `bios/`+`roms/`
+exist) two enhancement-off plus two enhancement-on boots of one local title.
+Cases that need cmake or SDL2 (`gpu`, `chd`, `zip`, `sdl-audio`) **skip**
+instead of failing when those tools are absent.
 
-### Verification assets — currently missing
+### Verification assets — present locally, gitignored
 
-Visual verification needs a **BIOS image** and **2–3 disc images**, which are
-not in the repo and are gitignored (`bios/`, `roms/`, `*.bin`, `*.cue`). Until
-paths are provided, only the headless half of the gate can run. **Any statement
-about visual quality made without them is unverified and must be labelled so.**
+`bios/` and `roms/` are gitignored. This machine has:
+
+| | Path | Serial |
+| --- | --- | --- |
+| BIOS | `bios/PSX - SCPH1001.BIN` (SCPH-1001, 512 KiB) | — |
+| Legend of Legaia (USA) | `roms/Legend of Legaia (USA)/Legend of Legaia (USA).cue` | SCUS-942.54 |
+| Brave Fencer Musashi (USA) | `roms/Brave Fencer Musashi (USA)/Brave Fencer Musashi (USA).cue` | SLUS-007.26 |
+
+Golden hashes live in `tests/qa/goldens.json`. `make test-boot` checks them.
+**Any statement about visual quality made without a capture or a matching
+hash is still unverified and must be labelled so.**
 
 ## Code conventions
 

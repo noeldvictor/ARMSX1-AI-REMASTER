@@ -49,3 +49,9 @@ uwp/ARMSX/AppPackages/*
 
 # Reference sources for study (not part of this project)
 reference/
+
+# Local enhancement cache and exported packs (may contain orig.png)
+cache/
+packs/
+__pycache__/
+*.pyc

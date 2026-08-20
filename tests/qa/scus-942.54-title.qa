@@ -1,0 +1,7 @@
+# Legend of Legaia (USA) — SCUS-942.54
+# Title screen is up by frame 780 and stays put through at least 1440.
+# Frames are absolute. Confirmed on two independent runs 2026-08-20.
+240  hash
+840  capture titlescreen
+840  hash
+900  exit

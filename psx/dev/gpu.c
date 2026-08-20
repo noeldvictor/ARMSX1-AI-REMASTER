@@ -1316,6 +1316,9 @@ void gpu_cmd_a0(psx_gpu_t* gpu) {
             gpu->tsiz -= 2;
 
             if (!gpu->tsiz) {
+                if (gpu->vram_write_cb)
+                    gpu->vram_write_cb(gpu, gpu->xpos, gpu->ypos,
+                                       gpu->xsiz, gpu->ysiz, gpu->vram_write_udata);
                 gpu->xcnt = 0;
                 gpu->ycnt = 0;
                 gpu->state = GPU_STATE_RECV_CMD;
@@ -2075,6 +2078,13 @@ void psx_gpu_set_event_callback(psx_gpu_t* gpu, int event, psx_gpu_event_callbac
 
 void psx_gpu_set_udata(psx_gpu_t* gpu, int index, void* udata) {
     gpu->udata[index] = udata;
+}
+
+void psx_gpu_set_vram_write_callback(psx_gpu_t* gpu,
+    void (*cb)(psx_gpu_t*, unsigned, unsigned, unsigned, unsigned, void*),
+    void* user) {
+    gpu->vram_write_cb = cb;
+    gpu->vram_write_udata = user;
 }
 
 #define GPU_CYCLES_PER_HDRAW_NTSC 2560.0f

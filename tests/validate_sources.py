@@ -76,6 +76,19 @@ def main() -> int:
             "CHD pregap/postgap handling is missing")
     require("chd_read_subchannel_q" in chd, "CHD subchannel Q support is missing")
 
+    gate = read("tests/run_validation.py")
+    see_c = read("enhance/see.c")
+    require('"see":' in gate, "SEE unit tests are not in the default validation suite")
+    require('"boot":' in gate, "SEE real-title boot is not in the default validation suite")
+    require("host-missing-cmake" in gate and "host-missing-sdl2" in gate,
+            "cmake/SDL2 host skips are missing from the default suite")
+    require("see_present_rgb" in see_c and "see_export_pack" in see_c,
+            "SEE present/pack entry points are missing")
+    require("if (see_file_exists(reverted)) return;" in see_c,
+            "SEE reverted lock does not skip generated/user at present")
+    require("gpu->vram[xpos + (ypos * 1024)] = gpu->recv_data" in read("psx/dev/gpu.c"),
+            "GP0(A0) must still write emulated VRAM")
+
     if failures:
         for failure in failures:
             print(f"ARMSX_SOURCE_CHECK failed: {failure}", file=sys.stderr)

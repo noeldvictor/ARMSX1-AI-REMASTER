@@ -237,7 +237,7 @@ endif
 SDL_LIBS := $(if $(filter 1,$(SDL_STATIC)),$(SDL_LIBS_STATIC),$(SDL_LIBS_DYNAMIC))
 SDL_LIBS_SHARED := $(SDL_LIBS_DYNAMIC)
 
-.PHONY: all clean shared qa test-qa test test-cpu test-gpu test-audio test-sdl-audio test-chd test-zip test-sdl-runtime disc-probe
+.PHONY: all clean shared qa test-qa test-boot test-boot-see test-see test test-cpu test-gpu test-audio test-sdl-audio test-chd test-zip test-sdl-runtime disc-probe
 
 all: $(BIN)
 
@@ -253,6 +253,16 @@ test-qa: $(QA_BIN)
 	mkdir -p build/tests/qa
 	./$(QA_BIN) --selftest=build/tests/qa/selftest.png
 	python3 tests/validate_qa.py build/tests/qa/selftest.png
+
+# Optional: boot local BIOS+discs and check golden frame hashes.
+# Skips cleanly when bios/ and roms/ are empty (they are gitignored).
+test-boot: $(QA_BIN)
+	python3 tests/boot_local.py
+
+# Two enhancement-off + two enhancement-on boots of one local title.
+# Skips (exit 0) when bios/ or roms/ are missing.
+test-boot-see: $(QA_BIN)
+	python3 tests/boot_see_gate.py
 
 TEST_CORE_SOURCES := $(wildcard psx/*.c) \
                      $(wildcard psx/dev/*.c) \
@@ -273,12 +283,32 @@ $(TEST_PLATFORM_FILE_OBJ): frontend/platform_file.c frontend/platform_file.h
 	mkdir -p $(dir $@)
 	$(CC) -std=c11 -O2 -g -I. -c frontend/platform_file.c -o $@
 
-QA_SOURCES := $(TEST_CORE_SOURCES) psx/dev/cdrom/chd.c
+# miniz is vendored inside libchdr. Compile it directly so the QA driver
+# (PNG capture) does not require cmake or libchdr-static.a. CHD remains
+# available to the full app; the harness boots BIN/CUE/ISO.
+QA_MINIZ_C := third_party/libchdr/deps/miniz-3.1.1/miniz.c
+QA_MINIZ_I := -Ithird_party/libchdr/deps/miniz-3.1.1
+SEE_SOURCES := $(wildcard enhance/*.c)
 
-$(QA_BIN): tools/armsx_qa.c $(QA_SOURCES) $(TEST_PLATFORM_FILE_OBJ) $(CHD_BUILD_DEPS)
+$(QA_BIN): tools/armsx_qa.c $(TEST_CORE_SOURCES) $(SEE_SOURCES) $(TEST_PLATFORM_FILE_OBJ) $(QA_MINIZ_C)
 	mkdir -p $(dir $@)
-	$(CC) -std=gnu11 -O2 -g -DUSE_CHD -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $(LIBCHDR_INCLUDE_FLAGS) \
-		tools/armsx_qa.c $(QA_SOURCES) $(TEST_PLATFORM_FILE_OBJ) $(CHD_LINK_LIBS) -lm -o $@
+	$(CC) -std=gnu11 -O2 -g -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $(QA_MINIZ_I) \
+		tools/armsx_qa.c $(TEST_CORE_SOURCES) $(SEE_SOURCES) $(TEST_PLATFORM_FILE_OBJ) $(QA_MINIZ_C) -lm -o $@
+
+TEST_SEE_BIN := build/tests/see_replacement
+TEST_SEE_PACK_BIN := build/tests/see_pack_export
+
+$(TEST_SEE_BIN): tests/see_replacement.c $(SEE_SOURCES) $(QA_MINIZ_C)
+	mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -O2 -g -I. -Ipsx $(QA_MINIZ_I) $^ -lm -o $@
+
+$(TEST_SEE_PACK_BIN): tests/see_pack_export.c $(SEE_SOURCES) $(QA_MINIZ_C)
+	mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -O2 -g -I. -Ipsx $(QA_MINIZ_I) $^ -lm -o $@
+
+test-see: $(TEST_SEE_BIN) $(TEST_SEE_PACK_BIN)
+	./$(TEST_SEE_BIN)
+	./$(TEST_SEE_PACK_BIN)
 
 $(TEST_CPU_BIN): tests/cpu_differential.c $(TEST_CORE_SOURCES) $(TEST_PLATFORM_FILE_OBJ)
 	mkdir -p $(dir $@)

@@ -20,6 +20,9 @@
 #include "psx.h"
 #include "input/sda.h"
 #include "dev/cdrom/cdrom.h"
+#include "dev/cdrom/disc.h"
+#include "dev/gpu.h"
+#include "enhance/see.h"
 #include "miniz.h"
 
 /* ------------------------------------------------------------------ */
@@ -201,7 +204,42 @@ static int qa_script_load(qa_script_t* s, const char* path) {
  * The GPU presents either BGR555 (format 0) or packed RGB24 (format 1), always
  * at PSX_GPU_FB_STRIDE bytes per row regardless of visible width.
  */
-static uint8_t* qa_frame_rgb(psx_t* psx, int* out_w, int* out_h) {
+static int qa_match_serial(const char* s, char* out, size_t outn) {
+    static const char* prefixes[] = { "SCUS", "SLUS", "SLES", "SCES", "SLPS", "SCPS", NULL };
+    for (int i = 0; prefixes[i]; i++) {
+        const char* p = prefixes[i];
+        if (strncmp(s, p, 4) != 0 || s[4] != '_') continue;
+        if (outn < 12) return 0;
+        if (!(s[5] >= '0' && s[5] <= '9') || !(s[6] >= '0' && s[6] <= '9') ||
+            !(s[7] >= '0' && s[7] <= '9') || s[8] != '.' ||
+            !(s[9] >= '0' && s[9] <= '9') || !(s[10] >= '0' && s[10] <= '9'))
+            continue;
+        snprintf(out, outn, "%c%c%c%c-%c%c%c.%c%c",
+                 p[0], p[1], p[2], p[3], s[5], s[6], s[7], s[9], s[10]);
+        return 1;
+    }
+    return 0;
+}
+
+static int qa_guess_serial(psx_cdrom_t* cdrom, char* out, size_t outn) {
+    if (!cdrom || !cdrom->disc || !out || outn < 12) return 1;
+    out[0] = 0;
+    unsigned char buf[CD_SECTOR_SIZE];
+    for (uint32_t lba = 150; lba < 214; lba++) {
+        if (!psx_disc_read(cdrom->disc, lba, buf)) continue;
+        for (int i = 0; i + 11 < CD_SECTOR_SIZE; i++) {
+            if (qa_match_serial((const char*)buf + i, out, outn))
+                return 0;
+        }
+    }
+    return 1;
+}
+
+static void qa_vram_write(psx_gpu_t* gpu, unsigned x, unsigned y, unsigned w, unsigned h, void* user) {
+    see_on_vram_write((see_engine_t*)user, gpu->vram, x, y, w, h);
+}
+
+static uint8_t* qa_frame_rgb(psx_t* psx, see_engine_t* see, int* out_w, int* out_h) {
     const int w = (int)psx_get_display_width(psx);
     const int h = (int)psx_get_display_height(psx);
 
@@ -241,6 +279,8 @@ static uint8_t* qa_frame_rgb(psx_t* psx, int* out_w, int* out_h) {
 
     *out_w = w;
     *out_h = h;
+    if (see)
+        see_present_rgb(see, rgb, w, h);
     return rgb;
 }
 
@@ -339,7 +379,7 @@ static void qa_usage(void) {
         "Usage: armsx-qa --bios=PATH (--cdrom=PATH | --exe=PATH) [options]\n"
         "\n"
         "  --bios=PATH          BIOS image (required)\n"
-        "  --cdrom=PATH         disc image (bin/cue, iso, chd, zip)\n"
+        "  --cdrom=PATH         disc image (bin/cue or iso)\n"
         "  --exe=PATH           PS-X EXE to side-load\n"
         "  --frames=N           frames to run (default 600)\n"
         "  --script=PATH        input script; see below\n"
@@ -349,6 +389,9 @@ static void qa_usage(void) {
         "  --stuck-frames=N     fail if the image is unchanged for N frames\n"
         "  --json               emit one JSON object per event on stdout\n"
         "  --quiet              suppress emulator logging\n"
+        "  --enhance            enable the Super Enhancement Engine (presentation only)\n"
+        "  --enhance-dir=PATH   per-game cache root (default: cache)\n"
+        "  --serial=SCUS-942.54 disc serial override; otherwise guessed from the disc\n"
         "  --selftest=PATH      write a test-pattern PNG and exit (no BIOS needed)\n"
         "  --help               this text\n"
         "\n"
@@ -383,7 +426,9 @@ int main(int argc, const char** argv) {
     uint64_t capture_every = 0;
     uint64_t hash_every = 0;
     uint64_t stuck_frames = 0;
-    int json = 0, quiet = 0;
+    int json = 0, quiet = 0, enhance_on = 0;
+    const char* enhance_dir = "cache";
+    const char* serial_opt = NULL;
 
     for (int i = 1; i < argc; i++) {
         const char* a = argv[i];
@@ -397,6 +442,9 @@ int main(int argc, const char** argv) {
         else if ((v = qa_opt(a, "--capture-every"))) capture_every = strtoull(v, NULL, 10);
         else if ((v = qa_opt(a, "--hash-every")))   hash_every = strtoull(v, NULL, 10);
         else if ((v = qa_opt(a, "--stuck-frames")))  stuck_frames = strtoull(v, NULL, 10);
+        else if (!strcmp(a, "--enhance"))           enhance_on = 1;
+        else if ((v = qa_opt(a, "--enhance-dir")))  enhance_dir = v;
+        else if ((v = qa_opt(a, "--serial")))       serial_opt = v;
         else if ((v = qa_opt(a, "--selftest"))) {
             /* Verifies the capture path end to end without a BIOS or a disc:
              * if this PNG is readable, the writer and the toolchain are good. */
@@ -501,12 +549,33 @@ int main(int argc, const char** argv) {
     if (exe)
         psx_load_exe(psx, exe);
 
+    see_engine_t* see = see_create();
+    if (!see) {
+        fprintf(stderr, "armsx-qa: out of memory\n");
+        return 3;
+    }
+    see_set_cache_root(see, enhance_dir);
+    see_set_enabled(see, enhance_on);
+    if (serial_opt)
+        see_set_serial(see, serial_opt);
+    else if (cdrom) {
+        char guessed[32];
+        if (qa_guess_serial(psx_get_cdrom(psx), guessed, sizeof(guessed)) == 0)
+            see_set_serial(see, guessed);
+    }
+    if (enhance_on)
+        psx_gpu_set_vram_write_callback(psx_get_gpu(psx), qa_vram_write, see);
+
     if (json)
-        printf("{\"event\":\"start\",\"frames\":%llu,\"bios\":\"%s\",\"media\":\"%s\"}\n",
-               (unsigned long long)frames, bios, cdrom ? cdrom : exe);
+        printf("{\"event\":\"start\",\"frames\":%llu,\"bios\":\"%s\",\"media\":\"%s\","
+               "\"serial\":\"%s\",\"enhance\":%s}\n",
+               (unsigned long long)frames, bios, cdrom ? cdrom : exe,
+               see_serial(see), enhance_on ? "true" : "false");
     else
-        printf("ARMSX_QA begin frames=%llu media=%s\n",
-               (unsigned long long)frames, cdrom ? cdrom : exe);
+        printf("ARMSX_QA begin frames=%llu media=%s serial=%s enhance=%s\n",
+               (unsigned long long)frames, cdrom ? cdrom : exe,
+               see_serial(see)[0] ? see_serial(see) : "none",
+               enhance_on ? "on" : "off");
     fflush(stdout);
 
     size_t next_event = 0;
@@ -553,7 +622,7 @@ int main(int argc, const char** argv) {
 
         if (stuck_frames) {
             int sw = 0, sh = 0;
-            uint8_t* probe = qa_frame_rgb(psx, &sw, &sh);
+            uint8_t* probe = qa_frame_rgb(psx, see, &sw, &sh);
 
             /* A frame with no usable display is itself a stall signal - a
              * blank or disabled output that never recovers is a failure, not
@@ -583,7 +652,7 @@ int main(int argc, const char** argv) {
             continue;
 
         int w = 0, h = 0;
-        uint8_t* rgb = qa_frame_rgb(psx, &w, &h);
+        uint8_t* rgb = qa_frame_rgb(psx, see, &w, &h);
         if (!rgb) {
             if (json)
                 printf("{\"event\":\"frame\",\"frame\":%llu,\"error\":\"no display\"}\n",
@@ -647,12 +716,19 @@ int main(int argc, const char** argv) {
     }
 
     if (json)
-        printf("{\"event\":\"done\",\"captures\":%llu,\"stuck\":%s}\n",
-               (unsigned long long)captures, stuck ? "true" : "false");
+        printf("{\"event\":\"done\",\"captures\":%llu,\"stuck\":%s,"
+               "\"serial\":\"%s\",\"enhance\":%s,\"enhance_applied\":%s,\"assets\":%d}\n",
+               (unsigned long long)captures, stuck ? "true" : "false",
+               see_serial(see), enhance_on ? "true" : "false",
+               see_applied(see) ? "true" : "false", see_asset_count(see));
     else
-        printf("ARMSX_QA done captures=%llu stuck=%s\n",
-               (unsigned long long)captures, stuck ? "yes" : "no");
+        printf("ARMSX_QA done captures=%llu stuck=%s serial=%s enhance=%s applied=%s assets=%d\n",
+               (unsigned long long)captures, stuck ? "yes" : "no",
+               see_serial(see)[0] ? see_serial(see) : "none",
+               enhance_on ? "on" : "off",
+               see_applied(see) ? "yes" : "no", see_asset_count(see));
 
+    see_destroy(see);
     free(script.items);
     return stuck ? 4 : 0;
 }

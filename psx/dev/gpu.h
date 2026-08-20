@@ -174,6 +174,11 @@ struct psx_gpu_t {
 #ifdef USE_HARDWARE
     psx_gpu_renderer_t renderer;
 #endif
+
+    /* Presentation-layer observer. Must not mutate VRAM. */
+    void (*vram_write_cb)(struct psx_gpu_t* gpu, unsigned x, unsigned y,
+                          unsigned w, unsigned h, void* user);
+    void* vram_write_udata;
 };
 
 static inline int psx_gpu_is_pal_mode(const psx_gpu_t* gpu) {
@@ -207,6 +212,9 @@ void psx_gpu_write8(psx_gpu_t*, uint32_t, uint8_t);
 void psx_gpu_destroy(psx_gpu_t*);
 void psx_gpu_set_udata(psx_gpu_t*, int, void*);
 void psx_gpu_set_event_callback(psx_gpu_t*, int, psx_gpu_event_callback_t);
+void psx_gpu_set_vram_write_callback(psx_gpu_t* gpu,
+    void (*cb)(psx_gpu_t*, unsigned, unsigned, unsigned, unsigned, void*),
+    void* user);
 void* psx_gpu_get_display_buffer(psx_gpu_t*);
 void psx_gpu_update(psx_gpu_t*, int);
 void gpu_render_triangle(psx_gpu_t*, vertex_t, vertex_t, vertex_t, poly_data_t, int);

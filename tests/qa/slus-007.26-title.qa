@@ -1,0 +1,7 @@
+# Brave Fencer Musashi (USA) — SLUS-007.26
+# Title with "PUSH START BUTTON" is stable at 900/960/1080.
+# Frame 1020 is a blink (text off) — do not golden that frame.
+240  hash
+960  capture titlescreen
+960  hash
+1080 exit
