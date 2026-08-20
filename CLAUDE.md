@@ -17,6 +17,30 @@ implementation detail.
 **This is not a supported emulator.** Do not optimise for users, releases,
 backwards compatibility with upstream, or contributor onboarding. There are none.
 
+## ALL WORK MUST BE LOGGED
+
+This is not optional and it is not a formality. It is the only mechanism by
+which one agent session can learn what another did.
+
+- **Research** → `docs/research/YYYYMMDD_HHMM_slug.md`
+- **Decisions** → `docs/decisions/YYYYMMDD_HHMM_slug.md`
+- **Session log** → `docs/worklogs/YYYYMMDD_HHMM_slug.md`
+
+Get the timestamp with `date +"%Y%m%d_%H%M"`. Never invent one.
+
+**Every session ends by writing a worklog.** No exceptions, including sessions
+that produced no code — "investigated X, it was a dead end, here is why" is one
+of the most valuable things you can leave behind.
+
+**Anything you learn that is not obvious from the code is a research doc**, not
+a code comment and not a line in a commit message.
+
+The record is **append-only**. If a document turns out to be wrong, write a new
+one and add `Superseded by:` to the old one. Never rewrite history — a wrong
+conclusion honestly reached and later corrected is more useful than a tidy lie.
+
+Full conventions and the worklog template: [`docs/README.md`](docs/README.md).
+
 ## The goal, stated precisely
 
 A **Super Enhancement Engine for PlayStation** (ADR-003) — per-game,
@@ -137,7 +161,7 @@ Full reasoning in [`docs/decisions/20260820_1450_remaster-architecture.md`](docs
 | Render path | Full DuckStation-class rewrite: Vulkan + PGXP + internal scaling + texture replacement |
 | Graphics API | **Vulkan only.** Baseline 1.1 core, 1.3 opportunistic behind capability checks |
 | Platforms | **Desktop Linux + Android only.** Reference device: AYN Thor (Snapdragon 8 Gen 2 / Adreno 740; Lite = SD865 / Adreno 650) |
-| Frozen ports | `uwp/`, `psvita/`, `web/`, `ios/` stay on the software path. Not deleted, not verified, not featured |
+| Removed ports | `uwp/`, `psvita/`, `web/`, `ios/` **deleted** 2026-08-20. Recoverable from git history only |
 | AI timing | Live async with progressive disk cache. Algorithmic first, AI as an upgrade pass |
 | 3D scope | Textures + PGXP ship. Mesh replacement (Tripo) is a research track that never blocks the others |
 | Verification | Headless parity gate on every change; real discs for visual spot-checks |
@@ -230,6 +254,52 @@ from SwanStation, which *is* GPL-3.0 and *is* a code source.)
 2. Run the gate and record the actual output.
 3. State the single most useful next action.
 
+## Driving a real game (AI QA harness)
+
+`build/tools/armsx-qa` (via `make qa`) runs a game **headless and
+deterministically** — no window, no audio device, no host input. Use it to
+verify anything visual instead of guessing.
+
+```sh
+make qa
+
+# boot a game, capture the title screen, hash it
+./build/tools/armsx-qa --bios=BIOS.bin --cdrom=game.cue \
+    --script=script.qa --capture-dir=/tmp/caps --json
+
+# does it still boot at all?
+./build/tools/armsx-qa --bios=BIOS.bin --cdrom=game.cue \
+    --frames=1800 --stuck-frames=300 --json
+```
+
+Script grammar (`#` comments; frames absolute, any order):
+
+```
+120  tap     start
+240  tap     cross 10
+300  press   right
+330  release right
+360  capture titlescreen
+400  hash
+600  exit
+```
+
+Buttons: `select l3 r3 start up right down left l2 r2 l1 r1 triangle circle
+cross square analog`.
+
+Exit codes: `0` ok, `2` usage/script error, `3` setup failure, `4` stuck.
+
+**Why it is deterministic:** `psx_run_frame()` advances a fixed cycle count from
+emulated state only, and the core has no host threading (ADR-001). Same inputs
+produce the same hashes — which is what makes a frame hash a usable regression
+gate. Do not introduce wall-clock or thread-dependent behaviour into `psx/`; it
+would silently destroy this property.
+
+`--selftest=PATH` exercises the capture path with no BIOS and no disc, and runs
+in the gate as the `qa` case.
+
+Design notes: [`docs/research/20260820_1645_ai-qa-harness.md`](docs/research/20260820_1645_ai-qa-harness.md).
+
 ## Build and verify
 
 **First checkout — submodules are mandatory.** The build fails without them and
@@ -286,6 +356,7 @@ about visual quality made without them is unverified and must be labelled so.**
 ## Layout
 
 ```
+tools/          armsx-qa, the headless deterministic QA driver
 psx/            Emulator core (C11, no frontend deps)
   cpu.c         MIPS R3000A + complete GTE  ← PGXP tap point
   dev/gpu.c     Software rasterizer         ← parity oracle, never delete
@@ -301,6 +372,13 @@ third_party/    SDL, libchdr, fuse-lib (submodules)
 
 ## Known traps
 
+- **`psx_cdrom_open()` returns 1 on SUCCESS and 0 on failure** — inverted from
+  the usual C convention. `frontend/main.cpp:1988` gets this right (`== 0` is
+  failure). Getting it backwards makes a bad disc path look like a successful
+  open, and the emulator then spews illegal instructions at `bfc00004`, which
+  reads like an emulator bug rather than a bad argument.
+- `psx_take_screenshot()` and `psx_hard_reset()` are stubs that `exit(1)`
+  (`psx/psx.c:199`, `psx/psx.c:189`), like the save-state pair.
 - `psx/input/sda.c:124` says `// To-do: Implement analog mode`. **The comment is
   stale** — the function below it stores all four ADC axes and `sda.c:44,86`
   transmit them. Verify behaviour before "fixing" this.

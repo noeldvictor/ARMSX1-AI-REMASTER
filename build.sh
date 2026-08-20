@@ -5,11 +5,8 @@ set -e
 # Usage:
 #   ./build.sh             -> desktop build (static SDL if available)
 #   ./build.sh shared      -> build shared lib (forces dynamic SDL)
-#   ./build.sh ios         -> build iOS dylib using iPhone SDK + ios/Frameworks/SDL2.xcframework
 #   ./build.sh macosapp    -> build desktop exe and bundle armsx.app
-#   ./build.sh wasm        -> build WebAssembly target to bin/wasm using emscripten
 #   ./build.sh android     -> build SDL2/libarmsx for Android and stage under android/app/src/main/jniLibs
-#   ./build.sh psvita      -> build Vita native archive + Rust SDL host and package ARMSX.vpk
 
 MODE="$1"
 BUILD_JOBS="${BUILD_JOBS:-4}"
@@ -56,66 +53,6 @@ build_fsui_native() {
     cmake --build build/fsui/native -j"${BUILD_JOBS}"
 }
 
-build_fsui_wasm() {
-    if ! command -v emcmake >/dev/null 2>&1 || ! command -v emcc >/dev/null 2>&1; then
-        for candidate in "${EMSCRIPTEN_ROOT:-}" "${EMSDK:-}" "$HOME/emsdk" "/opt/emsdk" "/Volumes/FastDrive/linkertools/emsdk"; do
-            if [ -z "${candidate}" ] || [ ! -d "${candidate}" ]; then
-                continue
-            fi
-
-            if [ -x "${candidate}/upstream/emscripten/emcmake" ] && [ -x "${candidate}/upstream/emscripten/emcc" ]; then
-                export EMSDK="${candidate}"
-                export EMSCRIPTEN="${candidate}/upstream/emscripten"
-                PATH="${candidate}/upstream/emscripten:${PATH}"
-                node_bin="$(find "${candidate}/node" -type f -name node 2>/dev/null | head -n 1)"
-                if [ -n "${node_bin}" ]; then
-                    PATH="$(dirname "${node_bin}"):${PATH}"
-                fi
-                export PATH
-                break
-            fi
-
-            if [ -x "${candidate}/emcmake" ] && [ -x "${candidate}/emcc" ]; then
-                PATH="${candidate}:${PATH}"
-                export PATH
-                break
-            fi
-        done
-    fi
-
-    if ! command -v emcmake >/dev/null 2>&1 || ! command -v emcc >/dev/null 2>&1; then
-        echo "emcmake/emcc are required for the wasm FSUI build. Set EMSCRIPTEN_ROOT, EMSDK, or install Emscripten under \$HOME/emsdk."
-        exit 1
-    fi
-
-    emcmake cmake -S third_party/fuse-lib -B build/fsui/wasm \
-        -DFSUI_BUILD_SAMPLES=OFF \
-        -DFSUI_PLATFORM_BACKEND=SDL2
-    cmake --build build/fsui/wasm -j"${BUILD_JOBS}"
-}
-
-build_fsui_psvita() {
-    if [ -z "${VITASDK:-}" ]; then
-        echo "VITASDK must be set for PSVita builds."
-        exit 1
-    fi
-
-    cmake -S cmake/psvita-fsui -B build/fsui/psvita \
-        -DCMAKE_TOOLCHAIN_FILE="${VITASDK}/share/vita.toolchain.cmake" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_POSITION_INDEPENDENT_CODE=OFF \
-        -DVITASDK="${VITASDK}" \
-        -DFSUI_BUILD_SAMPLES=OFF \
-        -DFSUI_ENABLE_INSTALL=OFF \
-        -DFSUI_PLATFORM_BACKEND=SDL2 \
-        -DFSUI_IMGUI_OPENGL_ES3=ON
-    cmake --build build/fsui/psvita -j"${BUILD_JOBS}"
-
-    # The Vita Rust wrapper expects the FSUI archives in the CMake root output
-    # directory, so stage the real archives out of the nested fuse-lib build.
-    cp build/fsui/psvita/fuse-lib/libfsui*.a build/fsui/psvita/
-}
-
 bundle_macos_app() {
 		    rm -rf armsx.app/Contents/Libraries
 		    mkdir -p armsx.app/Contents/MacOS
@@ -133,71 +70,7 @@ stage_android_runtime_icons() {
 	    cp -R icons/. android/app/src/main/assets/icons/
 }
 
-prepare_ios_sdl_package() {
-    IOS_SDL_FRAMEWORK="$1"
-    IOS_SDL_PACKAGE_ROOT="$(pwd)/build/fsui/ios-sdl-package/SDL2.framework"
-
-    rm -rf "${IOS_SDL_PACKAGE_ROOT}"
-    mkdir -p "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake"
-    mkdir -p "${IOS_SDL_PACKAGE_ROOT}/Versions/A"
-    ln -s "${IOS_SDL_FRAMEWORK}/Headers" "${IOS_SDL_PACKAGE_ROOT}/Headers"
-    ln -s "${IOS_SDL_FRAMEWORK}/Headers" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Headers"
-    ln -s "${IOS_SDL_FRAMEWORK}/SDL2" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/SDL2"
-    cp "${IOS_SDL_FRAMEWORK}/CMake/sdl2-config.cmake" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake/"
-    cp "${IOS_SDL_FRAMEWORK}/CMake/sdl2-config-version.cmake" "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake/"
-
-    printf '%s\n' "${IOS_SDL_PACKAGE_ROOT}/Versions/A/Resources/CMake"
-}
-
-if [ "$MODE" = "ios" ]; then
-    IOS_SDK="${IOS_SDK:-iphoneos}"
-    IOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET:-13.0}"
-    IOS_SDKROOT="$(xcrun --sdk "${IOS_SDK}" --show-sdk-path)"
-    IOS_CC="$(xcrun --sdk "${IOS_SDK}" --find clang)"
-    IOS_CXX="$(xcrun --sdk "${IOS_SDK}" --find clang++)"
-
-    DEFAULT_SDL_FW_ROOT="$(pwd)/ios/Frameworks/SDL2.xcframework"
-    IOS_SDL_FRAMEWORK="${IOS_SDL_FRAMEWORK:-$DEFAULT_SDL_FW_ROOT}"
-
-    # Resolve to the actual SDL2.framework path
-    if [ -d "${IOS_SDL_FRAMEWORK}/SDL2.framework" ]; then
-        IOS_SDL_FRAMEWORK="${IOS_SDL_FRAMEWORK}/SDL2.framework"
-    elif [ -d "${IOS_SDL_FRAMEWORK}/ios-arm64/SDL2.framework" ]; then
-        IOS_SDL_FRAMEWORK="${IOS_SDL_FRAMEWORK}/ios-arm64/SDL2.framework"
-    elif [ ! -d "${IOS_SDL_FRAMEWORK}/Headers" ]; then
-        echo "SDL2.framework not found under ${IOS_SDL_FRAMEWORK}"
-        echo "Place the xcframework in ios/Frameworks or set IOS_SDL_FRAMEWORK to the SDL2.framework path."
-        exit 1
-    fi
-
-    if [ ! -d "${IOS_SDL_FRAMEWORK}" ]; then
-        echo "SDL2.xcframework not found at ${IOS_SDL_FRAMEWORK}"
-        echo "Place the framework in ios/Frameworks (or set IOS_SDL_FRAMEWORK) and retry."
-        exit 1
-    fi
-
-    IOS_SDL2_DIR="$(prepare_ios_sdl_package "${IOS_SDL_FRAMEWORK}")"
-    FSUI_PYTHON="$(resolve_fsui_python)"
-
-    echo "Building iOS dylib with SDK ${IOS_SDK} (${IOS_SDKROOT})"
-    cmake -S third_party/fuse-lib -B build/fsui/ios \
-        -DFSUI_BUILD_SAMPLES=OFF \
-        -DFSUI_PLATFORM_BACKEND=SDL2 \
-        -DFSUI_USE_SYSTEM_SDL2=ON \
-        -DCMAKE_SYSTEM_NAME=iOS \
-        -DCMAKE_OSX_ARCHITECTURES=arm64 \
-        -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
-        -DCMAKE_OSX_SYSROOT="${IOS_SDKROOT}" \
-        -DPython_EXECUTABLE="${FSUI_PYTHON}" \
-        -DSDL2_DIR="${IOS_SDL2_DIR}"
-    cmake --build build/fsui/ios -j"${BUILD_JOBS}"
-    make clean
-    IOS_ENV="IOS_TARGET=1 IOS_SDK=${IOS_SDK} IOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET} SDKROOT=${IOS_SDKROOT} CC=${IOS_CC} CXX=${IOS_CXX} SDL_STATIC=0 IOS_SDL_FRAMEWORK=${IOS_SDL_FRAMEWORK} FSUI_BUILD_DIR=$(pwd)/build/fsui/ios"
-    eval "make shared LIBCHDR_BUILD_DIR=$(pwd)/build/libchdr/ios ${IOS_ENV}"
-    echo "Copying libarmsx.dylib to ios/Frameworks/"
-    cp bin/libarmsx.dylib ios/Frameworks/
-
-elif [ "$MODE" = "shared" ]; then
+if [ "$MODE" = "shared" ]; then
     build_fsui_native
     make clean
     SDL_STATIC=0 MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}" FSUI_BUILD_DIR="$(pwd)/build/fsui/native" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/native" make shared
@@ -370,77 +243,6 @@ elif [ "$MODE" = "android" ]; then
     cp "${SDL_SHARED_LIB}" "${JNI_LIB_DIR}/"
     cp "${CXX_SHARED_RUNTIME}" "${JNI_LIB_DIR}/"
     cp bin/libarmsx.so "${JNI_LIB_DIR}/"
-
-elif [ "$MODE" = "psvita" ]; then
-    if [ -z "${VITASDK:-}" ]; then
-        echo "VITASDK must be set for PSVita builds."
-        exit 1
-    fi
-
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo "cargo is required for the PSVita Rust host build."
-        exit 1
-    fi
-
-    export PATH="${VITASDK}/bin:${PATH}"
-    build_fsui_psvita
-
-    make clean
-    VITASDK="${VITASDK}" PSVITA_TARGET=1 FSUI_BUILD_DIR="$(pwd)/build/fsui/psvita" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/psvita" make psvita-lib
-
-    export PKG_CONFIG_ALLOW_CROSS=1
-    export PKG_CONFIG="${VITASDK}/bin/arm-vita-eabi-pkg-config"
-    export CARGO_TARGET_ARMV7_SONY_VITA_NEWLIBEABIHF_LINKER=arm-vita-eabi-g++
-    export ARMSX_VITA_NATIVE_DIR="$(pwd)/bin/psvita"
-    export ARMSX_VITA_FSUI_DIR="$(pwd)/build/fsui/psvita"
-    export ARMSX_VITA_LIBCHDR_DIR="$(pwd)/build/libchdr/psvita"
-
-    cargo build \
-        --manifest-path psvita/Cargo.toml \
-        --release \
-        --target armv7-sony-vita-newlibeabihf \
-        -Z build-std=std,panic_abort
-
-    VITA_PACKAGE_DIR="$(pwd)/build/psvita/package"
-    VITA_TARGET_DIR="$(pwd)/psvita/target/armv7-sony-vita-newlibeabihf/release"
-    VITA_ELF="${VITA_TARGET_DIR}/ARMSX_vita.elf"
-    if [ ! -f "${VITA_ELF}" ] && [ -f "${VITA_TARGET_DIR}/ARMSX_vita" ]; then
-        VITA_ELF="${VITA_TARGET_DIR}/ARMSX_vita"
-    fi
-    VITA_VELF="${VITA_PACKAGE_DIR}/eboot.velf"
-    VITA_EBOOT="${VITA_PACKAGE_DIR}/eboot.bin"
-    VITA_PARAM="${VITA_PACKAGE_DIR}/param.sfo"
-    VITA_VPK="${VITA_PACKAGE_DIR}/ARMSX.vpk"
-
-    if [ ! -f "${VITA_ELF}" ]; then
-        echo "Expected Vita host ELF not found at ${VITA_ELF}"
-        exit 1
-    fi
-
-    rm -rf "${VITA_PACKAGE_DIR}"
-    mkdir -p "${VITA_PACKAGE_DIR}/sce_sys"
-    cp icons/ArmsxDesktop.png "${VITA_PACKAGE_DIR}/sce_sys/icon0.png"
-
-    vita-mksfoex -s TITLE_ID=ARMSX001 "ARMSX PSVita" "${VITA_PARAM}"
-    vita-elf-create -s "${VITA_ELF}" "${VITA_VELF}"
-    vita-make-fself -s "${VITA_VELF}" "${VITA_EBOOT}"
-    vita-pack-vpk "${VITA_VPK}" \
-        -s "${VITA_PARAM}" \
-        -b "${VITA_EBOOT}" \
-        -a "$(pwd)/icons=icons" \
-        -a "${VITA_PACKAGE_DIR}/sce_sys=sce_sys"
-
-    cp "${VITA_VPK}" bin/psvita/
-    echo "Packaged Vita build at bin/psvita/ARMSX.vpk"
-
-elif [ "$MODE" = "wasm" ]; then
-    build_fsui_wasm
-    make clean
-    if command -v emmake >/dev/null 2>&1; then
-        emmake make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/wasm"
-    else
-        make wasm FSUI_BUILD_DIR="$(pwd)/build/fsui/wasm" LIBCHDR_BUILD_DIR="$(pwd)/build/libchdr/wasm"
-    fi
 
 elif [ "$MODE" = "macosapp" ]; then
     build_fsui_native

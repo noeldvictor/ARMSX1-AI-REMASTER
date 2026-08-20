@@ -26,9 +26,7 @@ def main() -> int:
     archive = read("frontend/archive.cpp")
     gpu_hw = read("frontend/gpu_hw.c")
     chd = read("psx/dev/cdrom/chd.c")
-    web = read("web/file_access.js")
     android = read("android/app/src/main/java/com/nanodata/armsx/EmulatorActivity.java")
-    ios = read("ios/HostApp/Sources/AppDelegate.mm")
     platform_file = read("frontend/platform_file.c")
 
     require("PSX_CPU_CACHED_INTERPRETER" in cpu_header, "cached interpreter API is missing")
@@ -68,17 +66,10 @@ def main() -> int:
             "Android document-tree enumeration or no-copy file access is missing")
     require("WindowInsets.Type.systemBars()" in android and "BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE" in android,
             "Android immersive fullscreen is missing")
-    require("UIDocumentPickerViewController" in ios and "UTTypeFolder" in ios,
-            "iOS system directory picker is missing")
-    require("bookmarkDataWithOptions:0" in ios and "startAccessingSecurityScopedResource" in ios,
-            "iOS persistent security-scoped directory access is missing")
     require("psxe_platform_fopen" in platform_file and "psxe_platform_fopen" in archive,
             "platform file-descriptor bridge is missing")
     require("USE_CONNECTIVITY" not in makefile and "FTP" not in frontend and "ftp" not in frontend,
             "FTP connectivity code is still present")
-    require("showOpenFilePicker" in web and "showDirectoryPicker" in web,
-            "web permission-based file and directory access is missing")
-    require("webkitdirectory" in web, "web directory picker fallback is missing")
     require("kMaxArchiveBytes" in archive and "SafeArchiveRelativePath" in archive,
             "bounded path-safe ZIP extraction is missing")
     require("CHD_TRACK1_PREGAP_FRAMES" in chd and "postgap_frames" in chd,

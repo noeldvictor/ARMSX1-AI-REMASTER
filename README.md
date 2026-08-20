@@ -67,6 +67,7 @@ pursue: runtime visual enhancement.
 | **Renderer** | Software rasterizer only | Software rasterizer **plus** a new Vulkan backend |
 | **Graphics API** | None (SDL presentation) | Vulkan 1.1 baseline, 1.3 opportunistic |
 | **Platforms** | Desktop, Android, iOS, UWP, WASM, PSVita | **Desktop Linux + Android only** |
+| **Automation** | Interactive frontend | Headless deterministic QA driver for AI agents |
 | **Geometry** | Faithful (wobble intact) | PGXP correction planned |
 | **Textures** | Native PS1 | HD replacement + live AI enhancement planned |
 | **Internal res** | Native | Scalable |
@@ -85,13 +86,15 @@ otherwise. Removing it would throw away work that cannot be reconstructed.
 The complete GTE implementation is likewise kept as-is — it is the tap point
 PGXP needs, and it already works.
 
-### What is frozen
+### What was removed
 
-`uwp/`, `psvita/`, `web/`, and `ios/` remain in the tree on the existing
-software path. They are not deleted, but they will not receive remaster features
-and are not verified. Reference deployment target is the **AYN Thor** handheld
-(Snapdragon 8 Gen 2 / Adreno 740; Lite variant Snapdragon 865 / Adreno 650),
-with Linux desktop as the development target.
+`uwp/`, `psvita/`, `web/`, and `ios/` were **deleted** on 2026-08-20, along with
+their build scripts and platform conditionals. Upstream ARMSX1 still supports
+all of them and remains the right choice if you need those targets.
+
+Reference deployment target here is the **AYN Thor** handheld (Snapdragon 8
+Gen 2 / Adreno 740; Lite variant Snapdragon 865 / Adreno 650), with Linux
+desktop as the development target.
 
 ### What was removed
 
@@ -225,9 +228,9 @@ pointing at an NDK 27+ install:
 ./build.sh android
 ```
 
-Other targets (`macosapp`, `ios`, `wasm`, `psvita`, and the UWP scripts) are
-inherited from upstream and remain in the tree, but are unverified here. Consult
-upstream ARMSX1 if you need them.
+`macosapp` and the Windows scripts are inherited from upstream and remain, but
+are unverified here. iOS, WebAssembly, PSVita and UWP have been removed — use
+upstream ARMSX1 for those.
 
 ## Running
 
@@ -245,6 +248,47 @@ Settings are stored under SDL's pref path, usually
 `SDL_GetPrefPath("nanodata", "armsx")`, in `settings.toml`. CLI flags override
 file settings for the session.
 
+## Driving the emulator from a script
+
+Because development here is AI-driven, the emulator ships a **headless,
+deterministic QA driver** so an agent can boot a real game, press buttons, and
+inspect frames without a human or a display.
+
+```sh
+make qa
+
+./build/tools/armsx-qa --bios=BIOS.bin --cdrom=game.cue \
+    --script=session.qa --capture-dir=./caps --json
+```
+
+`session.qa`:
+
+```
+# boot, skip the intro, grab the title screen
+120  tap     start
+240  tap     cross 10
+300  press   right
+330  release right
+360  capture titlescreen
+400  hash
+600  exit
+```
+
+Output is one JSON object per event, so it parses without scraping:
+
+```json
+{"event":"capture","frame":360,"path":"./caps/frame_00000360_titlescreen.png","w":320,"h":240,"hash":"a3f2..."}
+{"event":"done","captures":1,"stuck":false}
+```
+
+`--stuck-frames=N` fails the run if the image never changes for N frames, which
+catches hangs, crashes and black screens. Exit codes: `0` ok, `2` usage/script
+error, `3` setup failure, `4` stuck.
+
+Runs are reproducible — `psx_run_frame()` advances a fixed cycle count from
+emulated state alone, so identical inputs give identical frame hashes. That is
+what makes a frame hash usable as a regression gate.
+
 ## Validation
 
 There is no cloud CI. Verification is local and deterministic:
@@ -255,7 +299,7 @@ python3 tests/run_validation.py
 
 This covers source invariants, cached/reference CPU differential execution and
 self-modifying code, GPU VRAM parity, CHD layout and subchannel logic, ZIP
-extraction and traversal rejection, and browser file-selection rules.
+extraction and traversal rejection, and the QA driver's capture path.
 
 `make disc-probe IMAGE=/path/to/game.cue` performs a read-only disc-open and
 sector-read smoke test. `make test-sdl-runtime` is an optional headed check
@@ -268,6 +312,10 @@ requiring a display and an accelerated SDL driver.
 All work in this repository is tracked in writing — a requirement of the
 AI-driven development model, since agent sessions cannot re-read each other's
 reasoning any other way.
+
+All research goes in `docs/research/`, all decisions in `docs/decisions/`, and
+every working session ends with a `docs/worklogs/` entry — named
+`YYYYMMDD_HHMM_slug.md`. The record is append-only.
 
 | Path | Contents |
 | --- | --- |
