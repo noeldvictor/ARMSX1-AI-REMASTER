@@ -50,11 +50,39 @@ Do not write documentation or worklogs that assume the bet has been won. PS1 is
 grid, textures in VRAM pages sampled through CLUTs rather than as addressable
 assets. **One convincingly enhanced game is a real result.**
 
+**The risk is now hedged** (ADR-004). AI does a first pass; the human touches up
+in their own image editor with hot reload. At 70% AI quality this still wins; at
+20% it degrades into SUPER ZSNES's model with a draft instead of a blank canvas.
+There is no quality level at which the project produces nothing.
+
+### Human-in-the-loop pipeline (ADR-004)
+
+- **We do not build an image editor.** Assets are PNGs; the user edits them in
+  Photoshop/Krita/Aseprite and we **hot-reload on save**. Our surface is a file
+  watcher, a review queue, and an A/B hotkey.
+- **Auto-apply everything.** AI output goes live immediately with no approval
+  gate. Garbled fonts and logos *will* appear in-game until fixed — accepted
+  trade. The review queue is a **cleanup** queue, not a gate.
+- **Resolution order at draw time:** `user.png` → `ai.png` → original VRAM.
+- **`reverted` and `edited` LOCK an asset** against further AI passes. Without
+  this, auto-apply re-enhances rejected assets forever. This is load-bearing.
+
 ### Pack format constraint (day one, not retrofitted)
 
-Enhancement packs and the runtime cache carry **hashes plus generated assets
-only — never PS1-derived imagery or audio.** This is what keeps packs legally
-shareable. Design the format around it from the start.
+Enhancement packs carry **hashes plus generated assets only — never PS1-derived
+imagery or audio.** This is what keeps packs legally shareable.
+
+**The local cache keeps `orig.png` (the editor needs it as reference); the pack
+export step deletes it.** Getting this backwards makes packs unshippable. It is
+a format constraint from day one, not a later filter.
+
+### Hot reload traps
+
+- **Debounce the watcher.** Image editors write in several syscalls; a naive
+  watcher fires mid-write and loads a truncated PNG.
+- A malformed or partial PNG must **keep the previous texture** — never crash,
+  never show garbage.
+- Decode off-thread; swap on the frame boundary. Never stall the render thread.
 
 ## Non-negotiables
 
@@ -161,12 +189,17 @@ Current position: **milestone 0 complete**. Next: milestone 1.
 | 4 | PGXP vertex pipeline + widescreen FOV | Wobble gone, no regressions |
 | 4b | Save states | Round-trip determinism |
 | 5 | Texture hashing, dumping, cache | Dumps match VRAM |
+| 5b | Cache format, manifest, asset state machine | Round-trip |
 | 6 | Replacement, 2D / VRAM-write | HD pack renders |
 | 6b | Replacement, 3D texture pages — original work | Visual |
 | 6c | Normal maps + per-pixel lighting | Visual |
 | 6d | Height map / parallax mapping | Visual |
+| 6e | Hotkey A/B compare (whole-frame original) | Visual |
 | 7 | Live async AI enhancement worker | Budget cap honoured |
 | 7b | CPU overclock | No timing regressions |
+| 7c | File watcher + hot reload | Edit-to-screen < 1s |
+| 7d | Review queue UI (orig / AI / user) | Manual |
+| 7e | Pack export (strips orig.png, writes provenance) | No PS1 data in output |
 | 8 | Audio: SPU ADPCM sample replacement | Visual/aural |
 | 9 | Mesh fingerprinting research | Written up either way |
 

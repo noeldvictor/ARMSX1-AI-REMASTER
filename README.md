@@ -10,9 +10,16 @@ geometry, height-mapped depth, and restored audio — generated at runtime and
 cached as you play, with no manual asset preparation step.
 
 The model is [SUPER ZSNES](https://www.zsnes.com/), which does exactly this for
-the SNES. **The difference is that they hand-draw their enhancements; this
-project bets that AI can generate them.** That bet may not pay off — see
-[the analysis](docs/research/20260820_1612_super-zsnes-lessons.md).
+the SNES. The difference is that they hand-draw their enhancements; here **AI
+does a first pass and you touch up whatever it got wrong** — in your own image
+editor, hot-reloading live while the game runs, with a hotkey to flip back to
+the original for comparison.
+
+That hedges the project's central bet. If AI quality lands at 70%, a human fixes
+the rest and it is still a win. If it lands at 20%, this degrades into SUPER
+ZSNES's approach — except you start from a draft instead of a blank canvas.
+Background: [the analysis](docs/research/20260820_1612_super-zsnes-lessons.md)
+and [ADR-004](docs/decisions/20260820_1619_human-in-the-loop-pipeline.md).
 
 ---
 
@@ -115,17 +122,38 @@ and the measured starting point is in
 | 4 | PGXP vertex pipeline + widescreen FOV | Not started |
 | 4b | Save states (unblocks rewind, bookmarks) | Not started |
 | 5 | Texture hashing, dumping, cache | Not started |
+| 5b | Cache format, manifest, asset state machine | Not started |
 | 6 | Replacement, 2D / VRAM-write | Not started |
 | 6b | Replacement, 3D texture pages | Not started |
 | 6c | Normal map generation + per-pixel lighting | Not started |
 | 6d | Height map / parallax mapping | Not started |
+| 6e | Hotkey A/B compare vs original | Not started |
 | 7 | Live async AI enhancement worker | Not started |
 | 7b | CPU overclock | Not started |
+| 7c | File watcher + hot reload | Not started |
+| 7d | Review queue UI (original / AI / yours) | Not started |
+| 7e | Pack export | Not started |
 | 8 | Audio: SPU ADPCM sample replacement | Not started |
 | 9 | Mesh replacement research (Tripo) | Not started |
 
+### How enhancement works
+
+```
+first sighting  ──►  AI enhances in background  ──►  swaps in live, cached
+                                                            │
+   see something wrong?  ──►  hold A/B hotkey to compare  ◄──┘
+                                     │
+                        open the PNG in your own editor
+                                     │
+                          save  ──►  live in game (<1s)
+```
+
+Assets resolve as `user.png` → `ai.png` → original. Anything you edit or reject
+is **locked** against further AI passes until you re-roll it.
+
 Enhancement packs will contain **no ROM or copyrighted data** — hashes and
-generated assets only. You supply the game.
+generated assets only. You supply the game. (The local cache keeps a copy of the
+original for editor reference; pack export strips it.)
 
 Every enhancement will be individually disableable. Emulated GPU results must
 not change when enhancements are toggled.
