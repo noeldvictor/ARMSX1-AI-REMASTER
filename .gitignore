@@ -46,3 +46,6 @@ build/
 .vs/
 obj/
 uwp/ARMSX/AppPackages/*
+
+# Reference sources for study (not part of this project)
+reference/

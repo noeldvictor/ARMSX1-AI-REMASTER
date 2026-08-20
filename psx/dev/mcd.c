@@ -5,6 +5,14 @@
 #include <errno.h>
 #include <string.h>
 #include <limits.h>
+
+/* glibc only exposes PATH_MAX from <limits.h> when a feature-test macro such
+ * as _DEFAULT_SOURCE is active. The main build omits -std= and so compiles as
+ * gnu*, where it is visible; the test rules in the Makefile force -std=c11,
+ * which is strict-ANSI and hides it. Fall back so both paths build. */
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 #ifdef _WIN32
 #include <direct.h>
 #endif

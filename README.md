@@ -1,180 +1,286 @@
-# ARMSX1
-ARMSX1 is a fork of `psxe`, rebuilt around a native FSUI donor shell and SDL2-hosted frontends for desktop, Android, iOS, UWP, web, and PSVita.
+# ARMSX1-AI-REMASTER
 
-## What It Supports
-ARMSX1 currently has the following emulator pieces wired up:
+An experimental fork of [ARMSX1](https://github.com/momo-AUX1/ARMSX1) building a
+**Super Enhancement Engine for the PlayStation** — per-game enhancement layers
+on top of an accurate emulator, driven by AI-generated assets instead of
+hand-drawn ones.
+
+HD textures, normal maps and per-pixel lighting on flat PS1 surfaces, corrected
+geometry, height-mapped depth, and restored audio — generated at runtime and
+cached as you play, with no manual asset preparation step.
+
+The model is [SUPER ZSNES](https://www.zsnes.com/), which does exactly this for
+the SNES. **The difference is that they hand-draw their enhancements; this
+project bets that AI can generate them.** That bet may not pay off — see
+[the analysis](docs/research/20260820_1612_super-zsnes-lessons.md).
+
+---
+
+## Please read this first
+
+This is a personal research project, and it is genuinely important that
+expectations are set honestly before anyone invests time in it.
+
+**It is not a supported emulator, and it is not trying to become one.**
+
+- **No support is offered.** Issues and questions will most likely go unanswered.
+  That is not rudeness — there is simply no maintainer capacity here, and
+  pretending otherwise would waste your time.
+- **No releases, no builds, no installers.** If you want a PS1 emulator that
+  works today, please use [DuckStation](https://github.com/stenzek/duckstation)
+  or the [upstream ARMSX1](https://github.com/momo-AUX1/ARMSX1). Both are better
+  choices for actually playing games, and this recommendation is sincere.
+- **Development is deliberately AI-driven.** Most code here is written by AI
+  agents under human direction. That is the experiment, not a shortcut. Code
+  quality, architecture, and correctness should be read in that light.
+- **Expect breakage.** `main` may not build. Features may regress. The GPU is
+  being substantially rewritten and things will be broken along the way.
+- **Nothing here reflects on upstream.** Bugs in this fork are this fork's. If
+  you hit a problem, please do not report it to the ARMSX1 or `psxe` authors.
+
+If you are curious, reading the code and the [`docs/`](docs/) tree is very
+welcome. Just please do not depend on any of it.
+
+---
+
+## How this differs from upstream ARMSX1
+
+Upstream ARMSX1 is a portable, accuracy-focused emulator that runs on desktop,
+Android, iOS, UWP, WebAssembly, and PSVita, using a software rasterizer
+everywhere. It is deliberately conservative: no native codegen, no executable
+memory, no reliance on host threading behaviour. Those are real engineering
+virtues and the reason this fork had something solid to start from.
+
+This fork trades most of that portability for one capability upstream does not
+pursue: runtime visual enhancement.
+
+| | Upstream ARMSX1 | This fork |
+| --- | --- | --- |
+| **Purpose** | Portable, accurate PS1 emulation | Research into AI-driven runtime remastering |
+| **Renderer** | Software rasterizer only | Software rasterizer **plus** a new Vulkan backend |
+| **Graphics API** | None (SDL presentation) | Vulkan 1.1 baseline, 1.3 opportunistic |
+| **Platforms** | Desktop, Android, iOS, UWP, WASM, PSVita | **Desktop Linux + Android only** |
+| **Geometry** | Faithful (wobble intact) | PGXP correction planned |
+| **Textures** | Native PS1 | HD replacement + live AI enhancement planned |
+| **Internal res** | Native | Scalable |
+| **CI** | Gitea build matrix | None, by choice |
+| **Development** | Human-authored | AI-authored under human direction |
+| **Support** | Maintained | None |
+
+### What is deliberately kept
+
+The software rasterizer stays, permanently. It carries a long tail of
+game-specific compatibility fixes (see [`compat.txt`](compat.txt)) and serves as
+the **parity oracle** the Vulkan renderer is validated against. When the two
+disagree, the software path is treated as correct until hardware proves
+otherwise. Removing it would throw away work that cannot be reconstructed.
+
+The complete GTE implementation is likewise kept as-is — it is the tap point
+PGXP needs, and it already works.
+
+### What is frozen
+
+`uwp/`, `psvita/`, `web/`, and `ios/` remain in the tree on the existing
+software path. They are not deleted, but they will not receive remaster features
+and are not verified. Reference deployment target is the **AYN Thor** handheld
+(Snapdragon 8 Gen 2 / Adreno 740; Lite variant Snapdragon 865 / Adreno 650),
+with Linux desktop as the development target.
+
+### What was removed
+
+Cloud CI, and the upstream author's funding link. Details and rationale in
+[`docs/archive/ci/README.md`](docs/archive/ci/README.md). Nothing was deleted
+that cannot be recovered from git history.
+
+---
+
+## Status
+
+**Milestone 0 of 8 complete** — repository bootstrap, work tracking, CI removal.
+
+The remaster features described above are **planned, not implemented.** Today
+this fork behaves essentially like upstream ARMSX1. The roadmap and its
+reasoning live in
+[`docs/decisions/20260820_1450_remaster-architecture.md`](docs/decisions/20260820_1450_remaster-architecture.md),
+and the measured starting point is in
+[`docs/research/20260820_1438_duckstation-feature-gap.md`](docs/research/20260820_1438_duckstation-feature-gap.md).
+
+| # | Milestone | Status |
+| --- | --- | --- |
+| 0 | Repo bootstrap, tracking, CI removal | **Complete** |
+| 1 | Vulkan backend skeleton, VRAM blit parity | Not started |
+| 2 | Vulkan rasterization, all primitive types | Not started |
+| 3 | Internal resolution scaling | Not started |
+| 3b | Per-game profile system (disc-serial keyed) | Not started |
+| 4 | PGXP vertex pipeline + widescreen FOV | Not started |
+| 4b | Save states (unblocks rewind, bookmarks) | Not started |
+| 5 | Texture hashing, dumping, cache | Not started |
+| 6 | Replacement, 2D / VRAM-write | Not started |
+| 6b | Replacement, 3D texture pages | Not started |
+| 6c | Normal map generation + per-pixel lighting | Not started |
+| 6d | Height map / parallax mapping | Not started |
+| 7 | Live async AI enhancement worker | Not started |
+| 7b | CPU overclock | Not started |
+| 8 | Audio: SPU ADPCM sample replacement | Not started |
+| 9 | Mesh replacement research (Tripo) | Not started |
+
+Enhancement packs will contain **no ROM or copyrighted data** — hashes and
+generated assets only. You supply the game.
+
+Every enhancement will be individually disableable. Emulated GPU results must
+not change when enhancements are toggled.
+
+---
+
+## Inherited emulator features
+
+These come from upstream and work today.
+
 - CPU, DMA, GPU, SPU, MDEC, GTE, and timers
-- CD-ROM loading
-- memory cards
-- BIOS selection and PS-X EXE boot
-- screenshot capture
-- logging controls
-- VSync control
-- fast forward
-- protocol/file launch through `armsx:///...` on supported hosts
-- the FSUI settings shell
+- CD-ROM loading, memory cards, BIOS selection, PS-X EXE boot
+- Screenshot capture, logging controls, VSync control, fast forward
+- Protocol/file launch through `armsx:///...`
+- The FSUI settings shell
 
-Disc image support is:
-- `BIN/CUE`
-- single-track `BIN`
-- `ISO`
-- `CHD`, including mixed-mode metadata, pregaps/postgaps, audio byte order, and Q subchannel data
-- `ZIP` archives containing a supported game image and its companion files
+Disc image support: `BIN/CUE`, single-track `BIN`, `ISO`, `CHD` (including
+mixed-mode metadata, pregaps/postgaps, audio byte order, and Q subchannel data),
+and `ZIP` archives containing a supported image and its companion files.
 
-## Accuracy and Acceleration
+Not implemented upstream and still missing here: save states, rewind, cheats,
+achievements, multitap, and rumble.
 
-ARMSX1 has two portable CPU engines:
+### CPU engines
 
-- `cached` is the default. It caches decoded instruction handlers, but still performs a real bus fetch and opcode check for every emulated instruction. Writes invalidate matching entries, including cached/uncached address aliases.
-- `interpreter` is the reference path and remains selectable for diagnostics.
+- `cached` (default) caches decoded instruction handlers but still performs a
+  real bus fetch and opcode check per instruction. Writes invalidate matching
+  entries, including cached/uncached address aliases.
+- `interpreter` is the reference path, kept for diagnostics.
 
-Neither engine emits native code, uses executable memory, or relies on host threading behavior. Select the engine in Settings, with `--cpu-engine=cached|interpreter`, or with `ARMSX_CPU_ENGINE`.
+Neither emits native code. Select with `--cpu-engine=cached|interpreter` or
+`ARMSX_CPU_ENGINE`.
 
-The GPU always uses the accurate software PlayStation rasterizer and keeps its 16-bit VRAM authoritative. Presentation has two SDL2 modes:
+### Presentation
 
-- `SDL software`, the default
-- `SDL accelerated`, opt-in through Settings or `ARMSX_GPU_BACKEND=sdl-accelerated`
+The GPU currently uses the software PlayStation rasterizer with 16-bit VRAM
+authoritative. Two SDL2 presentation modes exist: `SDL software` (default) and
+`SDL accelerated` (`ARMSX_GPU_BACKEND=sdl-accelerated`), which uploads only
+changed VRAM scanlines to an SDL texture.
 
-The accelerated mode uploads only changed VRAM scanlines to an SDL texture. It does not replace PS1 rasterization with host triangles, so switching presentation modes does not change emulated GPU results. If an accelerated SDL renderer is unavailable, ARMSX falls back to SDL software rendering.
+Note that "SDL accelerated" is a *presentation* mode. It does not replace PS1
+rasterization with host triangles, so switching modes does not change emulated
+GPU results. The Vulkan work described above is a separate, unbuilt path.
 
-## Supported Targets
-- Desktop: macOS, Linux, Windows
-- Mobile and alternate hosts: Android, iOS, UWP, WebAssembly, PSVita
-- CI also builds Linux `x64`, `x32`, `arm64`, `arm32` and Windows `x64`/`x32` packages
-
-Desktop and Android are the main day-to-day targets. The other ports are present and buildable, but they are more platform-specific and may lag behind the desktop path.
-
-## CI Runners
-The Gitea workflow matches whatever label your act runner advertises. If that label is a docker-mode label like `ubuntu-latest:docker://...`, Gitea will keep creating per-job bridge networks and can eventually hit Docker address pool exhaustion.
-
-To run the jobs directly on the runner container or host, change the runner labels to host mode, for example `ubuntu-latest:host` or `linux_amd64:host`, then restart act_runner. If the runner is started from a Docker image, remove the `/var/run/docker.sock` mount when you want host mode.
-
-## Running
-On desktop, launch the emulator directly:
-
-```sh
-./bin/armsx --bios=/path/to/bios.bin --cdrom=/path/to/game.cue
-```
-
-You can also launch a file with the protocol handler on supported hosts:
-
-```text
-armsx:///absolute/path/to/game.cue
-```
-
-The app opens an FSUI shell where you can choose BIOS files, start discs, change settings, take screenshots, and toggle fast forward or VSync.
-
-Settings are stored under SDL's pref path, usually `SDL_GetPrefPath("nanodata", "armsx")`, in `settings.toml`.
-
-On WebAssembly, **Start File**, **Start Disc**, and **Open Game Folder** use the browser's permission-gated file and directory pickers. Selected files are copied into the Emscripten virtual filesystem for the current session. Directory access falls back to a multi-file directory input where the File System Access API is unavailable. USB mass-storage drives are intentionally handled through these file pickers; WebUSB does not expose protected mass-storage-class devices as a general filesystem.
+---
 
 ## Building
-### Linux Desktop
-Install SDL2 development packages, then run:
+
+Linux desktop is the only actively developed target.
+
+Submodules must be initialised first — a clean checkout will not build without
+both of these commands:
+
+```sh
+git submodule update --init --depth 1 third_party/libchdr third_party/fuse-lib
+git -C third_party/fuse-lib submodule update --init --recursive --depth 1
+```
+
+Then:
 
 ```sh
 ./build.sh
 ```
 
-### macOS
-Install SDL2 and dylibbundler:
-
-```sh
-brew install sdl2 dylibbundler
-```
-
-Then build a bundle:
-
-```sh
-./build.sh macosapp
-```
-
-### Windows
-Install a MinGW toolchain and SDL2, then run:
-
-```powershell
-./build-deps.ps1
-./build-win64.ps1
-./build-win32.ps1
-```
-
-### Android
-Set `ANDROID_NDK_ROOT` to an NDK 27+ install and build:
+Requires SDL2 development packages. Android builds need `ANDROID_NDK_ROOT`
+pointing at an NDK 27+ install:
 
 ```sh
 ./build.sh android
 ```
 
-### iOS
-Use the bundled SDL2 xcframework and run:
+Other targets (`macosapp`, `ios`, `wasm`, `psvita`, and the UWP scripts) are
+inherited from upstream and remain in the tree, but are unverified here. Consult
+upstream ARMSX1 if you need them.
+
+## Running
 
 ```sh
-./build.sh ios
+./bin/armsx --bios=/path/to/bios.bin --cdrom=/path/to/game.cue
 ```
 
-### UWP
-Build the native runtime or solution from Windows:
+Or via the protocol handler on supported hosts:
 
-```sh
-./build-uwp-native.sh x64 Debug
-./build-uwp-native.sh x86 Release
-./build-uwp-all.ps1
+```text
+armsx:///absolute/path/to/game.cue
 ```
 
-### WebAssembly
-Requires Emscripten:
-
-```sh
-./build.sh wasm
-```
-
-Serve the generated `bin/wasm` directory over HTTP(S); browser file APIs are not available from a raw `file://` URL.
-
-### PSVita
-Requires VITASDK:
-
-```sh
-./build.sh psvita
-```
-
-## Configuration
-`settings.toml` is generated on first run. CLI flags always override file settings for the current session. Some internal fields still use historical `psxe_*` names for compatibility.
-
-The generated defaults are:
-
-```toml
-[cpu]
-execution_mode = "cached"
-
-[gpu]
-backend = "software"
-```
-
-Legacy renderer names such as `hardware` are accepted when reading old settings and normalize to `sdl-accelerated` when saved.
+Settings are stored under SDL's pref path, usually
+`SDL_GetPrefPath("nanodata", "armsx")`, in `settings.toml`. CLI flags override
+file settings for the session.
 
 ## Validation
 
-Run the deterministic source and subsystem matrix:
+There is no cloud CI. Verification is local and deterministic:
 
 ```sh
 python3 tests/run_validation.py
 ```
 
-The cases cover source invariants, cached/reference CPU differential execution and self-modifying code, GPU VRAM parity, CHD layout/subchannel logic, ZIP extraction and traversal rejection, and browser file-selection rules. `make disc-probe IMAGE=/path/to/game.cue` performs a read-only disc-open and sector-read smoke test.
+This covers source invariants, cached/reference CPU differential execution and
+self-modifying code, GPU VRAM parity, CHD layout and subchannel logic, ZIP
+extraction and traversal rejection, and browser file-selection rules.
 
-`make test-sdl-runtime` is an optional headed host check that creates an accelerated SDL2 renderer, uploads a BGR555 texture, and presents it. It is intentionally not part of the deterministic matrix because graphical CI runners may not have a display or accelerated SDL driver.
+`make disc-probe IMAGE=/path/to/game.cue` performs a read-only disc-open and
+sector-read smoke test. `make test-sdl-runtime` is an optional headed check
+requiring a display and an accelerated SDL driver.
+
+---
+
+## Documentation
+
+All work in this repository is tracked in writing — a requirement of the
+AI-driven development model, since agent sessions cannot re-read each other's
+reasoning any other way.
+
+| Path | Contents |
+| --- | --- |
+| [`CLAUDE.md`](CLAUDE.md) | Operating manual for AI agents |
+| [`docs/README.md`](docs/README.md) | Tracking conventions and file naming |
+| [`docs/research/`](docs/research/) | Investigations and feasibility studies |
+| [`docs/decisions/`](docs/decisions/) | Architecture decision records |
+| [`docs/worklogs/`](docs/worklogs/) | Session-by-session record of work |
+| [`docs/archive/`](docs/archive/) | Removed material, kept for reference |
 
 ## License
 
-ARMSX-specific material owned by Moon is proprietary and all rights are reserved. No use, copying, modification, redistribution, publication, commercial exploitation, or creation of derivative works is permitted without Moon's prior express written permission.
+**GPL-3.0.** See [`LICENSE`](LICENSE).
 
-This proprietary license applies only to material Moon owns or is authorized to license. Upstream psxe code, contributor-owned portions, bundled frameworks, and third-party dependencies retain their existing licenses. See [LICENSE](LICENSE) and [LICENSES/UPSTREAM-MIT.txt](LICENSES/UPSTREAM-MIT.txt).
+This project derives from [SwanStation](https://github.com/libretro/swanstation),
+the GPL-3.0 hard fork of DuckStation's final GPL-licensed codebase. Provenance
+and attribution: [`LICENSES/SWANSTATION-GPL3.txt`](LICENSES/SWANSTATION-GPL3.txt).
+
+No code is taken from post-relicense DuckStation, which moved to CC BY-NC-ND 4.0
+in September 2024 and prohibits derivative works. Only the GPL-3.0 SwanStation
+lineage is used — validly licensed, because a licence already granted cannot be
+retroactively revoked.
+
+Upstream `psxe` code retains its MIT licence
+([`LICENSES/UPSTREAM-MIT.txt`](LICENSES/UPSTREAM-MIT.txt)). This project was
+LGPL-3.0 until 2026-08-20; that text is preserved at
+[`LICENSES/PREVIOUS-LGPL3.txt`](LICENSES/PREVIOUS-LGPL3.txt) and the change is
+recorded in
+[ADR-002](docs/decisions/20260820_1552_adopt-gpl3-swanstation.md).
+
+What GPL-3.0 means here, plainly: anyone may use, study, modify, and
+redistribute this, including commercially. If you distribute binaries you must
+offer the full corresponding source. Derivative works stay GPL-3.0.
 
 ## Acknowledgements
-ARMSX uses:
-- `argparse.c`
-- `log.c`
-- `tomlc99`
-- SDL2
-- FSUI donor / ImGui
-- libchdr
+
+This fork exists only because of work done by others, and the interesting parts
+of the emulator are theirs, not this fork's.
+
+- [ARMSX1](https://github.com/momo-AUX1/ARMSX1) and its author — the portable
+  base, the FSUI shell, and the multi-platform work this fork builds on
+- [`psxe`](https://github.com/allkern/psxe) by Allkern — the original emulator
+  and the accuracy work in the software rasterizer
+- `argparse.c`, `log.c`, `tomlc99`, SDL2, FSUI donor / ImGui, libchdr

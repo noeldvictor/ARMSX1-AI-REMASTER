@@ -1,0 +1,17 @@
+Portions of this project are derived from SwanStation:
+
+    https://github.com/libretro/swanstation
+
+SwanStation is a hard fork of DuckStation, taken from DuckStation's final
+GPL-3.0 licensed commit, and is itself licensed GPL-3.0.
+
+DuckStation's own source was relicensed to CC BY-NC-ND 4.0 in September 2024.
+NO CODE IS TAKEN FROM POST-RELICENSE DUCKSTATION. Only the GPL-3.0 SwanStation
+lineage is used, which remains validly licensed under GPL-3.0 because a licence
+already granted cannot be retroactively revoked.
+
+Original DuckStation copyright: Connor McLaughlin (stenzek) and contributors.
+SwanStation copyright: libretro contributors.
+
+Files in this project derived from SwanStation carry attribution in their
+headers. This project as a whole is licensed GPL-3.0 as a result.
