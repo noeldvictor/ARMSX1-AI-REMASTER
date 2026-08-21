@@ -83,7 +83,9 @@ typedef struct {
     uint16_t clut, texp;
 } poly_data_t;
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
+/* Optional triangle dispatch. Defaults to gpu_render_triangle. This is not
+ * GPU-accelerated rasterization — the software path stays authoritative. */
 typedef void (*psx_gpu_render_triangle_t)(psx_gpu_t*, vertex_t, vertex_t, vertex_t, poly_data_t, int);
 #endif
 
@@ -94,7 +96,7 @@ typedef struct {
     uint16_t width, height;
 } rect_data_t;
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
 typedef struct {
     psx_gpu_render_triangle_t render_triangle;
 } psx_gpu_renderer_t;
@@ -171,7 +173,7 @@ struct psx_gpu_t {
     psx_ic_t* ic;
 
     psx_gpu_event_callback_t event_cb_table[8];
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     psx_gpu_renderer_t renderer;
 #endif
 

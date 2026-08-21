@@ -17,6 +17,17 @@ SDL_STATIC ?= 1
 USE_CHD ?= 1
 HW_DEBUG ?= 0
 
+# Prefer PATH cmake; fall back to the gitignored vendored binary so chd/zip
+# tests run when the host has no system cmake.
+CMAKE ?= $(shell command -v cmake 2>/dev/null)
+ifeq ($(strip $(CMAKE)),)
+  ifneq ($(wildcard third_party/cmake/bin/cmake),)
+    CMAKE := third_party/cmake/bin/cmake
+  else
+    CMAKE := cmake
+  endif
+endif
+
 PLATFORM := $(shell uname -s)
 MACOS_DEPLOYMENT_TARGET ?= 10.15
 WINDOWS_TARGET ?= 0
@@ -67,7 +78,7 @@ ifeq ($(USE_CHD),1)
 		$(LIBCHDR_BUILD_DIR)/deps/lzma-25.01/libchdr-lzma.a \
 		$(LIBCHDR_BUILD_DIR)/deps/miniz-3.1.1/libminiz.a \
 		$(LIBCHDR_BUILD_DIR)/deps/zstd-1.5.7/libzstd.a
-	LIBCHDR_CONFIGURE := cmake
+	LIBCHDR_CONFIGURE := $(CMAKE)
 
 	LIBCHDR_CMAKE_ARGS := -S $(LIBCHDR_DIR) -B $(LIBCHDR_BUILD_DIR) -DBUILD_SHARED_LIBS=OFF -DCHDR_WANT_RAW_DATA_SECTOR=ON -DCHDR_WANT_SUBCODE=ON -DMINIZ_ARCHIVE_APIS=ON -DMINIZ_DEFLATE_APIS=ON -DMINIZ_STDIO=ON -DCMAKE_BUILD_TYPE=Release
 	ifneq ($(strip $(LIBCHDR_CMAKE_TOOLCHAIN_FILE)),)
@@ -112,8 +123,9 @@ ifeq ($(CONTROLLER_GENERIC),1)
 	BASE_CXXFLAGS += -DCONTROLLER_GENERIC
 endif
 
-BASE_CFLAGS += -DUSE_HARDWARE
-BASE_CXXFLAGS += -DUSE_HARDWARE
+# Triangle-dispatch hook + SDL presentation backend. Not GPU rasterization.
+BASE_CFLAGS += -DUSE_GPU_BACKEND
+BASE_CXXFLAGS += -DUSE_GPU_BACKEND
 
 ifeq ($(HW_DEBUG),1)
 	BASE_CFLAGS += -DHW_DEBUG
@@ -313,9 +325,9 @@ test-see: $(TEST_SEE_BIN) $(TEST_SEE_PACK_BIN)
 VK_INCLUDE := -Ithird_party/vulkan-headers/include
 TEST_VK_BIN := build/tests/vk_vram_blit
 
-$(TEST_VK_BIN): tests/vk_vram_blit.c vk/blit.c
+$(TEST_VK_BIN): tests/vk_vram_blit.c vk/blit.c vk/raster.c psx/dev/gpu.c
 	mkdir -p $(dir $@)
-	$(CC) -std=c11 -O2 -g -I. $(VK_INCLUDE) $^ -l:libvulkan.so.1 -o $@
+	$(CC) -std=c11 -O2 -g -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $(VK_INCLUDE) $^ -l:libvulkan.so.1 -lm -o $@
 
 test-vk: $(TEST_VK_BIN)
 	./$(TEST_VK_BIN)
@@ -329,7 +341,7 @@ test-cpu: $(TEST_CPU_BIN)
 
 $(TEST_GPU_BIN): tests/gpu_renderer_parity.c psx/dev/gpu.c frontend/gpu_hw.c
 	mkdir -p $(dir $@)
-	$(CC) -std=c11 -O2 -g -DUSE_HARDWARE -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $(SDL_CFLAGS) $^ -lm -o $@
+	$(CC) -std=c11 -O2 -g -DUSE_GPU_BACKEND -DPSXE_DIAG_STDIO_DISABLE -I. -Ipsx $(SDL_CFLAGS) $^ -lm -o $@
 
 test-gpu: $(TEST_GPU_BIN)
 	./$(TEST_GPU_BIN)
@@ -409,7 +421,7 @@ ifeq ($(USE_CHD),1)
 $(LIBCHDR_ARCHIVE): $(LIBCHDR_INPUTS)
 	mkdir -p $(LIBCHDR_BUILD_DIR)
 	$(LIBCHDR_CONFIGURE) $(LIBCHDR_CMAKE_ARGS)
-	cmake --build $(LIBCHDR_BUILD_DIR) -j$(BUILD_JOBS)
+	$(CMAKE) --build $(LIBCHDR_BUILD_DIR) -j$(BUILD_JOBS)
 endif
 
 $(RUNTIME_ICON_DEST): $(RUNTIME_ICON_SRC) | $(BIN_DIR)

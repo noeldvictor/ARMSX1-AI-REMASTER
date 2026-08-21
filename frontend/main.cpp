@@ -76,7 +76,7 @@ extern "C" {
 #include "archive.h"
 #include "IconsFontAwesome5.h"
 #include "platform_file.h"
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
 #include "gpu_hw.h"
 #endif
 #include "fsui/backend_sdl.hpp"
@@ -115,7 +115,7 @@ constexpr bool DefaultMobileControlsEnabled() {
 #endif
 }
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
 enum class GpuBackend {
     Software = 0,
     SDLAccelerated = 1,
@@ -537,7 +537,7 @@ struct FrontendSettings {
     bool logging_enabled = false;
     bool vsync_enabled = DefaultVsyncEnabled();
     psx_cpu_execution_mode_t cpu_engine = PSX_CPU_CACHED_INTERPRETER;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     GpuBackend gpu_backend = GpuBackend::Software;
 #endif
     bool texture_scale_mode = false;
@@ -990,7 +990,7 @@ std::string RendererValueTitle(const FrontendSettings& settings) {
     return value;
 }
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
 constexpr bool SupportsHardwareGpuBackend() {
     return true;
 }
@@ -1301,7 +1301,7 @@ std::vector<fsui::SettingsChoiceOption> BuildCpuEngineChoices(psx_cpu_execution_
     );
 }
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
 std::vector<fsui::SettingsChoiceOption> BuildGpuBackendChoices(GpuBackend current_backend) {
     return BuildChoices(
         {"SDL software", "SDL accelerated"},
@@ -1587,7 +1587,7 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
             settings.vsync_enabled = vsync.u.b != 0;
         }
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         toml_datum_t gpu_backend = toml_string_in(video, "gpu_backend");
         if (gpu_backend.ok && gpu_backend.u.s) {
             if (std::optional<GpuBackend> backend = ParseGpuBackendOverride(gpu_backend.u.s)) {
@@ -1677,7 +1677,7 @@ void LoadExtraSettings(FrontendSettings& settings, const CliFlags& cli) {
 
 FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
     FrontendSettings settings;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     std::optional<GpuBackend> env_gpu_backend;
 #endif
 
@@ -1699,7 +1699,7 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
             settings.cpu_engine = *parsed;
         }
     }
-#if defined(USE_HARDWARE)
+#if defined(USE_GPU_BACKEND)
     settings.gpu_backend = cfg && cfg->gpu_backend ? GpuBackend::SDLAccelerated : GpuBackend::Software;
     if (const char* env_backend = std::getenv("ARMSX_GPU_BACKEND")) {
         env_gpu_backend = ParseGpuBackendOverride(env_backend);
@@ -1724,7 +1724,7 @@ FrontendSettings BuildSettings(const psxe_config_t* cfg, const CliFlags& cli) {
 
     LoadExtraSettings(settings, cli);
 
-#if defined(USE_HARDWARE)
+#if defined(USE_GPU_BACKEND)
     if (env_gpu_backend) {
         settings.gpu_backend = *env_gpu_backend;
     }
@@ -1806,7 +1806,7 @@ bool SaveSettings(const FrontendSettings& settings) {
         << "    default_psx_exe = \"" << EscapeTomlString(settings.default_exe_path) << "\"\n\n"
         << "[video]\n"
         << "    vsync = " << (settings.vsync_enabled ? "true" : "false") << "\n"
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         << "    gpu_backend = \"" << GpuBackendSettingToken(settings.gpu_backend) << "\"\n"
 #endif
         << "    texture_scale_mode = " << (settings.texture_scale_mode ? "true" : "false") << "\n"
@@ -1941,7 +1941,7 @@ class ArmsxSession {
         psx_gpu_set_udata(gpu, 1, psx_->timer);
         psx_gpu_set_udata(gpu, 2, nullptr);
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         hardware_backend_active_ = settings.gpu_backend == GpuBackend::SDLAccelerated;
         if (hardware_backend_active_) {
             SDL_RendererInfo renderer_info{};
@@ -2020,7 +2020,7 @@ class ArmsxSession {
 
         launch_kind_ = request.kind;
 #if defined(HW_DEBUG)
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         if (hardware_backend_active_ && psx_ && psx_->gpu) {
             int output_width = 0;
             int output_height = 0;
@@ -2112,7 +2112,7 @@ class ArmsxSession {
         destroyPresentationTexture();
         texture_snapshot_.clear();
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         if (hw_renderer_) {
             armsx_hw_renderer_destroy(hw_renderer_);
             hw_renderer_ = nullptr;
@@ -2145,7 +2145,7 @@ class ArmsxSession {
         fast_forward_enabled_ = false;
         debug_view_ = false;
         vblank_counter_ = 0;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         hardware_backend_active_ = false;
 #endif
     }
@@ -2164,7 +2164,7 @@ class ArmsxSession {
 
     void rebindRenderer(SDL_Renderer* renderer, const FrontendSettings& settings) {
         renderer_ = renderer;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         if (hw_renderer_) {
             armsx_hw_renderer_set_renderer(hw_renderer_, renderer_);
             if (texture_width_ > 0 && texture_height_ > 0) {
@@ -2224,7 +2224,7 @@ class ArmsxSession {
         traceHardwareFrameState("frame-start", 0);
 #endif
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         if (hardware_backend_active_ && hw_renderer_) {
             armsx_hw_renderer_begin_frame(hw_renderer_);
         }
@@ -2348,7 +2348,7 @@ class ArmsxSession {
         const Uint32 next_format = debug_view_ || !psx_get_display_format(psx_) ? SDL_PIXELFORMAT_BGR555 : SDL_PIXELFORMAT_RGB24;
         const bool use_vram_source = debug_view_ || !psx_ || !psx_->gpu ? false : ((psx_->gpu->disp_y + next_height) > PSX_GPU_FB_HEIGHT);
 
-#if defined(USE_HARDWARE) && defined(HW_DEBUG)
+#if defined(USE_GPU_BACKEND) && defined(HW_DEBUG)
         if (hardware_backend_active_) {
             int output_width = 0;
             int output_height = 0;
@@ -2398,7 +2398,7 @@ class ArmsxSession {
             texture_format_ = next_format;
             texture_snapshot_.clear();
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
             if (hw_renderer_) {
                 armsx_hw_renderer_set_output_size(hw_renderer_, texture_width_, texture_height_);
             }
@@ -2499,7 +2499,7 @@ class ArmsxSession {
         }
 
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-#if defined(USE_HARDWARE) && defined(HW_DEBUG)
+#if defined(USE_GPU_BACKEND) && defined(HW_DEBUG)
         psxe_diag_logf(
             "ui",
             "session-draw frame=%llu display=(%.1f,%.1f) fb_scale=(%.2f,%.2f) texture=%dx%d aspect=%.3f stretch=%s debug=%s target=(%.1f,%.1f) offset=(%.1f,%.1f) hardware=%s timing=%s",
@@ -2517,7 +2517,7 @@ class ArmsxSession {
             target_height,
             offset_x,
             offset_y,
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
             hardware_backend_active_ ? "true" : "false",
 #else
             "false",
@@ -2533,7 +2533,7 @@ class ArmsxSession {
             ImVec2(offset_x + target_width, offset_y + target_height)
         );
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         if (!debug_view_ && hw_renderer_) {
             if (SDL_Texture* overlay = armsx_hw_renderer_overlay_texture(hw_renderer_)) {
                 draw_list->AddImage(
@@ -2547,7 +2547,7 @@ class ArmsxSession {
     }
 
     void finishHardwareFrame() {
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         if (hardware_backend_active_ && hw_renderer_) {
             armsx_hw_renderer_end_frame(hw_renderer_);
         }
@@ -2556,7 +2556,7 @@ class ArmsxSession {
 
 #if defined(HW_DEBUG)
     void traceHardwareFrameState(const char* stage, std::uint32_t steps) const {
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         if (!hardware_backend_active_ || !psx_ || !psx_->gpu) {
             return;
         }
@@ -2647,7 +2647,7 @@ class ArmsxSession {
         return vblank_counter_;
     }
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     bool hardwareBackendActive() const {
         return hardware_backend_active_;
     }
@@ -2870,7 +2870,7 @@ class ArmsxSession {
             updateAudioPlaybackState();
         }
 
-#if defined(USE_HARDWARE) && defined(HW_DEBUG)
+#if defined(USE_GPU_BACKEND) && defined(HW_DEBUG)
         if (hardware_backend_active_) {
             psxe_diag_logf(
                 "audio",
@@ -2915,7 +2915,7 @@ class ArmsxSession {
     SDL_Texture* texture_ = nullptr;
     SDL_Texture* presentation_texture_ = nullptr;
     std::vector<uint8_t> texture_snapshot_;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     armsx_hw_renderer_t* hw_renderer_ = nullptr;
 #endif
     SDL_AudioDeviceID audio_dev_ = 0;
@@ -2928,7 +2928,7 @@ class ArmsxSession {
     bool paused_ = false;
     bool fast_forward_enabled_ = false;
     bool debug_view_ = false;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     bool hardware_backend_active_ = false;
 #endif
     std::uint64_t vblank_counter_ = 0;
@@ -3736,7 +3736,7 @@ class ArmsxApp {
         syncPlatformLibraries(false, false);
 
         applyLoggingSettings("startup");
-#if defined(USE_HARDWARE)
+#if defined(USE_GPU_BACKEND)
         if (const char* env_backend = std::getenv("ARMSX_GPU_BACKEND")) {
             psxe_diag_breadcrumbf(
                 "GPU backend env override=%s resolved=%s",
@@ -3937,7 +3937,7 @@ class ArmsxApp {
         return renderer_flags;
     }
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     bool hardwareRendererAvailable() const {
         if (!owns_renderer_ || external_renderer_ || !renderer_) {
             return false;
@@ -4441,7 +4441,7 @@ class ArmsxApp {
             imgui_font_scale,
             imgui_backend_flags,
             imgui_config_flags,
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
             session_.valid() ? (session_.hardwareBackendActive() ? "true" : "false") : "false",
             session_.valid() ? session_.textureWidth() : 0,
             session_.valid() ? session_.textureHeight() : 0,
@@ -4781,7 +4781,7 @@ class ArmsxApp {
             session_.finishHardwareFrame();
         }
 
-#if defined(USE_HARDWARE) && defined(HW_DEBUG)
+#if defined(USE_GPU_BACKEND) && defined(HW_DEBUG)
         if (session_.valid() && session_.hardwareBackendActive()) {
             logUiRendererState("ui-pre-imgui");
             psxe_diag_logf(
@@ -4799,7 +4799,7 @@ class ArmsxApp {
         }
 #endif
         imgui_backend_.newFrame();
-#if defined(USE_HARDWARE) && defined(HW_DEBUG)
+#if defined(USE_GPU_BACKEND) && defined(HW_DEBUG)
         if (session_.valid() && session_.hardwareBackendActive()) {
             logUiRendererState("ui-post-imgui-backend");
         }
@@ -4832,7 +4832,7 @@ class ArmsxApp {
         ImGui::Render();
         imgui_backend_.renderDrawData(ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
 
-#if defined(USE_HARDWARE) && defined(HW_DEBUG)
+#if defined(USE_GPU_BACKEND) && defined(HW_DEBUG)
         if (session_.valid() && session_.hardwareBackendActive()) {
             logUiRendererState("ui-post-imgui-render");
         }
@@ -5950,7 +5950,7 @@ class ArmsxApp {
         const bool can_control_vsync = owns_renderer_ && !external_renderer_;
 #endif
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
         {
             fsui::SettingsRowDescriptor gpu_backend;
             gpu_backend.kind = fsui::SettingsRowKind::Choice;

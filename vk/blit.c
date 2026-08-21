@@ -203,3 +203,9 @@ int vk_buffer_copy_roundtrip(const void* src, void* dst, size_t bytes) {
         return vk_fail("copy-or-mismatch", r);
     return 0;
 }
+
+int vk_copy_software_vram(const uint16_t* vram, uint16_t* out, size_t nbytes) {
+    if (!vram || !out || nbytes == 0)
+        return 1;
+    return vk_buffer_copy_roundtrip(vram, out, nbytes);
+}

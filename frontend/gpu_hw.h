@@ -7,7 +7,7 @@
 
 #include "../psx/dev/gpu.h"
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
 typedef struct armsx_hw_renderer armsx_hw_renderer_t;
 
 #ifdef __cplusplus

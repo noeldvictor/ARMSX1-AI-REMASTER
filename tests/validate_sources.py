@@ -40,10 +40,17 @@ def main() -> int:
     require("pthread_" not in cpu and "SDL_CreateThread" not in cpu, "CPU engine must not depend on host threading")
     require("mprotect(" not in cpu and "VirtualProtect(" not in cpu, "JIT-style executable memory is forbidden")
     require("USE_CHD ?= 1" in makefile, "CHD must be enabled by default")
+    require("third_party/cmake/bin/cmake" in makefile,
+            "Makefile must fall back to vendored cmake when PATH has none")
     require('export USE_CHD="${USE_CHD:-1}"' in read("build.sh"), "build.sh disables default CHD support")
     require("gpu_render_triangle(gpu, v0, v1, v2, data, edge);" in gpu_hw,
             "SDL acceleration must preserve the software PS1 rasterizer")
     require("SDL_RenderGeometry" not in gpu_hw, "experimental incomplete triangle renderer is still active")
+    require("-DUSE_GPU_BACKEND" in makefile and "-DUSE_HARDWARE" not in makefile,
+            "USE_HARDWARE must not label the software-rasterizer shim")
+    require("USE_HARDWARE" not in read("psx/dev/gpu.h") and "USE_HARDWARE" not in gpu_hw
+            and "USE_HARDWARE" not in frontend,
+            "USE_HARDWARE must not remain in GPU sources")
     require("GpuBackend gpu_backend = GpuBackend::Software;" in frontend,
             "SDL acceleration must be opt-in and default off")
     require("SDL_RENDERER_ACCELERATED" in frontend and "SDL_RENDERER_SOFTWARE" in frontend,
@@ -92,6 +99,21 @@ def main() -> int:
             "GP0(A0) must still write emulated VRAM")
     require("vk_buffer_copy_roundtrip" in read("vk/blit.c"),
             "Vulkan VRAM blit skeleton is missing")
+    require("vk_copy_software_vram" in read("vk/blit.c") and
+            "vk_copy_software_vram" in read("tests/vk_vram_blit.c"),
+            "software VRAM must go through the shipped Vulkan copy")
+    raster = read("vk/raster.c")
+    vk_test = read("tests/vk_vram_blit.c")
+    require("vk_raster_triangle" in raster and "vkCreateGraphicsPipelines" in raster,
+            "Vulkan triangle rasterizer (graphics pipeline) is missing")
+    require("gpu_render_triangle" not in raster,
+            "Vulkan rasterizer must not call the software triangle path")
+    require("vkCmdDraw" in raster, "Vulkan rasterizer must issue a draw, not only a buffer copy")
+    require("vk_raster_triangle" in vk_test and "flat" in vk_test and
+            "shaded-dithered" in vk_test and "semi-transparent" in vk_test,
+            "headless Vulkan-vs-software triangle cases are missing")
+    require("gpu_render_triangle" in vk_test and "memcmp(sw->vram, vk_fb" in vk_test,
+            "triangle test must compare software VRAM to Vulkan readback")
     require('"vk":' in gate, "Vulkan blit test is not in the default validation suite")
 
     if failures:

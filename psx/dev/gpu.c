@@ -68,7 +68,7 @@ void psx_gpu_init(psx_gpu_t* gpu, psx_ic_t* ic) {
     gpu->display_mode = 1;
 
     gpu->ic = ic;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     gpu->renderer.render_triangle = gpu_render_triangle;
 #endif
 
@@ -1152,7 +1152,7 @@ void gpu_poly(psx_gpu_t* gpu) {
                 poly.v[2].ty = (gpu->buf[2+2*texc_offset] >> 8) & 0xff;
                 poly.v[3].ty = (gpu->buf[2+3*texc_offset] >> 8) & 0xff;
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
                 if (gpu->renderer.render_triangle) {
                     if (poly.attrib & PA_QUAD) {
                         gpu->renderer.render_triangle(gpu, poly.v[0], poly.v[1], poly.v[2], poly, 1);

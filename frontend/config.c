@@ -78,7 +78,7 @@ static const char g_default_settings[] =
     "true"
 #endif
     "\n"
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     "    gpu_backend = \"software\" # software | sdl-accelerated\n"
 #endif
     "    texture_scale_mode = false\n"
@@ -416,7 +416,7 @@ void psxe_cfg_load_defaults(psxe_config_t* cfg) {
 #else
     cfg->vsync_enabled = 1;
 #endif
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     cfg->gpu_backend = 0;
 #endif
     cfg->texture_scale_mode = 0;
@@ -450,7 +450,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
     int cpu_engine = cfg->cpu_engine;
     int scale = 0;
     int vsync_enabled = cfg->vsync_enabled;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     int gpu_backend = cfg->gpu_backend;
 #endif
     int texture_scale_mode = 0;
@@ -625,7 +625,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
             if (s_vsync.ok)
                 vsync_enabled = s_vsync.u.b;
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
             toml_datum_t s_gpu_backend = toml_string_in(s_video_table, "gpu_backend");
 
             if (s_gpu_backend.ok && s_gpu_backend.u.s) {
@@ -757,7 +757,7 @@ void psxe_cfg_load(psxe_config_t* cfg, int argc, const char* argv[]) {
 
     cfg->vsync_enabled = vsync_enabled;
     cfg->cpu_engine = cpu_engine;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     cfg->gpu_backend = gpu_backend;
 #endif
     cfg->texture_scale_mode = texture_scale_mode;

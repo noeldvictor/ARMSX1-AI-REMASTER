@@ -140,8 +140,10 @@ Read [`docs/research/20260820_1438_duckstation-feature-gap.md`](docs/research/20
 in full before your first GPU change. The essentials:
 
 - **`frontend/gpu_hw.c` is not a hardware renderer.** It is a shim that forwards
-  to the software rasterizer (`gpu_hw.c:64`). `USE_HARDWARE` is defined
-  unconditionally in `Makefile:181`. The name lies; do not trust it.
+  to the software rasterizer (`gpu_hw.c:64`). `USE_GPU_BACKEND` is defined
+  unconditionally in the Makefile. It is a triangle-dispatch hook plus SDL
+  presentation selection, not GPU-accelerated rasterization. The old name
+  `USE_HARDWARE` was a lie and must not return.
 - **"SDL accelerated" is a presentation mode**, not a renderer. It uploads dirty
   VRAM scanlines to an SDL texture. It does not rasterize.
 - **Vertices reaching the rasterizer are integer 2D screen coordinates** —

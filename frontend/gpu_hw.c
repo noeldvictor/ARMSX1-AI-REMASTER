@@ -1,6 +1,6 @@
 #include "gpu_hw.h"
 
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
 
 #include <stdlib.h>
 

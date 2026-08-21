@@ -17,7 +17,7 @@ typedef struct {
     int cpu_engine;
     int scale;
     int vsync_enabled;
-#ifdef USE_HARDWARE
+#ifdef USE_GPU_BACKEND
     int gpu_backend;
 #endif
     int texture_scale_mode;
