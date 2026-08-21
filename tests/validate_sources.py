@@ -91,6 +91,18 @@ def main() -> int:
             "cmake/SDL2 host skips are missing from the default suite")
     require("see_present_rgb" in see_c and "see_export_pack" in see_c,
             "SEE present/pack entry points are missing")
+    require("see_on_texture_use" in see_c and "see_enhance_cache" in see_c
+            and "see_replace_texel" in see_c,
+            "texture dump / HD tag / enhance-cache path is missing")
+    require("psx_gpu_set_texture_use_callback" in read("psx/dev/gpu.c") and
+            "psx_gpu_set_texel_callback" in read("psx/dev/gpu.c"),
+            "GPU texture-use / texel hooks are missing")
+    require("qa_texture_use" in read("tools/armsx_qa.c") and
+            "see_on_texture_use" in read("tools/armsx_qa.c"),
+            "QA driver does not dump textures on use")
+    require("texpage-dump-and-hd" in read("tests/see_replacement.c") and
+            "enhance-cache-no-replay" in read("tests/see_replacement.c"),
+            "texture dump / no-replay HD tests are missing")
     require("if (see_file_exists(reverted)) return;" in see_c,
             "SEE reverted lock does not skip generated/user at present")
     require("see_slot_find" in see_c and "truncated" in read("tests/see_replacement.c"),

@@ -33,6 +33,11 @@ struct see_engine {
     char serial[32];
     see_slot_t slots[SEE_SLOT_MAX];
     int nslots;
+    uint8_t* bound_rgb;
+    int bound_w, bound_h;
+    unsigned bound_tpx, bound_tpy, bound_clutx, bound_cluty;
+    int bound_depth;
+    int bound_ok;
 };
 
 static int see_clampi(int v, int lo, int hi) {
@@ -351,6 +356,7 @@ void see_destroy(see_engine_t* see) {
     if (!see) return;
     for (int i = 0; i < see->nslots; i++)
         free(see->slots[i].rgb);
+    free(see->bound_rgb);
     free(see);
 }
 
@@ -419,9 +425,243 @@ int see_ingest_rgb(see_engine_t* see, const uint8_t* rgb, int w, int h, char has
     return 0;
 }
 
+static uint16_t see_fetch_texel(
+    const uint16_t* vram, uint16_t tx, uint16_t ty,
+    unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty, int depth,
+    unsigned texw_mx, unsigned texw_my, unsigned texw_ox, unsigned texw_oy
+) {
+    tx = (uint16_t)((tx & ~texw_mx) | (texw_ox & texw_mx));
+    ty = (uint16_t)((ty & ~texw_my) | (texw_oy & texw_my));
+    tx &= 0xff;
+    ty &= 0xff;
+    if (depth == 0) {
+        uint16_t packed = vram[(tpx + (tx >> 2)) + ((tpy + ty) * 1024)];
+        int index = (packed >> ((tx & 0x3) << 2)) & 0xf;
+        return vram[(clutx + (unsigned)index) + (cluty * 1024)];
+    }
+    if (depth == 1) {
+        uint16_t packed = vram[(tpx + (tx >> 1)) + ((tpy + ty) * 1024)];
+        int index = (packed >> ((tx & 0x1) << 3)) & 0xff;
+        return vram[(clutx + (unsigned)index) + (cluty * 1024)];
+    }
+    return vram[(tpx + tx) + ((tpy + ty) * 1024)];
+}
+
+static void see_hash_texpage(
+    const uint16_t* vram,
+    unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty, int depth,
+    unsigned texw_mx, unsigned texw_my, unsigned texw_ox, unsigned texw_oy,
+    char out[17]
+) {
+    uint64_t hv = 1469598103934665603ULL;
+    unsigned words[] = { tpx, tpy, clutx, cluty, (unsigned)depth,
+                         texw_mx, texw_my, texw_ox, texw_oy };
+    for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+        hv ^= words[i];
+        hv *= 1099511628211ULL;
+    }
+    unsigned pw = depth == 0 ? 64u : (depth == 1 ? 128u : 256u);
+    unsigned clutn = depth == 0 ? 16u : (depth == 1 ? 256u : 0u);
+    for (unsigned y = 0; y < 256; y++) {
+        for (unsigned x = 0; x < pw; x++) {
+            uint16_t p = vram[((tpx + x) & 0x3ff) + (((tpy + y) & 0x1ff) * 1024)];
+            hv ^= p;
+            hv *= 1099511628211ULL;
+        }
+    }
+    for (unsigned i = 0; i < clutn; i++) {
+        uint16_t p = vram[((clutx + i) & 0x3ff) + ((cluty & 0x1ff) * 1024)];
+        hv ^= p;
+        hv *= 1099511628211ULL;
+    }
+    snprintf(out, 17, "%016llx", (unsigned long long)hv);
+}
+
+static void see_bgr555_to_rgb(uint16_t p, uint8_t* d) {
+    uint8_t r = (uint8_t)(p & 0x1f);
+    uint8_t g = (uint8_t)((p >> 5) & 0x1f);
+    uint8_t b = (uint8_t)((p >> 10) & 0x1f);
+    d[0] = (uint8_t)((r << 3) | (r >> 2));
+    d[1] = (uint8_t)((g << 3) | (g >> 2));
+    d[2] = (uint8_t)((b << 3) | (b >> 2));
+}
+
+static uint16_t see_rgb_to_bgr555(const uint8_t* s) {
+    return (uint16_t)((s[0] >> 3) | ((s[1] >> 3) << 5) | ((s[2] >> 3) << 10));
+}
+
+static int see_write_meta(const char* dir, const char* hash, int depth,
+                          unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty) {
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/meta.json", dir);
+    if (see_file_exists(path)) return 0;
+    FILE* f = fopen(path, "wb");
+    if (!f) return 1;
+    fprintf(f,
+            "{\n"
+            "  \"kind\": \"texpage\",\n"
+            "  \"hash\": \"%s\",\n"
+            "  \"w\": 256,\n"
+            "  \"h\": 256,\n"
+            "  \"depth\": %d,\n"
+            "  \"tpx\": %u,\n"
+            "  \"tpy\": %u,\n"
+            "  \"clutx\": %u,\n"
+            "  \"cluty\": %u\n"
+            "}\n",
+            hash, depth, tpx, tpy, clutx, cluty);
+    fclose(f);
+    return 0;
+}
+
+static int see_append_index(const see_engine_t* see, const char* hash, const char* kind) {
+    char serial[32], path[PATH_MAX];
+    see_serial_or_unknown(see, serial, sizeof(serial));
+    snprintf(path, sizeof(path), "%s/%s/dumps.jsonl", see->cache_root, serial);
+    FILE* f = fopen(path, "ab");
+    if (!f) return 1;
+    fprintf(f, "{\"hash\":\"%s\",\"kind\":\"%s\"}\n", hash, kind);
+    fclose(f);
+    return 0;
+}
+
+static int see_bind_hd(see_engine_t* see, const char* dir,
+                       unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty, int depth) {
+    char user[PATH_MAX], gen[PATH_MAX];
+    snprintf(user, sizeof(user), "%s/user.png", dir);
+    snprintf(gen, sizeof(gen), "%s/generated.png", dir);
+    const char* path = NULL;
+    if (see_file_exists(user)) path = user;
+    else if (see_file_exists(gen)) path = gen;
+    see->bound_ok = 0;
+    free(see->bound_rgb);
+    see->bound_rgb = NULL;
+    if (!path) return 1;
+    uint8_t* img = NULL;
+    int iw = 0, ih = 0;
+    if (see_png_read(path, &img, &iw, &ih) || !img || iw <= 0 || ih <= 0) {
+        free(img);
+        return 1;
+    }
+    see->bound_rgb = img;
+    see->bound_w = iw;
+    see->bound_h = ih;
+    see->bound_tpx = tpx;
+    see->bound_tpy = tpy;
+    see->bound_clutx = clutx;
+    see->bound_cluty = cluty;
+    see->bound_depth = depth;
+    see->bound_ok = 1;
+    return 0;
+}
+
+void see_on_texture_use(see_engine_t* see, const uint16_t* vram,
+                        unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty,
+                        int depth, unsigned texw_mx, unsigned texw_my,
+                        unsigned texw_ox, unsigned texw_oy) {
+    if (!see || !vram) return;
+    char hash[17];
+    see_hash_texpage(vram, tpx, tpy, clutx, cluty, depth,
+                     texw_mx, texw_my, texw_ox, texw_oy, hash);
+    char dir[PATH_MAX];
+    if (see_asset_dir(see, hash, dir, sizeof(dir))) return;
+    if (see_mkdirs(dir)) return;
+    char orig[PATH_MAX];
+    snprintf(orig, sizeof(orig), "%s/orig.png", dir);
+    if (!see_file_exists(orig)) {
+        uint8_t* rgb = (uint8_t*)malloc(256u * 256u * 3u);
+        if (!rgb) return;
+        for (int ty = 0; ty < 256; ty++) {
+            for (int tx = 0; tx < 256; tx++) {
+                uint16_t p = see_fetch_texel(
+                    vram, (uint16_t)tx, (uint16_t)ty, tpx, tpy, clutx, cluty, depth,
+                    texw_mx, texw_my, texw_ox, texw_oy
+                );
+                see_bgr555_to_rgb(p, rgb + ((size_t)ty * 256 + (size_t)tx) * 3);
+            }
+        }
+        if (see_png_write(orig, rgb, 256, 256) == 0) {
+            see->assets_written++;
+            see_write_meta(dir, hash, depth, tpx, tpy, clutx, cluty);
+            see_append_index(see, hash, "texpage");
+            if (see->enabled) {
+                char gen[PATH_MAX], user[PATH_MAX], reverted[PATH_MAX], edited[PATH_MAX];
+                snprintf(gen, sizeof(gen), "%s/generated.png", dir);
+                snprintf(user, sizeof(user), "%s/user.png", dir);
+                snprintf(reverted, sizeof(reverted), "%s/reverted", dir);
+                snprintf(edited, sizeof(edited), "%s/edited", dir);
+                int locked = see_file_exists(reverted) || see_file_exists(edited) || see_file_exists(user);
+                if (!locked && !see_file_exists(gen))
+                    see_generate(rgb, 256, 256, gen);
+            }
+        }
+        free(rgb);
+    }
+    if (see->enabled)
+        see_bind_hd(see, dir, tpx, tpy, clutx, cluty, depth);
+}
+
+uint16_t see_replace_texel(see_engine_t* see, uint16_t tx, uint16_t ty,
+                           unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty,
+                           int depth, uint16_t original) {
+    if (!see || !see->enabled || !see->bound_ok || !see->bound_rgb || !original)
+        return original;
+    if (see->bound_tpx != tpx || see->bound_tpy != tpy ||
+        see->bound_clutx != clutx || see->bound_cluty != cluty ||
+        see->bound_depth != depth)
+        return original;
+    tx &= 0xff;
+    ty &= 0xff;
+    int sx = (int)tx * see->bound_w / 256;
+    int sy = (int)ty * see->bound_h / 256;
+    sx = see_clampi(sx, 0, see->bound_w - 1);
+    sy = see_clampi(sy, 0, see->bound_h - 1);
+    const uint8_t* p = see->bound_rgb + ((size_t)sy * (size_t)see->bound_w + (size_t)sx) * 3;
+    return see_rgb_to_bgr555(p) | (original & 0x8000);
+}
+
+int see_enhance_cache(see_engine_t* see) {
+    if (!see) return -1;
+    char serial[32], root[PATH_MAX];
+    see_serial_or_unknown(see, serial, sizeof(serial));
+    snprintf(root, sizeof(root), "%s/%s", see->cache_root, serial);
+    DIR* d = opendir(root);
+    if (!d) return 0;
+    int made = 0;
+    struct dirent* ent;
+    while ((ent = readdir(d))) {
+        if (ent->d_name[0] == '.') continue;
+        char dir[PATH_MAX];
+        snprintf(dir, sizeof(dir), "%s/%s", root, ent->d_name);
+        struct stat st;
+        if (stat(dir, &st) || !S_ISDIR(st.st_mode)) continue;
+        char orig[PATH_MAX], gen[PATH_MAX], user[PATH_MAX], reverted[PATH_MAX], edited[PATH_MAX];
+        snprintf(orig, sizeof(orig), "%s/orig.png", dir);
+        snprintf(gen, sizeof(gen), "%s/generated.png", dir);
+        snprintf(user, sizeof(user), "%s/user.png", dir);
+        snprintf(reverted, sizeof(reverted), "%s/reverted", dir);
+        snprintf(edited, sizeof(edited), "%s/edited", dir);
+        if (!see_file_exists(orig)) continue;
+        if (see_file_exists(reverted) || see_file_exists(edited) || see_file_exists(user))
+            continue;
+        if (see_file_exists(gen)) continue;
+        uint8_t* rgb = NULL;
+        int w = 0, h = 0;
+        if (see_png_read(orig, &rgb, &w, &h) || !rgb) {
+            free(rgb);
+            continue;
+        }
+        if (see_generate(rgb, w, h, gen) == 0)
+            made++;
+        free(rgb);
+    }
+    closedir(d);
+    return made;
+}
+
 void see_on_vram_write(see_engine_t* see, const uint16_t* vram,
                        unsigned x, unsigned y, unsigned w, unsigned h) {
-    if (!see || !see->enabled || !vram) return;
+    if (!see || !vram) return;
     if (w < SEE_MIN_VRAM_SIDE || h < SEE_MIN_VRAM_SIDE) return;
     if ((size_t)w * (size_t)h < SEE_MIN_PIXELS) return;
     uint8_t* rgb = (uint8_t*)malloc((size_t)w * h * 3);
@@ -482,9 +722,10 @@ static const uint8_t* see_slot_find(const see_engine_t* see, const char* hash, i
 }
 
 void see_present_rgb(see_engine_t* see, uint8_t* rgb, int w, int h) {
-    if (!see || !see->enabled || !rgb || w <= 0 || h <= 0) return;
+    if (!see || !rgb || w <= 0 || h <= 0) return;
     char hash[17];
     if (see_ingest_rgb(see, rgb, w, h, hash)) return;
+    if (!see->enabled) return;
     char dir[PATH_MAX];
     if (see_asset_dir(see, hash, dir, sizeof(dir))) return;
     char user[PATH_MAX], gen[PATH_MAX], reverted[PATH_MAX];

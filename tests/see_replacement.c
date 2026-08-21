@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 static void fill_checker(uint8_t* rgb, int w, int h, int tile) {
     for (int y = 0; y < h; y++) {
@@ -178,6 +180,102 @@ int main(void) {
     free(vram);
     free(snapshot);
     printf("SEE_REPLACEMENT passed case=vram-unchanged\n");
+
+    /* Texture-page dump on read, HD tagged by hash, enhance without replay. */
+    {
+        uint16_t* tvram = (uint16_t*)calloc(1024 * 512, sizeof(uint16_t));
+        if (!tvram) {
+            see_destroy(see);
+            return 1;
+        }
+        for (int i = 0; i < 16; i++)
+            tvram[i] = (uint16_t)((i * 2) | ((i * 3) << 5) | ((i * 5) << 10));
+        for (int y = 0; y < 32; y++) {
+            for (int x = 0; x < 64; x++) {
+                int t0 = (x + y) & 0xf;
+                int t1 = (x * 3 + y) & 0xf;
+                int t2 = (x + y * 2) & 0xf;
+                int t3 = (x * 5 + y * 3) & 0xf;
+                tvram[x + y * 1024] = (uint16_t)(t0 | (t1 << 4) | (t2 << 8) | (t3 << 12));
+            }
+        }
+        uint16_t* snap = (uint16_t*)malloc(1024 * 512 * sizeof(uint16_t));
+        memcpy(snap, tvram, 1024 * 512 * sizeof(uint16_t));
+        see_set_serial(see, "TEST-TEX.00");
+        {
+            char wipe[512];
+            snprintf(wipe, sizeof(wipe), "%s/TEST-TEX.00", root);
+            DIR* wd = opendir(wipe);
+            if (wd) {
+                struct dirent* e;
+                char file[512];
+                snprintf(file, sizeof(file), "%s/dumps.jsonl", wipe);
+                remove(file);
+                while ((e = readdir(wd))) {
+                    if (e->d_name[0] == '.') continue;
+                    char sub[512];
+                    snprintf(sub, sizeof(sub), "%s/%s", wipe, e->d_name);
+                    const char* names[] = { "orig.png", "generated.png", "user.png", "meta.json", "reverted", "edited", NULL };
+                    for (int i = 0; names[i]; i++) {
+                        snprintf(file, sizeof(file), "%s/%s", sub, names[i]);
+                        remove(file);
+                    }
+                    rmdir(sub);
+                }
+                closedir(wd);
+                rmdir(wipe);
+            }
+        }
+        int before = see_asset_count(see);
+        see_set_enabled(see, 0);
+        see_on_texture_use(see, tvram, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        if (memcmp(snap, tvram, 1024 * 512 * sizeof(uint16_t)) != 0) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=texpage-vram-mutated\n");
+            free(tvram); free(snap); see_destroy(see);
+            return 1;
+        }
+        if (see_asset_count(see) != before + 1) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=texpage-not-dumped\n");
+            free(tvram); free(snap); see_destroy(see);
+            return 1;
+        }
+        see_on_texture_use(see, tvram, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        if (see_asset_count(see) != before + 1) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=texpage-redump\n");
+            free(tvram); free(snap); see_destroy(see);
+            return 1;
+        }
+        int made = see_enhance_cache(see);
+        if (made < 1) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=enhance-cache made=%d\n", made);
+            free(tvram); free(snap); see_destroy(see);
+            return 1;
+        }
+        see_set_enabled(see, 1);
+        see_on_texture_use(see, tvram, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        uint16_t orig_tex = tvram[1]; /* CLUT index 1, non-black */
+        uint16_t replaced = see_replace_texel(see, 1, 0, 0, 0, 0, 0, 0, orig_tex);
+        if (!orig_tex) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=clut1-black\n");
+            free(tvram); free(snap); see_destroy(see);
+            return 1;
+        }
+        if (replaced == orig_tex) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=hd-texel-unchanged\n");
+            free(tvram); free(snap); see_destroy(see);
+            return 1;
+        }
+        printf("SEE_REPLACEMENT passed case=texpage-dump-and-hd\n");
+        made = see_enhance_cache(see);
+        if (made != 0) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=enhance-cache-rerun made=%d\n", made);
+            free(tvram); free(snap); see_destroy(see);
+            return 1;
+        }
+        printf("SEE_REPLACEMENT passed case=enhance-cache-no-replay\n");
+        free(tvram);
+        free(snap);
+    }
 
     see_destroy(see);
     puts("SEE_REPLACEMENT all cases passed");

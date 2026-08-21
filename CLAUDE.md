@@ -278,6 +278,12 @@ make test-boot
     --cdrom="roms/Legend of Legaia (USA)/Legend of Legaia (USA).cue" \
     --script=tests/qa/scus-942.54-title.qa --enhance --enhance-dir=cache --json
 
+# Texture dump + HD without replaying: every unique 2D surface and CLUT-decoded
+# 256×256 texture page lands in cache/<serial>/<hash>/{orig.png,meta.json}.
+# Drop user.png in that folder (or run see_enhance_cache) to tag the HD
+# version. The next boot uses it by hash — no second playthrough.
+# Pack export still strips orig.png.
+
 make test-see   # replacement on/off/user + pack export (no media)
 make test-vk    # headless Vulkan 1.1 buffer-copy (needs vendored headers)
 ```

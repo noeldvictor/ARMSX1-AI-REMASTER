@@ -173,6 +173,7 @@ int max(int x0, int x1) {
 #define EDGE(a, b, c) ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
 
 uint16_t gpu_fetch_texel(psx_gpu_t* gpu, uint16_t tx, uint16_t ty, uint32_t tpx, uint32_t tpy, uint16_t clutx, uint16_t cluty, int depth) {
+    uint16_t texel = 0;
     tx = (tx & ~gpu->texw_mx) | (gpu->texw_ox & gpu->texw_mx);
     ty = (ty & ~gpu->texw_my) | (gpu->texw_oy & gpu->texw_my);
     tx &= 0xff;
@@ -181,27 +182,30 @@ uint16_t gpu_fetch_texel(psx_gpu_t* gpu, uint16_t tx, uint16_t ty, uint32_t tpx,
     switch (depth) {
         // 4-bit
         case 0: {
-            uint16_t texel = gpu->vram[(tpx + (tx >> 2)) + ((tpy + ty) * 1024)];
+            uint16_t packed = gpu->vram[(tpx + (tx >> 2)) + ((tpy + ty) * 1024)];
 
-            int index = (texel >> ((tx & 0x3) << 2)) & 0xf;
+            int index = (packed >> ((tx & 0x3) << 2)) & 0xf;
 
-            return gpu->vram[(clutx + index) + (cluty * 1024)];
+            texel = gpu->vram[(clutx + index) + (cluty * 1024)];
         } break;
 
         // 8-bit
         case 1: {
-            uint16_t texel = gpu->vram[(tpx + (tx >> 1)) + ((tpy + ty) * 1024)];
+            uint16_t packed = gpu->vram[(tpx + (tx >> 1)) + ((tpy + ty) * 1024)];
 
-            int index = (texel >> ((tx & 0x1) << 3)) & 0xff;
+            int index = (packed >> ((tx & 0x1) << 3)) & 0xff;
 
-            return gpu->vram[(clutx + index) + (cluty * 1024)];
+            texel = gpu->vram[(clutx + index) + (cluty * 1024)];
         } break;
 
         // 15-bit
         default: {
-            return gpu->vram[(tpx + tx) + ((tpy + ty) * 1024)];
+            texel = gpu->vram[(tpx + tx) + ((tpy + ty) * 1024)];
         } break;
     }
+    if (gpu->texel_cb)
+        texel = gpu->texel_cb(gpu, tx, ty, tpx, tpy, clutx, cluty, depth, texel, gpu->texel_udata);
+    return texel;
 }
 
 uint16_t gpu_fetch_texel_bilinear(psx_gpu_t* gpu, float tx, float ty, uint32_t tpx, uint32_t tpy, uint16_t clutx, uint16_t cluty, int depth) {
@@ -261,6 +265,8 @@ void gpu_render_triangle(psx_gpu_t* gpu, vertex_t v0, vertex_t v1, vertex_t v2, 
 
     if (data.attrib & PA_TEXTURED) {
         transp_mode = (data.texp >> 5) & 3;
+        if (gpu->texture_use_cb)
+            gpu->texture_use_cb(gpu, (unsigned)tpx, (unsigned)tpy, (unsigned)clutx, (unsigned)cluty, depth, gpu->texture_use_udata);
     } else {
         transp_mode = (gpu->gpustat >> 5) & 3;
     }
@@ -495,6 +501,8 @@ void gpu_render_rect(psx_gpu_t* gpu, rect_data_t data) {
             uint16_t color;
 
             if (textured) {
+                if (gpu->texture_use_cb && xc == 0 && yc == 0)
+                    gpu->texture_use_cb(gpu, gpu->texp_x, gpu->texp_y, (unsigned)clutx, (unsigned)cluty, gpu->texp_d, gpu->texture_use_udata);
                 uint16_t texel = gpu_fetch_texel(
                     gpu,
                     data.v0.tx + xc, data.v0.ty + yc,
@@ -2085,6 +2093,20 @@ void psx_gpu_set_vram_write_callback(psx_gpu_t* gpu,
     void* user) {
     gpu->vram_write_cb = cb;
     gpu->vram_write_udata = user;
+}
+
+void psx_gpu_set_texture_use_callback(psx_gpu_t* gpu,
+    void (*cb)(psx_gpu_t*, unsigned, unsigned, unsigned, unsigned, int, void*),
+    void* user) {
+    gpu->texture_use_cb = cb;
+    gpu->texture_use_udata = user;
+}
+
+void psx_gpu_set_texel_callback(psx_gpu_t* gpu,
+    uint16_t (*cb)(psx_gpu_t*, uint16_t, uint16_t, uint32_t, uint32_t, uint16_t, uint16_t, int, uint16_t, void*),
+    void* user) {
+    gpu->texel_cb = cb;
+    gpu->texel_udata = user;
 }
 
 #define GPU_CYCLES_PER_HDRAW_NTSC 2560.0f

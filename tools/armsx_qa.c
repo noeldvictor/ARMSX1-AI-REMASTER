@@ -239,6 +239,23 @@ static void qa_vram_write(psx_gpu_t* gpu, unsigned x, unsigned y, unsigned w, un
     see_on_vram_write((see_engine_t*)user, gpu->vram, x, y, w, h);
 }
 
+static void qa_texture_use(psx_gpu_t* gpu, unsigned tpx, unsigned tpy,
+                           unsigned clutx, unsigned cluty, int depth, void* user) {
+    see_on_texture_use(
+        (see_engine_t*)user, gpu->vram, tpx, tpy, clutx, cluty, depth,
+        gpu->texw_mx, gpu->texw_my, gpu->texw_ox, gpu->texw_oy
+    );
+}
+
+static uint16_t qa_texel(psx_gpu_t* gpu, uint16_t tx, uint16_t ty,
+                         uint32_t tpx, uint32_t tpy, uint16_t clutx, uint16_t cluty,
+                         int depth, uint16_t original, void* user) {
+    (void)gpu;
+    return see_replace_texel(
+        (see_engine_t*)user, tx, ty, tpx, tpy, clutx, cluty, depth, original
+    );
+}
+
 static uint8_t* qa_frame_rgb(psx_t* psx, see_engine_t* see, int* out_w, int* out_h) {
     const int w = (int)psx_get_display_width(psx);
     const int h = (int)psx_get_display_height(psx);
@@ -563,8 +580,10 @@ int main(int argc, const char** argv) {
         if (qa_guess_serial(psx_get_cdrom(psx), guessed, sizeof(guessed)) == 0)
             see_set_serial(see, guessed);
     }
+    psx_gpu_set_vram_write_callback(psx_get_gpu(psx), qa_vram_write, see);
+    psx_gpu_set_texture_use_callback(psx_get_gpu(psx), qa_texture_use, see);
     if (enhance_on)
-        psx_gpu_set_vram_write_callback(psx_get_gpu(psx), qa_vram_write, see);
+        psx_gpu_set_texel_callback(psx_get_gpu(psx), qa_texel, see);
 
     if (json)
         printf("{\"event\":\"start\",\"frames\":%llu,\"bios\":\"%s\",\"media\":\"%s\","

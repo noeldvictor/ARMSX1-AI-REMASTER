@@ -4,9 +4,10 @@
 /*
  * Super Enhancement Engine — presentation layer.
  *
- * Hashes 2D surfaces (CPU-to-VRAM writes and the displayed framebuffer),
- * auto-applies an algorithmic upscale into a per-serial disk cache, and
- * composites replacements at present time. Never writes emulated VRAM.
+ * Dumps 2D surfaces and 3D texture pages (CLUT-decoded) into
+ * cache/<serial>/<hash>/orig.png. HD lives beside them as generated.png
+ * or user.png — drop a PNG in that folder to tag the hash without
+ * replaying. Never writes emulated VRAM.
  *
  * Draw order: user.png → generated.png → original pixels.
  * Pack export copies hashes + generated/user only (strips orig.png).
@@ -41,13 +42,32 @@ int see_png_read(const char* path, uint8_t** rgb, int* w, int* h);
 /* Dump orig.png and, if enabled and unlocked, auto-generate generated.png. */
 int see_ingest_rgb(see_engine_t* see, const uint8_t* rgb, int w, int h, char hash_out[17]);
 
-/* CPU-to-VRAM completion. Reads VRAM, does not write it. */
+/* CPU-to-VRAM completion. Reads VRAM, does not write it. Dumps even if disabled. */
 void see_on_vram_write(see_engine_t* see, const uint16_t* vram,
                        unsigned x, unsigned y, unsigned w, unsigned h);
 
 /*
+ * Texture-page dump on use (GP0 textured draw). Decodes 256×256 through the
+ * CLUT, hashes the raw page+palette, writes orig.png + meta.json once.
+ * If enabled, binds user/generated HD for see_replace_texel. Does not write VRAM.
+ */
+void see_on_texture_use(see_engine_t* see, const uint16_t* vram,
+                        unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty,
+                        int depth, unsigned texw_mx, unsigned texw_my,
+                        unsigned texw_ox, unsigned texw_oy);
+
+/* Sample the bound HD page at 8-bit UV. original is returned if nothing is bound. */
+uint16_t see_replace_texel(see_engine_t* see, uint16_t tx, uint16_t ty,
+                           unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty,
+                           int depth, uint16_t original);
+
+/* Generate generated.png for every dumped orig.png that is not locked. No replay. */
+int see_enhance_cache(see_engine_t* see);
+
+/*
  * If enabled, replace rgb in place with user/generated lookup of this frame's
- * hash (first sighting auto-generates). If disabled, rgb is left untouched.
+ * hash (first sighting auto-generates). If disabled, still dumps orig.png
+ * and leaves rgb untouched.
  */
 void see_present_rgb(see_engine_t* see, uint8_t* rgb, int w, int h);
 

@@ -181,6 +181,13 @@ struct psx_gpu_t {
     void (*vram_write_cb)(struct psx_gpu_t* gpu, unsigned x, unsigned y,
                           unsigned w, unsigned h, void* user);
     void* vram_write_udata;
+    void (*texture_use_cb)(struct psx_gpu_t* gpu, unsigned tpx, unsigned tpy,
+                           unsigned clutx, unsigned cluty, int depth, void* user);
+    void* texture_use_udata;
+    uint16_t (*texel_cb)(struct psx_gpu_t* gpu, uint16_t tx, uint16_t ty,
+                         uint32_t tpx, uint32_t tpy, uint16_t clutx, uint16_t cluty,
+                         int depth, uint16_t original, void* user);
+    void* texel_udata;
 };
 
 static inline int psx_gpu_is_pal_mode(const psx_gpu_t* gpu) {
@@ -216,6 +223,12 @@ void psx_gpu_set_udata(psx_gpu_t*, int, void*);
 void psx_gpu_set_event_callback(psx_gpu_t*, int, psx_gpu_event_callback_t);
 void psx_gpu_set_vram_write_callback(psx_gpu_t* gpu,
     void (*cb)(psx_gpu_t*, unsigned, unsigned, unsigned, unsigned, void*),
+    void* user);
+void psx_gpu_set_texture_use_callback(psx_gpu_t* gpu,
+    void (*cb)(psx_gpu_t*, unsigned, unsigned, unsigned, unsigned, int, void*),
+    void* user);
+void psx_gpu_set_texel_callback(psx_gpu_t* gpu,
+    uint16_t (*cb)(psx_gpu_t*, uint16_t, uint16_t, uint32_t, uint32_t, uint16_t, uint16_t, int, uint16_t, void*),
     void* user);
 void* psx_gpu_get_display_buffer(psx_gpu_t*);
 void psx_gpu_update(psx_gpu_t*, int);
