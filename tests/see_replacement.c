@@ -109,6 +109,32 @@ int main(void) {
     }
     printf("SEE_REPLACEMENT passed case=user-overrides-generated\n");
 
+    /* Truncated user.png must keep the last good replacement, not original. */
+    {
+        FILE* bad = fopen(user_path, "wb");
+        if (!bad) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=truncate-open\n");
+            see_destroy(see);
+            return 1;
+        }
+        fputs("not a png", bad);
+        fclose(bad);
+        memcpy(frame, orig, sizeof(frame));
+        see_present_rgb(see, frame, w, h);
+        if (!all_rgb(frame, w, h, 16, 64, 200)) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=truncated-did-not-keep-last-good\n");
+            see_destroy(see);
+            return 1;
+        }
+        printf("SEE_REPLACEMENT passed case=truncated-keeps-last-good\n");
+        /* Restore a valid user.png so later cases can still see the file. */
+        if (see_png_write(user_path, user, w, h)) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=user-restore\n");
+            see_destroy(see);
+            return 1;
+        }
+    }
+
     /* reverted locks the asset: generated/user must not apply. */
     char reverted_path[512];
     snprintf(reverted_path, sizeof(reverted_path), "%s/TEST-000.00/%s/reverted", root, hash);

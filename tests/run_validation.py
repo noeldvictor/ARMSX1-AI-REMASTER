@@ -21,6 +21,7 @@ CASES = {
     "audio": (["make", "test-audio"], 30.0),
     "qa": (["make", "test-qa"], 180.0),
     "see": (["make", "test-see"], 60.0),
+    "vk": (["make", "test-vk"], 60.0),
     "boot": (["make", "test-boot-see"], 360.0),
     "gpu": (["make", "test-gpu"], 120.0),
     "sdl-audio": (["make", "test-sdl-audio"], 30.0),
@@ -30,13 +31,18 @@ CASES = {
 
 SDL_CASES = {"gpu", "sdl-audio"}
 CMAKE_CASES = {"chd", "zip"}
+VK_HEADER = ROOT / "third_party" / "vulkan-headers" / "include" / "vulkan" / "vulkan.h"
 
 
 def host_skip_reason(name: str) -> str | None:
     if name in SDL_CASES and not shutil.which("sdl2-config"):
         return "host-missing-sdl2"
-    if name in CMAKE_CASES and not shutil.which("cmake"):
+    if name in CMAKE_CASES and not shutil.which("cmake") and not (
+        ROOT / "third_party" / "cmake" / "bin" / "cmake"
+    ).is_file():
         return "host-missing-cmake"
+    if name == "vk" and not VK_HEADER.is_file():
+        return "host-missing-vulkan-headers"
     return None
 
 

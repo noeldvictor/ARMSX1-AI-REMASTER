@@ -17,6 +17,13 @@
 
 #define SEE_MIN_PIXELS 256
 #define SEE_MIN_VRAM_SIDE 16
+#define SEE_SLOT_MAX 16
+
+typedef struct {
+    char hash[17];
+    uint8_t* rgb;
+    int w, h;
+} see_slot_t;
 
 struct see_engine {
     int enabled;
@@ -24,6 +31,8 @@ struct see_engine {
     int assets_written;
     char cache_root[PATH_MAX];
     char serial[32];
+    see_slot_t slots[SEE_SLOT_MAX];
+    int nslots;
 };
 
 static int see_clampi(int v, int lo, int hi) {
@@ -339,6 +348,9 @@ see_engine_t* see_create(void) {
 }
 
 void see_destroy(see_engine_t* see) {
+    if (!see) return;
+    for (int i = 0; i < see->nslots; i++)
+        free(see->slots[i].rgb);
     free(see);
 }
 
@@ -432,6 +444,43 @@ void see_on_vram_write(see_engine_t* see, const uint16_t* vram,
     free(rgb);
 }
 
+static void see_slot_store(see_engine_t* see, const char* hash, const uint8_t* rgb, int w, int h) {
+    size_t nbytes = (size_t)w * (size_t)h * 3u;
+    see_slot_t* slot = NULL;
+    for (int i = 0; i < see->nslots; i++) {
+        if (!memcmp(see->slots[i].hash, hash, 17)) {
+            slot = &see->slots[i];
+            break;
+        }
+    }
+    if (!slot) {
+        if (see->nslots == SEE_SLOT_MAX) {
+            free(see->slots[0].rgb);
+            memmove(&see->slots[0], &see->slots[1], sizeof(see_slot_t) * (SEE_SLOT_MAX - 1));
+            see->nslots = SEE_SLOT_MAX - 1;
+            memset(&see->slots[see->nslots], 0, sizeof(see_slot_t));
+        }
+        slot = &see->slots[see->nslots++];
+        memcpy(slot->hash, hash, 17);
+        slot->rgb = NULL;
+    }
+    uint8_t* copy = (uint8_t*)realloc(slot->rgb, nbytes);
+    if (!copy) return;
+    memcpy(copy, rgb, nbytes);
+    slot->rgb = copy;
+    slot->w = w;
+    slot->h = h;
+}
+
+static const uint8_t* see_slot_find(const see_engine_t* see, const char* hash, int w, int h) {
+    for (int i = 0; i < see->nslots; i++) {
+        if (!memcmp(see->slots[i].hash, hash, 17) &&
+            see->slots[i].w == w && see->slots[i].h == h)
+            return see->slots[i].rgb;
+    }
+    return NULL;
+}
+
 void see_present_rgb(see_engine_t* see, uint8_t* rgb, int w, int h) {
     if (!see || !see->enabled || !rgb || w <= 0 || h <= 0) return;
     char hash[17];
@@ -447,8 +496,23 @@ void see_present_rgb(see_engine_t* see, uint8_t* rgb, int w, int h) {
     if (see_file_exists(user)) path = user;
     else if (see_file_exists(gen)) path = gen;
     if (!path) return;
-    if (see_load_replacement(path, w, h, rgb) == 0)
+
+    size_t nbytes = (size_t)w * (size_t)h * 3u;
+    uint8_t* tmp = (uint8_t*)malloc(nbytes);
+    if (!tmp) return;
+    if (see_load_replacement(path, w, h, tmp) == 0) {
+        see_slot_store(see, hash, tmp, w, h);
+        memcpy(rgb, tmp, nbytes);
         see->applied = 1;
+    } else {
+        /* Truncated/malformed PNG: keep the last good replacement, never garbage. */
+        const uint8_t* prev = see_slot_find(see, hash, w, h);
+        if (prev) {
+            memcpy(rgb, prev, nbytes);
+            see->applied = 1;
+        }
+    }
+    free(tmp);
 }
 
 static int see_copy_file(const char* src, const char* dst) {

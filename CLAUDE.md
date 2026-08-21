@@ -277,6 +277,7 @@ make test-boot
     --script=tests/qa/scus-942.54-title.qa --enhance --enhance-dir=cache --json
 
 make test-see   # replacement on/off/user + pack export (no media)
+make test-vk    # headless Vulkan 1.1 buffer-copy (needs vendored headers)
 ```
 
 Script grammar (`#` comments; frames absolute, any order):
@@ -345,10 +346,17 @@ make disc-probe IMAGE=/path/to/game.cue
 ```
 
 The gate covers source invariants, CPU differential execution, audio timing,
-the QA selftest, SEE replacement/pack unit tests, and (when `bios/`+`roms/`
-exist) two enhancement-off plus two enhancement-on boots of one local title.
+the QA selftest, SEE replacement/pack unit tests, a headless Vulkan buffer
+copy when headers are present, and (when `bios/`+`roms/` exist) two
+enhancement-off plus two enhancement-on boots of one local title.
 Cases that need cmake or SDL2 (`gpu`, `chd`, `zip`, `sdl-audio`) **skip**
-instead of failing when those tools are absent.
+instead of failing when those tools are absent. `vk` skips if
+`third_party/vulkan-headers` is missing:
+
+```sh
+git clone --depth 1 --branch v1.4.309 \
+    https://github.com/KhronosGroup/Vulkan-Headers.git third_party/vulkan-headers
+```
 
 ### Verification assets — present locally, gitignored
 

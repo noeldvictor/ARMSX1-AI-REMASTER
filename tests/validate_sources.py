@@ -86,8 +86,13 @@ def main() -> int:
             "SEE present/pack entry points are missing")
     require("if (see_file_exists(reverted)) return;" in see_c,
             "SEE reverted lock does not skip generated/user at present")
+    require("see_slot_find" in see_c and "truncated" in read("tests/see_replacement.c"),
+            "malformed PNG must keep the last good replacement")
     require("gpu->vram[xpos + (ypos * 1024)] = gpu->recv_data" in read("psx/dev/gpu.c"),
             "GP0(A0) must still write emulated VRAM")
+    require("vk_buffer_copy_roundtrip" in read("vk/blit.c"),
+            "Vulkan VRAM blit skeleton is missing")
+    require('"vk":' in gate, "Vulkan blit test is not in the default validation suite")
 
     if failures:
         for failure in failures:

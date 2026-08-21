@@ -55,3 +55,7 @@ cache/
 packs/
 __pycache__/
 *.pyc
+
+# Host-local toolchains (not part of the source tree)
+third_party/cmake/
+third_party/vulkan-headers/

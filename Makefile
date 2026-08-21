@@ -237,7 +237,7 @@ endif
 SDL_LIBS := $(if $(filter 1,$(SDL_STATIC)),$(SDL_LIBS_STATIC),$(SDL_LIBS_DYNAMIC))
 SDL_LIBS_SHARED := $(SDL_LIBS_DYNAMIC)
 
-.PHONY: all clean shared qa test-qa test-boot test-boot-see test-see test test-cpu test-gpu test-audio test-sdl-audio test-chd test-zip test-sdl-runtime disc-probe
+.PHONY: all clean shared qa test-qa test-boot test-boot-see test-see test-vk test test-cpu test-gpu test-audio test-sdl-audio test-chd test-zip test-sdl-runtime disc-probe
 
 all: $(BIN)
 
@@ -309,6 +309,16 @@ $(TEST_SEE_PACK_BIN): tests/see_pack_export.c $(SEE_SOURCES) $(QA_MINIZ_C)
 test-see: $(TEST_SEE_BIN) $(TEST_SEE_PACK_BIN)
 	./$(TEST_SEE_BIN)
 	./$(TEST_SEE_PACK_BIN)
+
+VK_INCLUDE := -Ithird_party/vulkan-headers/include
+TEST_VK_BIN := build/tests/vk_vram_blit
+
+$(TEST_VK_BIN): tests/vk_vram_blit.c vk/blit.c
+	mkdir -p $(dir $@)
+	$(CC) -std=c11 -O2 -g -I. $(VK_INCLUDE) $^ -l:libvulkan.so.1 -o $@
+
+test-vk: $(TEST_VK_BIN)
+	./$(TEST_VK_BIN)
 
 $(TEST_CPU_BIN): tests/cpu_differential.c $(TEST_CORE_SOURCES) $(TEST_PLATFORM_FILE_OBJ)
 	mkdir -p $(dir $@)
