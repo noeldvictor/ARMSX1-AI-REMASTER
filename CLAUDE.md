@@ -281,8 +281,9 @@ make test-boot
 # Texture dump + HD without replaying: every unique 2D surface and CLUT-decoded
 # 256×256 texture page lands in cache/<serial>/<hash>/{orig.png,meta.json}.
 # Drop user.png in that folder (or run see_enhance_cache) to tag the HD
-# version. The next boot uses it by hash — no second playthrough.
-# Pack export still strips orig.png.
+# version. For translations, save xlat-en.png (or xlat-XX.png) next to orig.png
+# and pass --lang=en. catalog.html is a contact sheet of every dump.
+# Pack export still strips orig.png (xlat files ship).
 
 make test-see   # replacement on/off/user + pack export (no media)
 make test-vk    # headless Vulkan 1.1 buffer-copy (needs vendored headers)

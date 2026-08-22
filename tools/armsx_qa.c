@@ -408,6 +408,7 @@ static void qa_usage(void) {
         "  --quiet              suppress emulator logging\n"
         "  --enhance            enable the Super Enhancement Engine (presentation only)\n"
         "  --enhance-dir=PATH   per-game cache root (default: cache)\n"
+        "  --lang=CODE          translation slot (looks up xlat-CODE.png, e.g. en)\n"
         "  --serial=SCUS-942.54 disc serial override; otherwise guessed from the disc\n"
         "  --selftest=PATH      write a test-pattern PNG and exit (no BIOS needed)\n"
         "  --help               this text\n"
@@ -446,6 +447,7 @@ int main(int argc, const char** argv) {
     int json = 0, quiet = 0, enhance_on = 0;
     const char* enhance_dir = "cache";
     const char* serial_opt = NULL;
+    const char* lang_opt = NULL;
 
     for (int i = 1; i < argc; i++) {
         const char* a = argv[i];
@@ -462,6 +464,7 @@ int main(int argc, const char** argv) {
         else if (!strcmp(a, "--enhance"))           enhance_on = 1;
         else if ((v = qa_opt(a, "--enhance-dir")))  enhance_dir = v;
         else if ((v = qa_opt(a, "--serial")))       serial_opt = v;
+        else if ((v = qa_opt(a, "--lang")))         lang_opt = v;
         else if ((v = qa_opt(a, "--selftest"))) {
             /* Verifies the capture path end to end without a BIOS or a disc:
              * if this PNG is readable, the writer and the toolchain are good. */
@@ -573,6 +576,8 @@ int main(int argc, const char** argv) {
     }
     see_set_cache_root(see, enhance_dir);
     see_set_enabled(see, enhance_on);
+    if (lang_opt)
+        see_set_language(see, lang_opt);
     if (serial_opt)
         see_set_serial(see, serial_opt);
     else if (cdrom) {
@@ -747,6 +752,7 @@ int main(int argc, const char** argv) {
                enhance_on ? "on" : "off",
                see_applied(see) ? "yes" : "no", see_asset_count(see));
 
+    see_write_catalog(see);
     see_destroy(see);
     free(script.items);
     return stuck ? 4 : 0;

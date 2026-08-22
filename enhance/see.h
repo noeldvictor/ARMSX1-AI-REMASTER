@@ -9,8 +9,9 @@
  * or user.png — drop a PNG in that folder to tag the hash without
  * replaying. Never writes emulated VRAM.
  *
- * Draw order: user.png → generated.png → original pixels.
- * Pack export copies hashes + generated/user only (strips orig.png).
+ * Draw order: xlat-<lang>.png → user.png → generated.png → original.
+ * Drop xlat-en.png next to orig.png to translate without a replay.
+ * Pack export copies hashes + generated/user/xlat only (strips orig.png).
  */
 
 #include <stdint.h>
@@ -30,8 +31,13 @@ int see_enabled(const see_engine_t* see);
 void see_set_cache_root(see_engine_t* see, const char* path);
 void see_set_serial(see_engine_t* see, const char* serial);
 const char* see_serial(const see_engine_t* see);
+void see_set_language(see_engine_t* see, const char* lang);
+const char* see_language(const see_engine_t* see);
 int see_applied(const see_engine_t* see);
 int see_asset_count(const see_engine_t* see);
+
+/* Write cache/<serial>/catalog.html — orig.png contact sheet for translators. */
+int see_write_catalog(see_engine_t* see);
 
 /* Hash RGB8 (resolution mixed in) to a 16-char lowercase hex id. */
 void see_hash_rgb(const uint8_t* rgb, int w, int h, char out[17]);

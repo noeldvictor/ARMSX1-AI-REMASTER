@@ -84,6 +84,14 @@ int main(void) {
         return 1;
     }
 
+    char xlat_src[1024];
+    snprintf(xlat_src, sizeof(xlat_src), "%s/SCUS-942.54/%s/xlat-en.png", cache, hash);
+    if (see_png_write(xlat_src, rgb, w, h)) {
+        fprintf(stderr, "SEE_PACK failed reason=xlat-write\n");
+        see_destroy(see);
+        return 1;
+    }
+
     if (see_export_pack(see, dest)) {
         fprintf(stderr, "SEE_PACK failed reason=export\n");
         see_destroy(see);
@@ -105,6 +113,11 @@ int main(void) {
         see_destroy(see);
         return 1;
     }
+    if (!walk_has_name(dest, "xlat-en.png")) {
+        fprintf(stderr, "SEE_PACK failed reason=xlat-missing\n");
+        see_destroy(see);
+        return 1;
+    }
 
     char man_path[1024];
     snprintf(man_path, sizeof(man_path), "%s/manifest.json", dest);
@@ -118,13 +131,14 @@ int main(void) {
     size_t n = fread(man, 1, sizeof(man) - 1, mf);
     fclose(mf);
     man[n] = 0;
-    if (!strstr(man, "SCUS-942.54") || !strstr(man, hash) || strstr(man, "orig.png")) {
+    if (!strstr(man, "SCUS-942.54") || !strstr(man, hash) || strstr(man, "orig.png")
+        || !strstr(man, "\"xlat\": true")) {
         fprintf(stderr, "SEE_PACK failed reason=manifest-contents\n%s\n", man);
         see_destroy(see);
         return 1;
     }
 
-    printf("SEE_PACK passed serial=SCUS-942.54 hash=%s stripped=orig.png\n", hash);
+    printf("SEE_PACK passed serial=SCUS-942.54 hash=%s stripped=orig.png xlat=en\n", hash);
     puts("SEE_PACK all cases passed");
     see_destroy(see);
     return 0;

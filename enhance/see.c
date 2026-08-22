@@ -31,6 +31,7 @@ struct see_engine {
     int assets_written;
     char cache_root[PATH_MAX];
     char serial[32];
+    char language[9];
     see_slot_t slots[SEE_SLOT_MAX];
     int nslots;
     uint8_t* bound_rgb;
@@ -218,6 +219,107 @@ static int see_file_exists(const char* path) {
     return stat(path, &st) == 0 && S_ISREG(st.st_mode);
 }
 
+static int see_has_xlat(const char* dir) {
+    DIR* d = opendir(dir);
+    if (!d) return 0;
+    int found = 0;
+    struct dirent* ent;
+    while ((ent = readdir(d))) {
+        if (strncmp(ent->d_name, "xlat-", 5) != 0) continue;
+        size_t n = strlen(ent->d_name);
+        if (n > 9 && !strcmp(ent->d_name + n - 4, ".png")) {
+            found = 1;
+            break;
+        }
+    }
+    closedir(d);
+    return found;
+}
+
+static int see_asset_locked(const char* dir) {
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/reverted", dir);
+    if (see_file_exists(path)) return 1;
+    snprintf(path, sizeof(path), "%s/edited", dir);
+    if (see_file_exists(path)) return 1;
+    snprintf(path, sizeof(path), "%s/user.png", dir);
+    if (see_file_exists(path)) return 1;
+    return see_has_xlat(dir);
+}
+
+static int see_xlat_path(const see_engine_t* see, const char* dir, char* out, size_t n) {
+    if (!see || !see->language[0] || !dir) return 1;
+    int wr = snprintf(out, n, "%s/xlat-%s.png", dir, see->language);
+    return (wr < 0 || (size_t)wr >= n);
+}
+
+/* xlat-<lang>.png → user.png → generated.png */
+static const char* see_pick_replacement(const see_engine_t* see, const char* dir,
+                                        char* user, char* gen, char* xlat) {
+    if (see_xlat_path(see, dir, xlat, PATH_MAX) == 0 && see_file_exists(xlat))
+        return xlat;
+    snprintf(user, PATH_MAX, "%s/user.png", dir);
+    if (see_file_exists(user)) return user;
+    snprintf(gen, PATH_MAX, "%s/generated.png", dir);
+    if (see_file_exists(gen)) return gen;
+    return NULL;
+}
+
+static void see_serial_or_unknown(const see_engine_t* see, char* out, size_t n);
+
+int see_write_catalog(see_engine_t* see) {
+    if (!see) return 1;
+    char serial[32], root[PATH_MAX], path[PATH_MAX];
+    see_serial_or_unknown(see, serial, sizeof(serial));
+    snprintf(root, sizeof(root), "%s/%s", see->cache_root, serial);
+    if (see_mkdirs(root)) return 1;
+    snprintf(path, sizeof(path), "%s/catalog.html", root);
+    FILE* f = fopen(path, "wb");
+    if (!f) return 1;
+    fprintf(f,
+            "<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
+            "<title>%s translation catalog</title>\n"
+            "<style>body{font:14px sans-serif;background:#111;color:#eee;margin:24px}"
+            "a{color:#8cf}img{image-rendering:pixelated;max-width:256px;background:#000}"
+            ".card{display:inline-block;vertical-align:top;margin:8px;padding:8px;"
+            "background:#1c1c1c;border:1px solid #333}code{color:#fd6}</style>"
+            "</head><body>\n<h1>%s</h1>\n"
+            "<p>Open <code>orig.png</code> in any image editor. Save your translation "
+            "as <code>xlat-en.png</code> (or <code>xlat-XX.png</code>) in the same "
+            "folder. Hash is the tag &mdash; no replay. "
+            "<code>user.png</code> is HD touch-up; xlat wins when a language is set.</p>\n",
+            serial, serial);
+    DIR* d = opendir(root);
+    int n = 0;
+    if (d) {
+        struct dirent* ent;
+        while ((ent = readdir(d))) {
+            if (ent->d_name[0] == '.') continue;
+            char dir[PATH_MAX], orig[PATH_MAX], meta[PATH_MAX];
+            snprintf(dir, sizeof(dir), "%s/%s", root, ent->d_name);
+            struct stat st;
+            if (stat(dir, &st) || !S_ISDIR(st.st_mode)) continue;
+            snprintf(orig, sizeof(orig), "%s/orig.png", dir);
+            if (!see_file_exists(orig)) continue;
+            const char* kind = "surface";
+            snprintf(meta, sizeof(meta), "%s/meta.json", dir);
+            if (see_file_exists(meta)) kind = "texpage";
+            int has_xlat = see_has_xlat(dir);
+            fprintf(f,
+                    "<div class=\"card\"><img src=\"%s/orig.png\" alt=\"%s\">"
+                    "<div><code>%s</code><br>%s%s</div>"
+                    "<div>save <code>xlat-en.png</code> here</div></div>\n",
+                    ent->d_name, ent->d_name, ent->d_name, kind,
+                    has_xlat ? " · translated" : "");
+            n++;
+        }
+        closedir(d);
+    }
+    fprintf(f, "<p>%d dumped assets.</p>\n</body></html>\n", n);
+    fclose(f);
+    return 0;
+}
+
 static void see_serial_or_unknown(const see_engine_t* see, char* out, size_t n) {
     if (see->serial[0]) snprintf(out, n, "%s", see->serial);
     else snprintf(out, n, "UNKNOWN");
@@ -373,6 +475,23 @@ void see_set_cache_root(see_engine_t* see, const char* path) {
     snprintf(see->cache_root, sizeof(see->cache_root), "%s", path);
 }
 
+void see_set_language(see_engine_t* see, const char* lang) {
+    if (!see) return;
+    memset(see->language, 0, sizeof(see->language));
+    if (!lang) return;
+    size_t j = 0;
+    for (size_t i = 0; lang[i] && j + 1 < sizeof(see->language); i++) {
+        unsigned char c = (unsigned char)lang[i];
+        if (c >= 'A' && c <= 'Z') c = (unsigned char)(c - 'A' + 'a');
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+            see->language[j++] = (char)c;
+    }
+}
+
+const char* see_language(const see_engine_t* see) {
+    return see ? see->language : "";
+}
+
 void see_set_serial(see_engine_t* see, const char* serial) {
     if (!see) return;
     see->serial[0] = 0;
@@ -408,17 +527,15 @@ int see_ingest_rgb(see_engine_t* see, const uint8_t* rgb, int w, int h, char has
     char dir[PATH_MAX];
     if (see_asset_dir(see, hash, dir, sizeof(dir))) return 1;
     if (see_mkdirs(dir)) return 1;
-    char orig[PATH_MAX], gen[PATH_MAX], user[PATH_MAX], reverted[PATH_MAX], edited[PATH_MAX];
+    char orig[PATH_MAX], gen[PATH_MAX];
     snprintf(orig, sizeof(orig), "%s/orig.png", dir);
     snprintf(gen, sizeof(gen), "%s/generated.png", dir);
-    snprintf(user, sizeof(user), "%s/user.png", dir);
-    snprintf(reverted, sizeof(reverted), "%s/reverted", dir);
-    snprintf(edited, sizeof(edited), "%s/edited", dir);
     if (!see_file_exists(orig)) {
         if (see_png_write(orig, rgb, w, h)) return 1;
         see->assets_written++;
+        see_write_catalog(see);
     }
-    int locked = see_file_exists(reverted) || see_file_exists(edited) || see_file_exists(user);
+    int locked = see_asset_locked(dir);
     if (see->enabled && !locked && !see_file_exists(gen)) {
         if (see_generate(rgb, w, h, gen)) return 1;
     }
@@ -527,12 +644,8 @@ static int see_append_index(const see_engine_t* see, const char* hash, const cha
 
 static int see_bind_hd(see_engine_t* see, const char* dir,
                        unsigned tpx, unsigned tpy, unsigned clutx, unsigned cluty, int depth) {
-    char user[PATH_MAX], gen[PATH_MAX];
-    snprintf(user, sizeof(user), "%s/user.png", dir);
-    snprintf(gen, sizeof(gen), "%s/generated.png", dir);
-    const char* path = NULL;
-    if (see_file_exists(user)) path = user;
-    else if (see_file_exists(gen)) path = gen;
+    char user[PATH_MAX], gen[PATH_MAX], xlat[PATH_MAX];
+    const char* path = see_pick_replacement(see, dir, user, gen, xlat);
     see->bound_ok = 0;
     free(see->bound_rgb);
     see->bound_rgb = NULL;
@@ -584,14 +697,11 @@ void see_on_texture_use(see_engine_t* see, const uint16_t* vram,
             see->assets_written++;
             see_write_meta(dir, hash, depth, tpx, tpy, clutx, cluty);
             see_append_index(see, hash, "texpage");
+            see_write_catalog(see);
             if (see->enabled) {
-                char gen[PATH_MAX], user[PATH_MAX], reverted[PATH_MAX], edited[PATH_MAX];
+                char gen[PATH_MAX];
                 snprintf(gen, sizeof(gen), "%s/generated.png", dir);
-                snprintf(user, sizeof(user), "%s/user.png", dir);
-                snprintf(reverted, sizeof(reverted), "%s/reverted", dir);
-                snprintf(edited, sizeof(edited), "%s/edited", dir);
-                int locked = see_file_exists(reverted) || see_file_exists(edited) || see_file_exists(user);
-                if (!locked && !see_file_exists(gen))
+                if (!see_asset_locked(dir) && !see_file_exists(gen))
                     see_generate(rgb, 256, 256, gen);
             }
         }
@@ -635,15 +745,11 @@ int see_enhance_cache(see_engine_t* see) {
         snprintf(dir, sizeof(dir), "%s/%s", root, ent->d_name);
         struct stat st;
         if (stat(dir, &st) || !S_ISDIR(st.st_mode)) continue;
-        char orig[PATH_MAX], gen[PATH_MAX], user[PATH_MAX], reverted[PATH_MAX], edited[PATH_MAX];
+        char orig[PATH_MAX], gen[PATH_MAX];
         snprintf(orig, sizeof(orig), "%s/orig.png", dir);
         snprintf(gen, sizeof(gen), "%s/generated.png", dir);
-        snprintf(user, sizeof(user), "%s/user.png", dir);
-        snprintf(reverted, sizeof(reverted), "%s/reverted", dir);
-        snprintf(edited, sizeof(edited), "%s/edited", dir);
         if (!see_file_exists(orig)) continue;
-        if (see_file_exists(reverted) || see_file_exists(edited) || see_file_exists(user))
-            continue;
+        if (see_asset_locked(dir)) continue;
         if (see_file_exists(gen)) continue;
         uint8_t* rgb = NULL;
         int w = 0, h = 0;
@@ -728,14 +834,10 @@ void see_present_rgb(see_engine_t* see, uint8_t* rgb, int w, int h) {
     if (!see->enabled) return;
     char dir[PATH_MAX];
     if (see_asset_dir(see, hash, dir, sizeof(dir))) return;
-    char user[PATH_MAX], gen[PATH_MAX], reverted[PATH_MAX];
-    snprintf(user, sizeof(user), "%s/user.png", dir);
-    snprintf(gen, sizeof(gen), "%s/generated.png", dir);
+    char reverted[PATH_MAX], user[PATH_MAX], gen[PATH_MAX], xlat[PATH_MAX];
     snprintf(reverted, sizeof(reverted), "%s/reverted", dir);
     if (see_file_exists(reverted)) return;
-    const char* path = NULL;
-    if (see_file_exists(user)) path = user;
-    else if (see_file_exists(gen)) path = gen;
+    const char* path = see_pick_replacement(see, dir, user, gen, xlat);
     if (!path) return;
 
     size_t nbytes = (size_t)w * (size_t)h * 3u;
@@ -798,7 +900,7 @@ int see_export_pack(const see_engine_t* see, const char* dest_dir) {
         snprintf(asset_dst, sizeof(asset_dst), "%s/%s", dest_dir, ent->d_name);
         if (see_mkdirs(asset_dst)) { rc = 1; break; }
         const char* names[] = { "generated.png", "user.png", "reverted", "edited", NULL };
-        int has_gen = 0, has_user = 0;
+        int has_gen = 0, has_user = 0, has_xlat = 0;
         for (int i = 0; names[i]; i++) {
             char from[PATH_MAX], to[PATH_MAX];
             snprintf(from, sizeof(from), "%s/%s", asset_src, names[i]);
@@ -809,11 +911,28 @@ int see_export_pack(const see_engine_t* see, const char* dest_dir) {
             if (!strcmp(names[i], "user.png")) has_user = 1;
         }
         if (rc) break;
+        DIR* ad = opendir(asset_src);
+        if (ad) {
+            struct dirent* ae;
+            while ((ae = readdir(ad))) {
+                if (strncmp(ae->d_name, "xlat-", 5) != 0) continue;
+                size_t ln = strlen(ae->d_name);
+                if (ln < 10 || strcmp(ae->d_name + ln - 4, ".png")) continue;
+                char from[PATH_MAX], to[PATH_MAX];
+                snprintf(from, sizeof(from), "%s/%s", asset_src, ae->d_name);
+                snprintf(to, sizeof(to), "%s/%s", asset_dst, ae->d_name);
+                if (see_copy_file(from, to)) { rc = 1; break; }
+                has_xlat = 1;
+            }
+            closedir(ad);
+        }
+        if (rc) break;
         if (!first) fputs(",\n", man);
         first = 0;
         fprintf(man,
-                "    {\"hash\": \"%s\", \"generated\": %s, \"user\": %s}",
-                ent->d_name, has_gen ? "true" : "false", has_user ? "true" : "false");
+                "    {\"hash\": \"%s\", \"generated\": %s, \"user\": %s, \"xlat\": %s}",
+                ent->d_name, has_gen ? "true" : "false", has_user ? "true" : "false",
+                has_xlat ? "true" : "false");
     }
     closedir(d);
     fputs("\n  ]\n}\n", man);

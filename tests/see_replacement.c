@@ -111,6 +111,69 @@ int main(void) {
     }
     printf("SEE_REPLACEMENT passed case=user-overrides-generated\n");
 
+    /* Translation overlay: xlat-<lang>.png wins, no replay. */
+    {
+        uint8_t red[32 * 32 * 3];
+        for (int i = 0; i < w * h; i++) {
+            red[i * 3 + 0] = 255;
+            red[i * 3 + 1] = 0;
+            red[i * 3 + 2] = 0;
+        }
+        char xlat_path[512];
+        snprintf(xlat_path, sizeof(xlat_path), "%s/TEST-000.00/%s/xlat-en.png", root, hash);
+        if (see_png_write(xlat_path, red, w, h)) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=xlat-write\n");
+            see_destroy(see);
+            return 1;
+        }
+        see_set_language(see, "EN");
+        if (strcmp(see_language(see), "en") != 0) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=lang-sanitize\n");
+            see_destroy(see);
+            return 1;
+        }
+        memcpy(frame, orig, sizeof(frame));
+        see_set_enabled(see, 1);
+        see_present_rgb(see, frame, w, h);
+        if (!all_rgb(frame, w, h, 255, 0, 0)) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=xlat-not-applied\n");
+            see_destroy(see);
+            return 1;
+        }
+        see_set_language(see, NULL);
+        memcpy(frame, orig, sizeof(frame));
+        see_present_rgb(see, frame, w, h);
+        if (all_rgb(frame, w, h, 255, 0, 0)) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=xlat-leaked-without-lang\n");
+            see_destroy(see);
+            return 1;
+        }
+        if (see_write_catalog(see)) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=catalog-write\n");
+            see_destroy(see);
+            return 1;
+        }
+        char cat_path[512];
+        snprintf(cat_path, sizeof(cat_path), "%s/TEST-000.00/catalog.html", root);
+        FILE* cf = fopen(cat_path, "rb");
+        if (!cf) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=catalog-missing\n");
+            see_destroy(see);
+            return 1;
+        }
+        char catbuf[8192];
+        size_t cn = fread(catbuf, 1, sizeof(catbuf) - 1, cf);
+        fclose(cf);
+        catbuf[cn] = 0;
+        if (!strstr(catbuf, hash) || !strstr(catbuf, "xlat-en.png")) {
+            fprintf(stderr, "SEE_REPLACEMENT failed reason=catalog-contents\n");
+            see_destroy(see);
+            return 1;
+        }
+        printf("SEE_REPLACEMENT passed case=xlat-en-catalog\n");
+        remove(xlat_path);
+    }
+
     /* Truncated user.png must keep the last good replacement, not original. */
     {
         FILE* bad = fopen(user_path, "wb");

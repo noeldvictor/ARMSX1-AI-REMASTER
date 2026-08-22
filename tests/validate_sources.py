@@ -94,6 +94,13 @@ def main() -> int:
     require("see_on_texture_use" in see_c and "see_enhance_cache" in see_c
             and "see_replace_texel" in see_c,
             "texture dump / HD tag / enhance-cache path is missing")
+    require("see_set_language" in see_c and "xlat-" in see_c and "see_write_catalog" in see_c,
+            "translation slot / catalog is missing")
+    require("xlat-en-catalog" in read("tests/see_replacement.c") and
+            "xlat-en.png" in read("tests/see_pack_export.c"),
+            "translation overlay tests are missing")
+    require("--lang=" in read("tools/armsx_qa.c"),
+            "QA --lang translation slot is missing")
     require("psx_gpu_set_texture_use_callback" in read("psx/dev/gpu.c") and
             "psx_gpu_set_texel_callback" in read("psx/dev/gpu.c"),
             "GPU texture-use / texel hooks are missing")
