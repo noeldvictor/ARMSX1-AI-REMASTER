@@ -319,7 +319,8 @@ every working session ends with a `docs/worklogs/` entry — named
 
 | Path | Contents |
 | --- | --- |
-| [`CLAUDE.md`](CLAUDE.md) | Operating manual for AI agents |
+| [`AGENTS.md`](AGENTS.md) | Operating manual for AI agents |
+| [`CLAUDE.md`](CLAUDE.md) | Pointer to AGENTS.md (some loaders look for this name) |
 | [`docs/README.md`](docs/README.md) | Tracking conventions and file naming |
 | [`docs/research/`](docs/research/) | Investigations and feasibility studies |
 | [`docs/decisions/`](docs/decisions/) | Architecture decision records |
